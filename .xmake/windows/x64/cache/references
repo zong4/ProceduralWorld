@@ -1,0 +1,10 @@
+{
+    packages = {
+        [[C:\Users\zzoon\AppData\Local\.xmake\packages\n\ninja\v1.13.1\fd5a0995dca64146a4f4c4dbff879aad]],
+        [[C:\Users\zzoon\AppData\Local\.xmake\packages\o\opengl\latest\573ba02994804dbc9356ea45316fd02c]],
+        [[C:\Users\zzoon\AppData\Local\.xmake\packages\g\glfw\3.4\249310043d2640f09e5454357e7de716]],
+        [[C:\Users\zzoon\AppData\Local\.xmake\packages\p\python\3.13.11\84df28fdde3f46928d548207b1091e38]],
+        [[C:\Users\zzoon\AppData\Local\.xmake\packages\g\glad\v0.1.36\3cd3afe2a4c5477583014f838c741003]],
+        [[C:\Users\zzoon\AppData\Local\.xmake\packages\g\glm\1.0.3\1f55c06f24d64cc6a068485d106d3472]]
+    }
+}

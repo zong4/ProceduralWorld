@@ -1,0 +1,24 @@
+{
+    cmdlines = {
+        [[xmake l c:\Users\zzoon\.vscode\extensions\tboox.xmake-vscode-2.5.5\assets\explorer.lua]],
+        [[xmake l c:\Users\zzoon\.vscode\extensions\tboox.xmake-vscode-2.5.5\assets\update_intellisense.lua .vscode clangd]],
+        [[xmake l c:\Users\zzoon\.vscode\extensions\tboox.xmake-vscode-2.5.5\assets\config.lua]],
+        "xmake run",
+        "xmake build",
+        [[xmake l c:\Users\zzoon\.vscode\extensions\tboox.xmake-vscode-2.5.5\assets\explorer.lua]],
+        [[xmake l c:\Users\zzoon\.vscode\extensions\tboox.xmake-vscode-2.5.5\assets\explorer.lua]],
+        [[xmake l c:\Users\zzoon\.vscode\extensions\tboox.xmake-vscode-2.5.5\assets\config.lua]],
+        [[xmake l c:\Users\zzoon\.vscode\extensions\tboox.xmake-vscode-2.5.5\assets\update_intellisense.lua .vscode clangd]],
+        "xmake build",
+        "xmake f -m debug",
+        [[xmake l c:\Users\zzoon\.vscode\extensions\tboox.xmake-vscode-2.5.5\assets\config.lua]],
+        "xmake run",
+        "xmake check",
+        "xmake check",
+        "xmake check",
+        "xmake run",
+        "xmake check",
+        [[xmake l c:\Users\zzoon\.vscode\extensions\tboox.xmake-vscode-2.5.5\assets\explorer.lua]],
+        "xmake run"
+    }
+}

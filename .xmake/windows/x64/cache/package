@@ -1,0 +1,61 @@
+{
+    glfw = {
+        syslinks = {
+            "user32",
+            "shell32",
+            "gdi32"
+        },
+        installdir = [[C:\Users\zzoon\AppData\Local\.xmake\packages\g\glfw\3.4\249310043d2640f09e5454357e7de716]],
+        links = {
+            "glfw3",
+            "opengl32"
+        },
+        version = "3.4",
+        defines = "GLFW_INCLUDE_NONE",
+        static = true,
+        envs = {
+            PATH = {
+                [[C:\Users\zzoon\AppData\Local\.xmake\packages\n\ninja\v1.13.1\fd5a0995dca64146a4f4c4dbff879aad\bin]],
+                [[C:\Users\zzoon\AppData\Local\.xmake\packages\c\cmake\4.2.1\b60223f3842940c2af5950f06e05ca94\bin]]
+            }
+        },
+        sysincludedirs = [[C:\Users\zzoon\AppData\Local\.xmake\packages\g\glfw\3.4\249310043d2640f09e5454357e7de716\include]],
+        libfiles = [[C:\Users\zzoon\AppData\Local\.xmake\packages\g\glfw\3.4\249310043d2640f09e5454357e7de716\lib\glfw3.lib]],
+        license = "zlib",
+        __enabled = true,
+        linkdirs = [[C:\Users\zzoon\AppData\Local\.xmake\packages\g\glfw\3.4\249310043d2640f09e5454357e7de716\lib]],
+        __requirestr = "glfw"
+    },
+    glad = {
+        version = "v0.1.36",
+        installdir = [[C:\Users\zzoon\AppData\Local\.xmake\packages\g\glad\v0.1.36\3cd3afe2a4c5477583014f838c741003]],
+        __requirestr = "glad",
+        static = true,
+        envs = {
+            PYTHONPATH = {
+                [[C:\Users\zzoon\AppData\Local\.xmake\packages\p\python\3.13.11\84df28fdde3f46928d548207b1091e38\Lib\site-packages]]
+            },
+            PATH = {
+                [[C:\Users\zzoon\AppData\Local\.xmake\packages\n\ninja\v1.13.1\fd5a0995dca64146a4f4c4dbff879aad\bin]],
+                [[C:\Users\zzoon\AppData\Local\.xmake\packages\c\cmake\4.2.1\b60223f3842940c2af5950f06e05ca94\bin]],
+                [[C:\Users\zzoon\AppData\Local\.xmake\packages\p\python\3.13.11\84df28fdde3f46928d548207b1091e38\bin]],
+                [[C:\Users\zzoon\AppData\Local\.xmake\packages\p\python\3.13.11\84df28fdde3f46928d548207b1091e38\bin]],
+                [[C:\Users\zzoon\AppData\Local\.xmake\packages\p\python\3.13.11\84df28fdde3f46928d548207b1091e38\Scripts]]
+            }
+        },
+        links = "glad",
+        libfiles = [[C:\Users\zzoon\AppData\Local\.xmake\packages\g\glad\v0.1.36\3cd3afe2a4c5477583014f838c741003\lib\glad.lib]],
+        license = "MIT",
+        __enabled = true,
+        linkdirs = [[C:\Users\zzoon\AppData\Local\.xmake\packages\g\glad\v0.1.36\3cd3afe2a4c5477583014f838c741003\lib]],
+        sysincludedirs = [[C:\Users\zzoon\AppData\Local\.xmake\packages\g\glad\v0.1.36\3cd3afe2a4c5477583014f838c741003\include]]
+    },
+    glm = {
+        version = "1.0.3",
+        installdir = [[C:\Users\zzoon\AppData\Local\.xmake\packages\g\glm\1.0.3\1f55c06f24d64cc6a068485d106d3472]],
+        __requirestr = "glm",
+        __enabled = true,
+        license = "MIT",
+        sysincludedirs = [[C:\Users\zzoon\AppData\Local\.xmake\packages\g\glm\1.0.3\1f55c06f24d64cc6a068485d106d3472\include]]
+    }
+}
