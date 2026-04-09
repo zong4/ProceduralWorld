@@ -1,4 +1,5 @@
 add_rules("mode.debug", "mode.release")
+set_defaultmode("debug")
 
 set_project("ProceduralWorld")
 set_version("1.0.0")
