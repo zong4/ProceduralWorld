@@ -35,22 +35,32 @@ constexpr int   SCR_W      = 1280;
 constexpr int   SCR_H      = 720;
 constexpr int   GRID_N     = 64;   // patches per side (total = GRID_N*GRID_N quads)
 
+enum class RenderMode : int {
+    Shaded    = 0,
+    HeightMap = 2,
+    Normals   = 3
+};
+
+struct RenderSettings {
+    float tessMax         = 32.0f;
+    float tessMin         = 1.0f;
+    float tessMinDist     = 2.0f;
+    float tessMaxDist     = 30.0f;
+    float heightScale     = 2.2f;
+    float noiseScale      = 3.5f;
+    float wireCoarseWidth = 1.6f;
+    RenderMode mode       = RenderMode::Shaded;
+    bool wireOverlay      = false;
+    bool animTime         = false;
+    float appTime         = 0.0f;
+};
+
 // ------------------------------------------------------------------ globals
 Camera camera(glm::vec3(0.5f, 4.5f, 1.2f));
 bool   firstMouse = true;
 float  lastX = SCR_W / 2.0f, lastY = SCR_H / 2.0f;
 float  deltaTime = 0.0f, lastFrame = 0.0f;
-
-float  tessMax    = 32.0f;
-float  tessMin    = 1.0f;
-float  tessMinDist= 2.0f;
-float  tessMaxDist= 30.0f;
-float  heightScale= 2.2f;
-float  noiseScale = 3.5f;
-int    renderMode = 0;
-bool   wireOverlay= false;
-bool   animTime   = false;
-float  appTime    = 0.0f;
+RenderSettings settings;
 
 GLFWwindow* window = nullptr;
 
@@ -63,18 +73,18 @@ void keyCB(GLFWwindow* win, int key, int, int action, int)
 {
     if (action == GLFW_PRESS) {
         if (key == GLFW_KEY_ESCAPE)     glfwSetWindowShouldClose(win, true);
-        if (key == GLFW_KEY_1)          renderMode = 0;
-        if (key == GLFW_KEY_2)          { renderMode = 0; wireOverlay = !wireOverlay; }
-        if (key == GLFW_KEY_3)          renderMode = 2;
-        if (key == GLFW_KEY_4)          renderMode = 3;
-        if (key == GLFW_KEY_T)          animTime = !animTime;
+        if (key == GLFW_KEY_1)          settings.mode = RenderMode::Shaded;
+        if (key == GLFW_KEY_2)          { settings.mode = RenderMode::Shaded; settings.wireOverlay = !settings.wireOverlay; }
+        if (key == GLFW_KEY_3)          settings.mode = RenderMode::HeightMap;
+        if (key == GLFW_KEY_4)          settings.mode = RenderMode::Normals;
+        if (key == GLFW_KEY_T)          settings.animTime = !settings.animTime;
         if (key == GLFW_KEY_EQUAL || key == GLFW_KEY_KP_ADD) {
-            tessMax = glm::min(tessMax + 4.0f, 64.0f);
-            std::cout << "Tess max: " << tessMax << "\n";
+            settings.tessMax = glm::min(settings.tessMax + 4.0f, 64.0f);
+            std::cout << "Tess max: " << settings.tessMax << "\n";
         }
         if (key == GLFW_KEY_MINUS || key == GLFW_KEY_KP_SUBTRACT) {
-            tessMax = glm::max(tessMax - 4.0f, 1.0f);
-            std::cout << "Tess max: " << tessMax << "\n";
+            settings.tessMax = glm::max(settings.tessMax - 4.0f, 1.0f);
+            std::cout << "Tess max: " << settings.tessMax << "\n";
         }
     }
 }
@@ -155,6 +165,88 @@ struct TerrainMesh {
     }
 };
 
+void applyCommonUniforms(Shader& shader,
+                         const glm::mat4& model,
+                         const glm::mat4& view,
+                         const glm::mat4& projection,
+                         const glm::vec3& lightDir)
+{
+    shader.use();
+    shader.setMat4("model", model);
+    shader.setMat4("view", view);
+    shader.setMat4("projection", projection);
+    shader.setVec3("cameraPos", camera.Position);
+    shader.setVec3("lightDir", lightDir);
+    shader.setFloat("time", settings.appTime);
+    shader.setFloat("tessMin", settings.tessMin);
+    shader.setFloat("tessMax", settings.tessMax);
+    shader.setFloat("tessMinDist", settings.tessMinDist);
+    shader.setFloat("tessMaxDist", settings.tessMaxDist);
+    shader.setFloat("heightScale", settings.heightScale);
+    shader.setFloat("noiseScale", settings.noiseScale);
+    shader.setFloat("gridCount", (float)GRID_N);
+    shader.setFloat("coarseLineWidth", settings.wireCoarseWidth);
+    shader.setInt("renderMode", (int)settings.mode);
+}
+
+void handleMovementInput()
+{
+    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) camera.move(Camera::Dir::FORWARD,  deltaTime);
+    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) camera.move(Camera::Dir::BACKWARD, deltaTime);
+    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) camera.move(Camera::Dir::LEFT,     deltaTime);
+    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) camera.move(Camera::Dir::RIGHT,    deltaTime);
+    if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) camera.move(Camera::Dir::DOWN,     deltaTime);
+    if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) camera.move(Camera::Dir::UP,       deltaTime);
+}
+
+void drawTerrain(const TerrainMesh& terrain,
+                 Shader& terrainShader,
+                 const glm::mat4& model,
+                 const glm::mat4& view,
+                 const glm::mat4& projection,
+                 const glm::vec3& lightDir)
+{
+    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+    applyCommonUniforms(terrainShader, model, view, projection, lightDir);
+    terrain.draw();
+}
+
+void drawWireOverlay(const TerrainMesh& terrain,
+                     Shader& wireShader,
+                     Shader& coarseGridShader,
+                     const glm::mat4& model,
+                     const glm::mat4& view,
+                     const glm::mat4& projection,
+                     const glm::vec3& lightDir)
+{
+    if (!settings.wireOverlay) return;
+
+    glEnable(GL_POLYGON_OFFSET_LINE);
+    glPolygonOffset(-1.0f, -1.0f);
+    glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+    applyCommonUniforms(wireShader, model, view, projection, lightDir);
+    terrain.draw();
+    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+    glDisable(GL_POLYGON_OFFSET_LINE);
+
+    glDepthFunc(GL_LEQUAL);
+    glDepthMask(GL_FALSE);
+    applyCommonUniforms(coarseGridShader, model, view, projection, lightDir);
+    terrain.draw();
+    glDepthMask(GL_TRUE);
+    glDepthFunc(GL_LESS);
+}
+
+const char* currentModeLabel()
+{
+    switch (settings.mode) {
+    case RenderMode::HeightMap: return settings.wireOverlay ? "Height+Wire" : "HeightMap";
+    case RenderMode::Normals:   return settings.wireOverlay ? "Normals+Wire" : "Normals";
+    case RenderMode::Shaded:
+    default:                    return settings.wireOverlay ? "Shaded+Wire" : "Shaded";
+    }
+}
+
 // ------------------------------------------------------------------ main
 int main()
 {
@@ -198,7 +290,12 @@ int main()
     Shader wireShader("shaders/terrain.vert",
                       "shaders/terrain.tesc",
                       "shaders/terrain.tese",
-                      "shaders/wire.frag");
+                      "shaders/wire_fine.frag");
+
+    Shader coarseGridShader("shaders/terrain.vert",
+                            "shaders/terrain.tesc",
+                            "shaders/terrain.tese",
+                            "shaders/wire_coarse.frag");
 
     // --- Terrain mesh ---
     TerrainMesh terrain;
@@ -228,7 +325,7 @@ int main()
     std::cout << "  2         : toggle wireframe overlay\n";
     std::cout << "  3         : height map mode\n";
     std::cout << "  4         : normal map mode\n";
-    std::cout << "  +/-       : tessellation max level (current: " << tessMax << ")\n";
+    std::cout << "  +/-       : tessellation max level (current: " << settings.tessMax << ")\n";
     std::cout << "  T         : toggle animated time\n";
     std::cout << "  ESC       : quit\n\n";
 
@@ -238,15 +335,9 @@ int main()
         float now = (float)glfwGetTime();
         deltaTime = now - lastFrame;
         lastFrame = now;
-        if (animTime) appTime = now;
+        if (settings.animTime) settings.appTime = now;
 
-        // -- Input --
-        if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) camera.move(Camera::Dir::FORWARD,  deltaTime);
-        if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) camera.move(Camera::Dir::BACKWARD, deltaTime);
-        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) camera.move(Camera::Dir::LEFT,     deltaTime);
-        if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) camera.move(Camera::Dir::RIGHT,    deltaTime);
-        if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) camera.move(Camera::Dir::DOWN,     deltaTime);
-        if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) camera.move(Camera::Dir::UP,       deltaTime);
+        handleMovementInput();
 
         // -- Projection --
         int fbW, fbH;
@@ -258,38 +349,8 @@ int main()
         glClearColor(0.53f, 0.73f, 0.94f, 1.0f);  // sky blue
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        // -- Draw terrain --
-        auto setCommonUniforms = [&](Shader& sh) {
-            sh.use();
-            sh.setMat4("model",      model);
-            sh.setMat4("view",       view);
-            sh.setMat4("projection", proj);
-            sh.setVec3("cameraPos",  camera.Position);
-            sh.setVec3("lightDir",   lightDir);
-            sh.setFloat("time",      appTime);
-            sh.setFloat("tessMin",    tessMin);
-            sh.setFloat("tessMax",    tessMax);
-            sh.setFloat("tessMinDist",tessMinDist);
-            sh.setFloat("tessMaxDist",tessMaxDist);
-            sh.setFloat("heightScale",heightScale);
-            sh.setFloat("noiseScale", noiseScale);
-            sh.setInt("renderMode",   renderMode);
-        };
-
-        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-        setCommonUniforms(terrainShader);
-        terrain.draw();
-
-        // Wireframe overlay
-        if (wireOverlay) {
-            glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-            glEnable(GL_POLYGON_OFFSET_LINE);
-            glPolygonOffset(-1.0f, -1.0f);
-            setCommonUniforms(wireShader);
-            terrain.draw();
-            glDisable(GL_POLYGON_OFFSET_LINE);
-            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-        }
+        drawTerrain(terrain, terrainShader, model, view, proj, lightDir);
+        drawWireOverlay(terrain, wireShader, coarseGridShader, model, view, proj, lightDir);
 
         // -- Window title with stats --
         static double titleTimer = 0;
@@ -299,8 +360,8 @@ int main()
             char buf[256];
             snprintf(buf, sizeof(buf),
                 "Terrain | TessMax=%.0f | Mode=%s | %.1f FPS | Cam(%.1f,%.1f,%.1f)",
-                tessMax,
-                renderMode==0?"Shaded":renderMode==2?"HeightMap":"Normals",
+                settings.tessMax,
+                currentModeLabel(),
                 1.0f/deltaTime,
                 camera.Position.x, camera.Position.y, camera.Position.z);
             glfwSetWindowTitle(window, buf);

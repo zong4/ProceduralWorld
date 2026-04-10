@@ -52,5 +52,6 @@ void main()
 
         gl_TessLevelInner[0] = computeTessLevel(center);
         gl_TessLevelInner[1] = computeTessLevel(center);
+
     }
 }
