@@ -1,9 +1,13 @@
+#include <cstdio>
 #include <iostream>
 
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <imgui.h>
+#include <backends/imgui_impl_glfw.h>
+#include <backends/imgui_impl_opengl3.h>
 
 #include "FlyCamera.h"
 #include "PlanetRenderer.h"
@@ -21,6 +25,7 @@ struct ApplicationState {
     float lastMouseY = kWindowHeight * 0.5f;
     float deltaSeconds = 0.0f;
     float previousFrameTime = 0.0f;
+    bool showDebugPanel = true;
 };
 
 ApplicationState* getState(GLFWwindow* window)
@@ -35,12 +40,21 @@ void onFramebufferSizeChanged(GLFWwindow*, int width, int height)
 
 void onMouseScrolled(GLFWwindow* window, double, double yOffset)
 {
+    ImGui_ImplGlfw_ScrollCallback(window, 0.0, yOffset);
+    if (ImGui::GetIO().WantCaptureMouse) return;
     getState(window)->camera.zoom(static_cast<float>(yOffset) * 2.0f);
 }
 
 void onMouseMoved(GLFWwindow* window, double xPosition, double yPosition)
 {
+    ImGui_ImplGlfw_CursorPosCallback(window, xPosition, yPosition);
+
     ApplicationState* state = getState(window);
+    if (ImGui::GetIO().WantCaptureMouse) {
+        state->firstMouseSample = true;
+        return;
+    }
+
     if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) != GLFW_PRESS) {
         state->firstMouseSample = true;
         return;
@@ -60,11 +74,24 @@ void onMouseMoved(GLFWwindow* window, double xPosition, double yPosition)
     state->camera.rotate(deltaX, deltaY);
 }
 
+void onMouseButtonChanged(GLFWwindow* window, int button, int action, int modifiers)
+{
+    ImGui_ImplGlfw_MouseButtonCallback(window, button, action, modifiers);
+}
+
+void onCharacterTyped(GLFWwindow* window, unsigned int codepoint)
+{
+    ImGui_ImplGlfw_CharCallback(window, codepoint);
+}
+
 void onKeyPressed(GLFWwindow* window, int key, int, int action, int)
 {
+    ImGui_ImplGlfw_KeyCallback(window, key, 0, action, 0);
     if (action != GLFW_PRESS) return;
 
     ApplicationState* state = getState(window);
+    if (ImGui::GetIO().WantCaptureKeyboard) return;
+
     PlanetRenderSettings& settings = state->renderer.settings();
 
     if (key == GLFW_KEY_ESCAPE) glfwSetWindowShouldClose(window, true);
@@ -86,10 +113,16 @@ void onKeyPressed(GLFWwindow* window, int key, int, int action, int)
         settings.tessellationMax = glm::max(settings.tessellationMax - 2.0f, 1.0f);
         std::cout << "Tessellation max: " << settings.tessellationMax << "\n";
     }
+
+    if (key == GLFW_KEY_TAB) {
+        state->showDebugPanel = !state->showDebugPanel;
+    }
 }
 
 void handleKeyboardMovement(GLFWwindow* window, ApplicationState& state)
 {
+    if (ImGui::GetIO().WantCaptureKeyboard) return;
+
     if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) state.camera.move(FlyCamera::MovementDirection::Forward, state.deltaSeconds);
     if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) state.camera.move(FlyCamera::MovementDirection::Backward, state.deltaSeconds);
     if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) state.camera.move(FlyCamera::MovementDirection::Left, state.deltaSeconds);
@@ -111,7 +144,69 @@ void printControls(const PlanetRenderSettings& settings)
     std::cout << "  4         : normal map mode\n";
     std::cout << "  +/-       : tessellation max level (current: " << settings.tessellationMax << ")\n";
     std::cout << "  T         : toggle animated terrain\n";
+    std::cout << "  Tab       : toggle ImGui panel\n";
     std::cout << "  ESC       : quit\n\n";
+}
+
+void drawDebugPanel(ApplicationState& state)
+{
+    if (!state.showDebugPanel) return;
+
+    PlanetRenderSettings& settings = state.renderer.settings();
+    const float fps = 1.0f / glm::max(state.deltaSeconds, 0.0001f);
+    int renderModeIndex = static_cast<int>(settings.renderMode);
+    const char* renderModeNames[] = {"Shaded", "Unused", "Height Map", "Normals"};
+
+    ImGui::SetNextWindowPos(ImVec2(16.0f, 16.0f), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(360.0f, 440.0f), ImGuiCond_FirstUseEver);
+
+    if (!ImGui::Begin("Planet Controls", &state.showDebugPanel)) {
+        ImGui::End();
+        return;
+    }
+
+    ImGui::Text("FPS: %.1f", fps);
+    ImGui::Text("Visible patches: %zu", state.renderer.visiblePatchCount());
+    ImGui::Separator();
+
+    ImGui::Text("Planet Shape");
+    ImGui::SliderFloat("Planet Radius", &settings.planetRadius, 5.0f, 80.0f, "%.1f");
+    ImGui::SliderFloat("Height Scale", &settings.terrainHeightScale, 0.0f, 8.0f, "%.2f");
+    ImGui::SliderFloat("Noise Scale", &settings.terrainNoiseScale, 0.2f, 10.0f, "%.2f");
+    ImGui::Checkbox("Animate Terrain", &settings.animateTerrain);
+    if (!settings.animateTerrain) {
+        ImGui::SliderFloat("Animation Time", &settings.animationTime, 0.0f, 60.0f, "%.2f");
+    }
+
+    ImGui::Separator();
+    ImGui::Text("LOD and Tessellation");
+    ImGui::SliderFloat("Tessellation Max", &settings.tessellationMax, 1.0f, 32.0f, "%.1f");
+    ImGui::SliderFloat("Tessellation Min", &settings.tessellationMin, 1.0f, settings.tessellationMax, "%.1f");
+    ImGui::SliderFloat("Tess Near", &settings.tessellationNearDistance, 1.0f, 60.0f, "%.1f");
+    ImGui::SliderFloat("Tess Far", &settings.tessellationFarDistance, settings.tessellationNearDistance + 1.0f, 200.0f, "%.1f");
+    ImGui::SliderFloat("Coarse Grid Width", &settings.coarseGridLineWidth, 0.5f, 5.0f, "%.2f");
+    ImGui::Checkbox("Wire Overlay", &settings.showWireOverlay);
+
+    ImGui::Separator();
+    ImGui::Text("Render Mode");
+    if (ImGui::Combo("Mode", &renderModeIndex, renderModeNames, IM_ARRAYSIZE(renderModeNames))) {
+        if (renderModeIndex == 0) settings.renderMode = PlanetRenderMode::Shaded;
+        if (renderModeIndex == 2) settings.renderMode = PlanetRenderMode::HeightMap;
+        if (renderModeIndex == 3) settings.renderMode = PlanetRenderMode::Normals;
+    }
+    if (renderModeIndex == 1) {
+        renderModeIndex = 0;
+        settings.renderMode = PlanetRenderMode::Shaded;
+    }
+
+    ImGui::Separator();
+    ImGui::Text("Camera");
+    ImGui::SliderFloat("Move Speed", &state.camera.movementSpeed, 1.0f, 40.0f, "%.1f");
+    ImGui::SliderFloat("Mouse Sensitivity", &state.camera.mouseSensitivity, 0.02f, 0.5f, "%.2f");
+    ImGui::Text("Position: %.1f %.1f %.1f", state.camera.position.x, state.camera.position.y, state.camera.position.z);
+    ImGui::Text("FOV: %.1f", state.camera.fieldOfView);
+
+    ImGui::End();
 }
 } // namespace
 
@@ -145,7 +240,9 @@ int main()
     glfwSetFramebufferSizeCallback(window, onFramebufferSizeChanged);
     glfwSetScrollCallback(window, onMouseScrolled);
     glfwSetCursorPosCallback(window, onMouseMoved);
+    glfwSetMouseButtonCallback(window, onMouseButtonChanged);
     glfwSetKeyCallback(window, onKeyPressed);
+    glfwSetCharCallback(window, onCharacterTyped);
 
     if (!gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress))) {
         std::cerr << "Failed to initialize GLAD\n";
@@ -157,6 +254,12 @@ int main()
     glGetIntegerv(GL_MAX_PATCH_VERTICES, &maxPatchVertices);
     std::cout << "GL_MAX_PATCH_VERTICES = " << maxPatchVertices << "\n";
     std::cout << "OpenGL version: " << glGetString(GL_VERSION) << "\n";
+
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGui::StyleColorsDark();
+    ImGui_ImplGlfw_InitForOpenGL(window, false);
+    ImGui_ImplOpenGL3_Init("#version 410");
 
     appState.renderer.initialize();
 
@@ -194,7 +297,14 @@ int main()
         glClearColor(0.53f, 0.73f, 0.94f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
+
+        drawDebugPanel(appState);
         appState.renderer.render(appState.camera, viewMatrix, projectionMatrix);
+        ImGui::Render();
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
         static double titleUpdateTimer = 0.0;
         titleUpdateTimer += appState.deltaSeconds;
@@ -218,6 +328,9 @@ int main()
         glfwPollEvents();
     }
 
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+    ImGui::DestroyContext();
     glfwTerminate();
     return 0;
 }

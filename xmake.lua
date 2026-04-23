@@ -7,12 +7,13 @@ set_languages("c++17")
 
 -- Add required packages
 add_requires("glfw", "glad", "glm")
+add_requires("imgui", {configs = {glfw = true, opengl3 = true}})
 
 target("ProceduralWorld")
     set_kind("binary")
     add_files("src/*.cpp")
     add_includedirs("include")
-    add_packages("glfw", "glad", "glm")
+    add_packages("glfw", "glad", "glm", "imgui")
     
     -- Copy shaders to build directory
     after_build(function(target)
