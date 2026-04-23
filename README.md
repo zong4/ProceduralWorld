@@ -1,18 +1,65 @@
 # Procedural World
 
-## How to run?
+An OpenGL 4.1 procedural planet renderer built with GLFW, GLAD, GLM, and xmake.
 
-### 1️⃣ Clone the repository
-```bash
-git clone https://github.com/zong4/ProceduralWorld.git
+## Features
+
+- Cube-sphere planet rendering with tessellation shaders
+- Per-face quadtree LOD on the CPU
+- Shaded, wireframe, height-map, and normal visualization modes
+- Fly camera controls for inspecting the planet at multiple scales
+
+## Project Structure
+
+```text
+include/
+  FlyCamera.h        Camera movement and view-matrix helper
+  PlanetRenderer.h   Planet rendering API and LOD-facing data structures
+  ShaderProgram.h    Minimal shader compilation and uniform wrapper
+
+src/
+  main.cpp           GLFW application entry point and input wiring
+  PlanetRenderer.cpp Planet mesh rendering, cube-sphere mapping, and quadtree LOD
+
+shaders/
+  terrain.vert       Node-local UV remapping for the current quadtree patch
+  terrain.tesc       Distance-based tessellation control
+  terrain.tese       Cube-sphere displacement and normal generation
+  terrain.frag       Terrain shading and debug visualization
+  wire_fine.frag     Fine wireframe overlay color
+  wire_coarse.frag   Coarse quadtree grid overlay
 ```
 
-### 2️⃣ Install dependencies
+## Build
 
-Make sure [**XMake**](https://xmake.io) is installed on your system.
+1. Install [xmake](https://xmake.io/).
+2. Build the project:
 
-### 3️⃣ Build and run
 ```bash
-cd ProceduralWorld
+xmake build
+```
+
+3. Run the executable:
+
+```bash
 xmake run -y
 ```
+
+## Controls
+
+- `W/A/S/D`: move camera
+- `Q/E`: move down/up
+- `Right Mouse + Drag`: rotate camera
+- `Mouse Wheel`: zoom
+- `1`: shaded mode
+- `2`: toggle wireframe overlay
+- `3`: height-map mode
+- `4`: normal mode
+- `+` / `-`: increase or decrease tessellation
+- `T`: toggle animated terrain time
+- `Esc`: quit
+
+## Notes
+
+- Shaders are copied into the build output automatically by `xmake.lua`.
+- The current LOD system is a first-pass quadtree implementation. It improves patch density around the camera but does not yet stitch mixed-depth patch borders.

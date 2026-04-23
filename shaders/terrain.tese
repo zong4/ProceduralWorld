@@ -12,140 +12,137 @@ out float teHeight;
 uniform mat4 model;
 uniform mat4 view;
 uniform mat4 projection;
+uniform vec3 faceNormal;
+uniform vec3 faceAxisU;
+uniform vec3 faceAxisV;
 uniform float time;
+uniform float planetRadius;
 uniform float heightScale;
 uniform float noiseScale;
 
-// -------------------------------------------------------
-// Noise utilities
-// -------------------------------------------------------
-
-// Hash function
-vec2 hash2(vec2 p)
+vec3 hash3(vec3 p)
 {
-    p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
+    p = vec3(
+        dot(p, vec3(127.1, 311.7,  74.7)),
+        dot(p, vec3(269.5, 183.3, 246.1)),
+        dot(p, vec3(113.5, 271.9, 124.6))
+    );
     return -1.0 + 2.0 * fract(sin(p) * 43758.5453123);
 }
 
-float hash(vec2 p)
-{
-    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
-}
-
-// Smooth interpolation (quintic)
 float fade(float t) { return t * t * t * (t * (t * 6.0 - 15.0) + 10.0); }
-vec2  fade(vec2 t)  { return t * t * t * (t * (t * 6.0 - 15.0) + 10.0); }
+vec3  fade(vec3 t)  { return t * t * t * (t * (t * 6.0 - 15.0) + 10.0); }
 
-// Gradient noise (Perlin-style)
-float gradientNoise(vec2 p)
+float gradientNoise(vec3 p)
 {
-    vec2 i = floor(p);
-    vec2 f = fract(p);
-    vec2 u = fade(f);
+    vec3 i = floor(p);
+    vec3 f = fract(p);
+    vec3 u = fade(f);
 
-    float a = dot(hash2(i + vec2(0.0, 0.0)), f - vec2(0.0, 0.0));
-    float b = dot(hash2(i + vec2(1.0, 0.0)), f - vec2(1.0, 0.0));
-    float c = dot(hash2(i + vec2(0.0, 1.0)), f - vec2(0.0, 1.0));
-    float d = dot(hash2(i + vec2(1.0, 1.0)), f - vec2(1.0, 1.0));
+    float n000 = dot(hash3(i + vec3(0.0, 0.0, 0.0)), f - vec3(0.0, 0.0, 0.0));
+    float n100 = dot(hash3(i + vec3(1.0, 0.0, 0.0)), f - vec3(1.0, 0.0, 0.0));
+    float n010 = dot(hash3(i + vec3(0.0, 1.0, 0.0)), f - vec3(0.0, 1.0, 0.0));
+    float n110 = dot(hash3(i + vec3(1.0, 1.0, 0.0)), f - vec3(1.0, 1.0, 0.0));
+    float n001 = dot(hash3(i + vec3(0.0, 0.0, 1.0)), f - vec3(0.0, 0.0, 1.0));
+    float n101 = dot(hash3(i + vec3(1.0, 0.0, 1.0)), f - vec3(1.0, 0.0, 1.0));
+    float n011 = dot(hash3(i + vec3(0.0, 1.0, 1.0)), f - vec3(0.0, 1.0, 1.0));
+    float n111 = dot(hash3(i + vec3(1.0, 1.0, 1.0)), f - vec3(1.0, 1.0, 1.0));
 
-    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+    float nx00 = mix(n000, n100, u.x);
+    float nx10 = mix(n010, n110, u.x);
+    float nx01 = mix(n001, n101, u.x);
+    float nx11 = mix(n011, n111, u.x);
+    float nxy0 = mix(nx00, nx10, u.y);
+    float nxy1 = mix(nx01, nx11, u.y);
+    return mix(nxy0, nxy1, u.z);
 }
 
-// Value noise
-float valueNoise(vec2 p)
-{
-    vec2 i = floor(p);
-    vec2 f = fract(p);
-    vec2 u = fade(f);
-
-    float a = hash(i + vec2(0.0, 0.0));
-    float b = hash(i + vec2(1.0, 0.0));
-    float c = hash(i + vec2(0.0, 1.0));
-    float d = hash(i + vec2(1.0, 1.0));
-
-    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
-}
-
-// Fractal Brownian Motion (fBm) — layered octaves of noise
-float fbm(vec2 p, int octaves, float lacunarity, float gain)
+float fbm(vec3 p, int octaves, float lacunarity, float gain)
 {
     float value = 0.0;
     float amplitude = 0.5;
     float frequency = 1.0;
     float maxValue = 0.0;
 
-    for (int i = 0; i < octaves; i++)
+    for (int i = 0; i < octaves; ++i)
     {
-        value     += amplitude * gradientNoise(p * frequency);
-        maxValue  += amplitude;
+        value += amplitude * gradientNoise(p * frequency);
+        maxValue += amplitude;
         amplitude *= gain;
         frequency *= lacunarity;
     }
-    return value / maxValue;
+
+    return value / max(maxValue, 1e-5);
 }
 
-// Domain-warped fBm for more realistic terrain
-float terrainHeight(vec2 uv)
+vec3 cubeFacePoint(vec2 uv)
 {
-    vec2 p = uv * noiseScale;
+    vec2 faceUV = uv * 2.0 - 1.0;
+    return faceNormal + faceUV.x * faceAxisU + faceUV.y * faceAxisV;
+}
 
-    // Domain warping: warp input coordinates with another fBm
-    vec2 q = vec2(
-        fbm(p + vec2(0.0,  0.0), 5, 2.0, 0.5),
-        fbm(p + vec2(5.2,  1.3), 5, 2.0, 0.5)
+float terrainHeight(vec3 sphereDir)
+{
+    vec3 p = sphereDir * noiseScale;
+
+    vec3 warp = vec3(
+        fbm(p + vec3(3.1, 0.0, 0.0), 4, 2.0, 0.5),
+        fbm(p + vec3(0.0, 4.7, 0.0), 4, 2.0, 0.5),
+        fbm(p + vec3(0.0, 0.0, 5.3), 4, 2.0, 0.5)
     );
 
-    vec2 r = vec2(
-        fbm(p + 4.0 * q + vec2(1.7, 9.2), 5, 2.0, 0.5),
-        fbm(p + 4.0 * q + vec2(8.3, 2.8), 5, 2.0, 0.5)
-    );
+    float continents = fbm(p + 1.8 * warp, 5, 2.0, 0.5);
+    float ridges = 1.0 - abs(gradientNoise(p * 1.7 + warp * 2.0));
+    ridges = pow(ridges, 3.0);
+    float detail = fbm(p * 4.0 + warp * 3.0, 4, 2.2, 0.45);
 
-    float h = fbm(p + 4.0 * r, 6, 2.0, 0.45);
-
-    // Add ridge noise for mountain peaks
-    float ridge = 1.0 - abs(gradientNoise(p * 0.5 + vec2(3.1, 4.7)));
-    ridge = pow(ridge, 2.5);
-
-    h = mix(h, ridge, 0.3);
-
-    // Flatten valleys slightly (power curve)
-    h = sign(h) * pow(abs(h), 0.8);
-
+    float h = continents * 0.9 + ridges * 0.55 + detail * 0.25;
+    h = sign(h) * pow(abs(h), 1.15);
     return h;
 }
 
-// Compute normal via finite differences
-vec3 computeNormal(vec2 uv, float eps)
+vec3 displacedPosition(vec3 sphereDir)
 {
-    float hL = terrainHeight(uv - vec2(eps, 0.0));
-    float hR = terrainHeight(uv + vec2(eps, 0.0));
-    float hD = terrainHeight(uv - vec2(0.0, eps));
-    float hU = terrainHeight(uv + vec2(0.0, eps));
-    return normalize(vec3(hL - hR, 2.0 * eps * noiseScale, hD - hU));
+    float h = terrainHeight(sphereDir);
+    return sphereDir * (planetRadius + h * heightScale);
+}
+
+vec3 computeNormal(vec3 sphereDir)
+{
+    vec3 tangent = normalize(
+        abs(sphereDir.y) < 0.99
+            ? cross(vec3(0.0, 1.0, 0.0), sphereDir)
+            : cross(vec3(1.0, 0.0, 0.0), sphereDir)
+    );
+    vec3 bitangent = normalize(cross(sphereDir, tangent));
+    float eps = 0.0035;
+
+    vec3 pL = displacedPosition(normalize(sphereDir - tangent * eps));
+    vec3 pR = displacedPosition(normalize(sphereDir + tangent * eps));
+    vec3 pD = displacedPosition(normalize(sphereDir - bitangent * eps));
+    vec3 pU = displacedPosition(normalize(sphereDir + bitangent * eps));
+
+    return normalize(cross(pR - pL, pU - pD));
 }
 
 void main()
 {
-    // Bilinear interpolation of UV coordinates across the quad patch
     vec2 uv0 = mix(tcTexCoord[0], tcTexCoord[1], gl_TessCoord.x);
     vec2 uv1 = mix(tcTexCoord[3], tcTexCoord[2], gl_TessCoord.x);
-    vec2 uv  = mix(uv0, uv1, gl_TessCoord.y);
+    vec2 uv = mix(uv0, uv1, gl_TessCoord.y);
 
     teTexCoord = uv;
 
-    // Sample height
-    float h = terrainHeight(uv);
+    vec3 cubePos = cubeFacePoint(uv);
+    vec3 sphereDir = normalize(cubePos);
+    float h = terrainHeight(sphereDir);
     teHeight = h;
 
-    // Build world-space position: map uv [0,1] -> xz [-1,1]
-    vec3 localPos = vec3(uv.x * 2.0 - 1.0, h * heightScale, uv.y * 2.0 - 1.0);
-
+    vec3 localPos = sphereDir * (planetRadius + h * heightScale);
     vec4 worldPos = model * vec4(localPos, 1.0);
     teWorldPos = worldPos.xyz;
 
-    // Normal (in local space, then rotate by model)
-    float eps = 1.0 / (noiseScale * 256.0);
-    vec3 localNormal = computeNormal(uv, eps);
+    vec3 localNormal = computeNormal(sphereDir);
     teNormal = normalize(mat3(transpose(inverse(model))) * localNormal);
 
     gl_Position = projection * view * worldPos;

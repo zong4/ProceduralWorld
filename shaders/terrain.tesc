@@ -8,16 +8,27 @@ out vec2 tcTexCoord[];
 
 uniform vec3 cameraPos;
 uniform mat4 model;
+uniform vec3 faceNormal;
+uniform vec3 faceAxisU;
+uniform vec3 faceAxisV;
+uniform float planetRadius;
 uniform float tessMin;       // Minimum tessellation level (far)
 uniform float tessMax;       // Maximum tessellation level (near)
 uniform float tessMinDist;   // Distance at which max tess starts
 uniform float tessMaxDist;   // Distance beyond which min tess is used
 
+vec3 cubeSpherePosition(vec2 uv)
+{
+    vec2 faceUV = uv * 2.0 - 1.0;
+    vec3 cubePos = faceNormal + faceUV.x * faceAxisU + faceUV.y * faceAxisV;
+    vec3 sphereDir = normalize(cubePos);
+    return sphereDir * planetRadius;
+}
+
 // Compute tessellation level based on distance from camera
 float computeTessLevel(vec2 uv)
 {
-    // World-space position estimate (flat, before height displacement)
-    vec4 worldPos = model * vec4(uv.x * 2.0 - 1.0, 0.0, uv.y * 2.0 - 1.0, 1.0);
+    vec4 worldPos = model * vec4(cubeSpherePosition(uv), 1.0);
     float dist = length(cameraPos - worldPos.xyz);
     
     // Linearly interpolate based on distance
@@ -28,6 +39,7 @@ float computeTessLevel(vec2 uv)
 void main()
 {
     // Pass-through control point data
+    gl_out[gl_InvocationID].gl_Position = gl_in[gl_InvocationID].gl_Position;
     tcTexCoord[gl_InvocationID] = vTexCoord[gl_InvocationID];
 
     // Only compute tessellation levels once (invocation 0)
