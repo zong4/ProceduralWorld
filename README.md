@@ -15,7 +15,7 @@ An OpenGL 4.1 procedural planet renderer built with GLFW, GLAD, GLM, and xmake.
 include/
   FlyCamera.h        Camera movement and view-matrix helper
   PlanetRenderer.h   Planet rendering API and LOD-facing data structures
-  ShaderProgram.h    Minimal shader compilation and uniform wrapper
+  ShaderProgram.h    Shader compilation helper with lightweight #include support
 
 src/
   main.cpp           GLFW application entry point and input wiring
@@ -25,7 +25,11 @@ shaders/
   terrain.vert       Node-local UV remapping for the current quadtree patch
   terrain.tesc       Distance-based tessellation control
   terrain.tese       Cube-sphere displacement and normal generation
-  terrain.frag       Terrain shading and debug visualization
+  terrain.frag       Fragment shader entry point
+  terrain_types.glsl Shared terrain fragment data structures
+  terrain_surface.glsl Surface color and slope classification
+  terrain_lighting.glsl Lighting, fog, and tone mapping helpers
+  terrain_debug.glsl Debug visualization helpers
   wire_fine.frag     Fine wireframe overlay color
   wire_coarse.frag   Coarse quadtree grid overlay
 ```

@@ -1,10 +1,12 @@
 #pragma once
 
+#include <filesystem>
 #include <fstream>
 #include <initializer_list>
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <vector>
 
 #include <glad/glad.h>
 #include <glm/glm.hpp>
@@ -67,17 +69,58 @@ public:
     }
 
 private:
-    static GLuint compileShader(const char* filePath, GLenum shaderType)
+    static std::string expandIncludes(const std::filesystem::path& filePath,
+                                      std::vector<std::filesystem::path>& includeStack)
     {
-        std::ifstream sourceFile(filePath);
-        if (!sourceFile.is_open()) {
-            std::cerr << "[ShaderProgram] Cannot open: " << filePath << "\n";
-            return 0;
+        const std::filesystem::path normalizedPath = std::filesystem::weakly_canonical(filePath);
+        for (const std::filesystem::path& activePath : includeStack) {
+            if (activePath == normalizedPath) {
+                std::cerr << "[ShaderProgram] Include cycle detected at: " << normalizedPath.string() << "\n";
+                return {};
+            }
         }
 
-        std::stringstream sourceStream;
-        sourceStream << sourceFile.rdbuf();
-        const std::string sourceText = sourceStream.str();
+        std::ifstream sourceFile(normalizedPath);
+        if (!sourceFile.is_open()) {
+            std::cerr << "[ShaderProgram] Cannot open: " << normalizedPath.string() << "\n";
+            return {};
+        }
+
+        includeStack.push_back(normalizedPath);
+
+        std::ostringstream expandedSource;
+        std::string line;
+        while (std::getline(sourceFile, line)) {
+            const std::size_t includePos = line.find("#include");
+            if (includePos == std::string::npos) {
+                expandedSource << line << '\n';
+                continue;
+            }
+
+            const std::size_t firstQuote = line.find('"', includePos);
+            const std::size_t lastQuote = line.find_last_of('"');
+            if (firstQuote == std::string::npos || lastQuote == std::string::npos || lastQuote <= firstQuote) {
+                std::cerr << "[ShaderProgram] Malformed include in: " << normalizedPath.string() << "\n";
+                includeStack.pop_back();
+                return {};
+            }
+
+            const std::string includeName = line.substr(firstQuote + 1, lastQuote - firstQuote - 1);
+            const std::filesystem::path includePath = normalizedPath.parent_path() / includeName;
+            expandedSource << expandIncludes(includePath, includeStack);
+        }
+
+        includeStack.pop_back();
+        return expandedSource.str();
+    }
+
+    static GLuint compileShader(const char* filePath, GLenum shaderType)
+    {
+        std::vector<std::filesystem::path> includeStack;
+        const std::string sourceText = expandIncludes(filePath, includeStack);
+        if (sourceText.empty()) {
+            return 0;
+        }
         const char* sourcePtr = sourceText.c_str();
 
         const GLuint shader = glCreateShader(shaderType);
