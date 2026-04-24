@@ -14,12 +14,19 @@ target("ProceduralWorld")
     add_files("src/*.cpp")
     add_includedirs("include")
     add_packages("glfw", "glad", "glm", "imgui")
-    
-    -- Copy shaders to build directory
+
     after_build(function(target)
-        os.cp("shaders", path.join(target:targetdir(), "shaders"))
+        local shader_dst = path.join(target:targetdir(), "shaders")
+
+        -- Delete the old shader directory if it exists
+        if os.isdir(shader_dst) then
+            os.rm(shader_dst)
+        end
+
+        -- Copy the shaders directory to the target output directory
+        os.cp("shaders", shader_dst)
     end)
-    
+
     if is_plat("windows") then
         add_links("opengl32")
     elseif is_plat("macosx") then
