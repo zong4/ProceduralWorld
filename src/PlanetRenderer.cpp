@@ -55,6 +55,17 @@ void PlanetRenderer::updateAnimationTime(float seconds)
     settings_.animationTime = seconds;
 }
 
+void PlanetRenderer::setPlanetRotation(float yawDegrees, float pitchDegrees)
+{
+    planetYawDegrees_ = yawDegrees;
+    planetPitchDegrees_ = pitchDegrees;
+
+    glm::mat4 rotationMatrix(1.0f);
+    rotationMatrix = glm::rotate(rotationMatrix, glm::radians(planetYawDegrees_), glm::vec3(0.0f, 1.0f, 0.0f));
+    rotationMatrix = glm::rotate(rotationMatrix, glm::radians(planetPitchDegrees_), glm::vec3(1.0f, 0.0f, 0.0f));
+    modelMatrix_ = rotationMatrix;
+}
+
 PlanetRenderSettings& PlanetRenderer::settings()
 {
     return settings_;
@@ -170,10 +181,20 @@ glm::vec3 PlanetRenderer::nodeCenterDirection(const FaceBasis& face, const Quadt
     return cubeSphereDirection(face, node.uvMin + glm::vec2(node.uvSize * 0.5f));
 }
 
+glm::vec3 PlanetRenderer::worldDirection(const glm::vec3& localDirection) const
+{
+    return glm::normalize(glm::mat3(modelMatrix_) * localDirection);
+}
+
+glm::vec3 PlanetRenderer::nodeCenterWorldPosition(const FaceBasis& face, const QuadtreeNode& node, float radius) const
+{
+    return worldDirection(nodeCenterDirection(face, node)) * radius;
+}
+
 float PlanetRenderer::nodeWorldRadius(const FaceBasis& face, const QuadtreeNode& node) const
 {
     const float sampleRadius = settings_.planetRadius + settings_.terrainHeightScale * 2.0f;
-    const glm::vec3 center = nodeCenterDirection(face, node) * sampleRadius;
+    const glm::vec3 center = nodeCenterWorldPosition(face, node, sampleRadius);
 
     const glm::vec2 uv00 = node.uvMin;
     const glm::vec2 uv10 = node.uvMin + glm::vec2(node.uvSize, 0.0f);
@@ -181,10 +202,10 @@ float PlanetRenderer::nodeWorldRadius(const FaceBasis& face, const QuadtreeNode&
     const glm::vec2 uv11 = node.uvMin + glm::vec2(node.uvSize, node.uvSize);
 
     float patchRadius = 0.0f;
-    patchRadius = glm::max(patchRadius, glm::length(cubeSphereDirection(face, uv00) * sampleRadius - center));
-    patchRadius = glm::max(patchRadius, glm::length(cubeSphereDirection(face, uv10) * sampleRadius - center));
-    patchRadius = glm::max(patchRadius, glm::length(cubeSphereDirection(face, uv01) * sampleRadius - center));
-    patchRadius = glm::max(patchRadius, glm::length(cubeSphereDirection(face, uv11) * sampleRadius - center));
+    patchRadius = glm::max(patchRadius, glm::length(worldDirection(cubeSphereDirection(face, uv00)) * sampleRadius - center));
+    patchRadius = glm::max(patchRadius, glm::length(worldDirection(cubeSphereDirection(face, uv10)) * sampleRadius - center));
+    patchRadius = glm::max(patchRadius, glm::length(worldDirection(cubeSphereDirection(face, uv01)) * sampleRadius - center));
+    patchRadius = glm::max(patchRadius, glm::length(worldDirection(cubeSphereDirection(face, uv11)) * sampleRadius - center));
     return glm::max(patchRadius, 0.001f);
 }
 
@@ -198,7 +219,7 @@ bool PlanetRenderer::isNodeHiddenByHorizon(const FlyCamera& camera,
     }
 
     const glm::vec3 cameraDirection = glm::normalize(camera.position);
-    const glm::vec3 nodeDirection = nodeCenterDirection(face, node);
+    const glm::vec3 nodeDirection = worldDirection(nodeCenterDirection(face, node));
     const float nodeRadius = nodeWorldRadius(face, node);
     const float horizonDot = settings_.planetRadius / cameraDistanceFromOrigin;
     const float safetyMargin = nodeRadius / settings_.planetRadius;
@@ -213,7 +234,7 @@ bool PlanetRenderer::shouldSplitNode(const FlyCamera& camera,
     if (node.depth < kMinimumLodDepth) return true;
     if (node.depth >= kMaximumLodDepth) return false;
 
-    const glm::vec3 patchCenter = nodeCenterDirection(face, node) * settings_.planetRadius;
+    const glm::vec3 patchCenter = nodeCenterWorldPosition(face, node, settings_.planetRadius);
     const float distanceToCamera = glm::length(camera.position - patchCenter);
     const float patchRadius = nodeWorldRadius(face, node);
     const float projectionScale = (0.5f * static_cast<float>(framebufferHeight))

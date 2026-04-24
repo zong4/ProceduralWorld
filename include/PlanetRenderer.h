@@ -44,6 +44,7 @@ public:
 
     void initialize();
     void updateAnimationTime(float seconds);
+    void setPlanetRotation(float yawDegrees, float pitchDegrees);
 
     PlanetRenderSettings& settings();
     const PlanetRenderSettings& settings() const;
@@ -98,11 +99,15 @@ private:
     ShaderProgram coarseGridProgram_;
     glm::mat4 modelMatrix_;
     glm::vec3 lightDirection_;
+    float planetYawDegrees_ = 0.0f;
+    float planetPitchDegrees_ = 0.0f;
     std::vector<RenderPatch> visiblePatches_;
     bool initialized_ = false;
 
     static glm::vec3 cubeSphereDirection(const FaceBasis& face, const glm::vec2& uv);
     static glm::vec3 nodeCenterDirection(const FaceBasis& face, const QuadtreeNode& node);
+    glm::vec3 worldDirection(const glm::vec3& localDirection) const;
+    glm::vec3 nodeCenterWorldPosition(const FaceBasis& face, const QuadtreeNode& node, float radius) const;
 
     float nodeWorldRadius(const FaceBasis& face, const QuadtreeNode& node) const;
     bool isNodeHiddenByHorizon(const FlyCamera& camera, const FaceBasis& face, const QuadtreeNode& node) const;

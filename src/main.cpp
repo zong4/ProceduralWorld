@@ -20,12 +20,17 @@ constexpr int kWindowHeight = 720;
 struct ApplicationState {
     FlyCamera camera{glm::vec3(0.0f, 9.0f, 42.0f)};
     PlanetRenderer renderer;
-    bool firstMouseSample = true;
-    float lastMouseX = kWindowWidth * 0.5f;
-    float lastMouseY = kWindowHeight * 0.5f;
+    bool firstRightMouseSample = true;
+    bool firstLeftMouseSample = true;
+    float lastRightMouseX = kWindowWidth * 0.5f;
+    float lastRightMouseY = kWindowHeight * 0.5f;
+    float lastLeftMouseX = kWindowWidth * 0.5f;
+    float lastLeftMouseY = kWindowHeight * 0.5f;
     float deltaSeconds = 0.0f;
     float previousFrameTime = 0.0f;
     bool showDebugPanel = true;
+    float planetYawDegrees = 0.0f;
+    float planetPitchDegrees = 0.0f;
 };
 
 ApplicationState* getState(GLFWwindow* window)
@@ -51,27 +56,46 @@ void onMouseMoved(GLFWwindow* window, double xPosition, double yPosition)
 
     ApplicationState* state = getState(window);
     if (ImGui::GetIO().WantCaptureMouse) {
-        state->firstMouseSample = true;
+        state->firstLeftMouseSample = true;
+        state->firstRightMouseSample = true;
         return;
     }
 
-    if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) != GLFW_PRESS) {
-        state->firstMouseSample = true;
-        return;
+    if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
+        if (state->firstLeftMouseSample) {
+            state->lastLeftMouseX = static_cast<float>(xPosition);
+            state->lastLeftMouseY = static_cast<float>(yPosition);
+            state->firstLeftMouseSample = false;
+        }
+
+        const float deltaX = static_cast<float>(xPosition) - state->lastLeftMouseX;
+        const float deltaY = static_cast<float>(yPosition) - state->lastLeftMouseY;
+        state->lastLeftMouseX = static_cast<float>(xPosition);
+        state->lastLeftMouseY = static_cast<float>(yPosition);
+
+        state->planetYawDegrees += deltaX * 0.20f;
+        state->planetPitchDegrees = glm::clamp(state->planetPitchDegrees + deltaY * 0.20f, -89.0f, 89.0f);
+        state->renderer.setPlanetRotation(state->planetYawDegrees, state->planetPitchDegrees);
+    } else {
+        state->firstLeftMouseSample = true;
     }
 
-    if (state->firstMouseSample) {
-        state->lastMouseX = static_cast<float>(xPosition);
-        state->lastMouseY = static_cast<float>(yPosition);
-        state->firstMouseSample = false;
+    if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS) {
+        if (state->firstRightMouseSample) {
+            state->lastRightMouseX = static_cast<float>(xPosition);
+            state->lastRightMouseY = static_cast<float>(yPosition);
+            state->firstRightMouseSample = false;
+        }
+
+        const float deltaX = static_cast<float>(xPosition) - state->lastRightMouseX;
+        const float deltaY = state->lastRightMouseY - static_cast<float>(yPosition);
+        state->lastRightMouseX = static_cast<float>(xPosition);
+        state->lastRightMouseY = static_cast<float>(yPosition);
+
+        state->camera.rotate(deltaX, deltaY);
+    } else {
+        state->firstRightMouseSample = true;
     }
-
-    const float deltaX = static_cast<float>(xPosition) - state->lastMouseX;
-    const float deltaY = state->lastMouseY - static_cast<float>(yPosition);
-    state->lastMouseX = static_cast<float>(xPosition);
-    state->lastMouseY = static_cast<float>(yPosition);
-
-    state->camera.rotate(deltaX, deltaY);
 }
 
 void onMouseButtonChanged(GLFWwindow* window, int button, int action, int modifiers)
@@ -136,6 +160,7 @@ void printControls(const PlanetRenderSettings& settings)
     std::cout << "\n=== Procedural Planet Controls ===\n";
     std::cout << "  W/A/S/D   : move camera\n";
     std::cout << "  Q/E       : move up/down\n";
+    std::cout << "  LMB+drag  : rotate planet\n";
     std::cout << "  RMB+drag  : look around\n";
     std::cout << "  Scroll    : zoom FOV\n";
     std::cout << "  1         : shaded mode\n";
@@ -269,6 +294,7 @@ int main()
     ImGui_ImplOpenGL3_Init("#version 410");
 
     appState.renderer.initialize();
+    appState.renderer.setPlanetRotation(appState.planetYawDegrees, appState.planetPitchDegrees);
 
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_MULTISAMPLE);
