@@ -29,6 +29,11 @@ void PlanetRenderer::initialize()
                                     "shaders/terrain.tese",
                                     "shaders/terrain.frag");
 
+    oceanProgram_ = ShaderProgram("shaders/ocean.vert",
+                                  "shaders/ocean.tesc",
+                                  "shaders/ocean.tese",
+                                  "shaders/ocean.frag");
+
     wireOverlayProgram_ = ShaderProgram("shaders/terrain.vert",
                                         "shaders/terrain.tesc",
                                         "shaders/terrain.tese",
@@ -72,6 +77,7 @@ void PlanetRenderer::render(const FlyCamera& camera,
 
     visiblePatches_ = buildVisiblePatches(camera, framebufferHeight);
     drawTerrainPass(camera, viewMatrix, projectionMatrix);
+    drawOceanPass(camera, viewMatrix, projectionMatrix);
     drawWireOverlayPass(camera, viewMatrix, projectionMatrix);
 }
 
@@ -91,6 +97,11 @@ const char* PlanetRenderer::currentModeLabel() const
 std::size_t PlanetRenderer::visiblePatchCount() const
 {
     return visiblePatches_.size();
+}
+
+float PlanetRenderer::seaLevelRadius() const
+{
+    return settings_.planetRadius + settings_.seaLevelOffset * settings_.terrainHeightScale;
 }
 
 void PlanetRenderer::TerrainMesh::buildGrid(int patchResolution)
@@ -280,13 +291,18 @@ void PlanetRenderer::applyCommonUniforms(const ShaderProgram& program,
     program.setFloat("tessMinDist", settings_.tessellationNearDistance);
     program.setFloat("tessMaxDist", settings_.tessellationFarDistance);
     program.setFloat("planetRadius", settings_.planetRadius);
+    program.setFloat("seaLevelRadius", seaLevelRadius());
     program.setFloat("heightScale", settings_.terrainHeightScale);
     program.setFloat("noiseScale", settings_.terrainNoiseScale);
     program.setFloat("gridCount", static_cast<float>(kNodeGridResolution));
     program.setFloat("coarseLineWidth", settings_.coarseGridLineWidth);
+    program.setFloat("oceanAlpha", settings_.oceanAlpha);
+    program.setFloat("oceanFresnelStrength", settings_.oceanFresnelStrength);
     program.setInt("renderMode", static_cast<int>(settings_.renderMode));
     program.setVec2("nodeUvMin", patch.uvMin);
     program.setVec2("nodeUvSize", patch.uvSize);
+    program.setVec3("oceanShallowColor", settings_.oceanShallowColor);
+    program.setVec3("oceanDeepColor", settings_.oceanDeepColor);
     program.setVec3("faceNormal", face.normal);
     program.setVec3("faceAxisU", face.axisU);
     program.setVec3("faceAxisV", face.axisV);
@@ -302,6 +318,27 @@ void PlanetRenderer::drawTerrainPass(const FlyCamera& camera,
         applyCommonUniforms(terrainProgram_, camera, viewMatrix, projectionMatrix, patch);
         terrainMesh_.draw();
     }
+}
+
+void PlanetRenderer::drawOceanPass(const FlyCamera& camera,
+                                   const glm::mat4& viewMatrix,
+                                   const glm::mat4& projectionMatrix)
+{
+    if (!settings_.renderOcean) {
+        return;
+    }
+
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glDepthMask(GL_FALSE);
+    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+
+    for (const RenderPatch& patch : visiblePatches_) {
+        applyCommonUniforms(oceanProgram_, camera, viewMatrix, projectionMatrix, patch);
+        terrainMesh_.draw();
+    }
+
+    glDepthMask(GL_TRUE);
 }
 
 void PlanetRenderer::drawWireOverlayPass(const FlyCamera& camera,

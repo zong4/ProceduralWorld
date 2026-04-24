@@ -18,6 +18,7 @@ enum class PlanetRenderMode : int {
 
 struct PlanetRenderSettings {
     float planetRadius = 20.0f;
+    float seaLevelOffset = 0.0f;
     float tessellationMax = 6.0f;
     float tessellationMin = 1.0f;
     float tessellationNearDistance = 8.0f;
@@ -25,8 +26,13 @@ struct PlanetRenderSettings {
     float terrainHeightScale = 1.2f;
     float terrainNoiseScale = 2.8f;
     float coarseGridLineWidth = 1.6f;
+    float oceanAlpha = 0.78f;
+    float oceanFresnelStrength = 0.65f;
+    glm::vec3 oceanShallowColor = glm::vec3(0.10f, 0.42f, 0.66f);
+    glm::vec3 oceanDeepColor = glm::vec3(0.02f, 0.10f, 0.24f);
     PlanetRenderMode renderMode = PlanetRenderMode::Shaded;
     bool showWireOverlay = false;
+    bool renderOcean = true;
     bool animateTerrain = false;
     float animationTime = 0.0f;
 };
@@ -87,6 +93,7 @@ private:
     PlanetRenderSettings settings_;
     TerrainMesh terrainMesh_;
     ShaderProgram terrainProgram_;
+    ShaderProgram oceanProgram_;
     ShaderProgram wireOverlayProgram_;
     ShaderProgram coarseGridProgram_;
     glm::mat4 modelMatrix_;
@@ -115,6 +122,9 @@ private:
                              const glm::mat4& projectionMatrix,
                              const RenderPatch& patch) const;
 
+    float seaLevelRadius() const;
+
     void drawTerrainPass(const FlyCamera& camera, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix);
+    void drawOceanPass(const FlyCamera& camera, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix);
     void drawWireOverlayPass(const FlyCamera& camera, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix);
 };

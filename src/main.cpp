@@ -179,6 +179,13 @@ void drawDebugPanel(ApplicationState& state)
     }
 
     ImGui::Separator();
+    ImGui::Text("Ocean Shell");
+    ImGui::Checkbox("Render Ocean", &settings.renderOcean);
+    ImGui::SliderFloat("Sea Level Offset", &settings.seaLevelOffset, -1.5f, 1.5f, "%.2f");
+    ImGui::SliderFloat("Ocean Alpha", &settings.oceanAlpha, 0.05f, 1.0f, "%.2f");
+    ImGui::SliderFloat("Ocean Fresnel", &settings.oceanFresnelStrength, 0.0f, 2.0f, "%.2f");
+
+    ImGui::Separator();
     ImGui::Text("LOD and Tessellation");
     ImGui::SliderFloat("Tessellation Max", &settings.tessellationMax, 1.0f, 32.0f, "%.1f");
     ImGui::SliderFloat("Tessellation Min", &settings.tessellationMin, 1.0f, settings.tessellationMax, "%.1f");
