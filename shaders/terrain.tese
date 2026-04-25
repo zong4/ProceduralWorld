@@ -11,14 +11,23 @@ out float teHeight;
 
 uniform mat4 model;
 uniform mat4 view;
+uniform mat4 cameraRelativeView;
 uniform mat4 projection;
+uniform vec3 cameraPos;
 uniform vec3 faceNormal;
 uniform vec3 faceAxisU;
 uniform vec3 faceAxisV;
 uniform float time;
+uniform float cameraAltitude;
 uniform float planetRadius;
 uniform float heightScale;
 uniform float noiseScale;
+uniform float regionalDetailStrength;
+uniform float microDetailStrength;
+uniform float regionalDetailStartAltitude;
+uniform float regionalDetailEndAltitude;
+uniform float microDetailStartAltitude;
+uniform float microDetailEndAltitude;
 
 vec3 hash3(vec3 p)
 {
@@ -75,6 +84,11 @@ float fbm(vec3 p, int octaves, float lacunarity, float gain)
     return value / max(maxValue, 1e-5);
 }
 
+float altitudeBandWeight(float startAltitude, float endAltitude)
+{
+    return 1.0 - smoothstep(startAltitude, endAltitude, cameraAltitude);
+}
+
 vec3 cubeFacePoint(vec2 uv)
 {
     vec2 faceUV = uv * 2.0 - 1.0;
@@ -94,9 +108,17 @@ float terrainHeight(vec3 sphereDir)
     float continents = fbm(p + 1.8 * warp, 5, 2.0, 0.5);
     float ridges = 1.0 - abs(gradientNoise(p * 1.7 + warp * 2.0));
     ridges = pow(ridges, 3.0);
-    float detail = fbm(p * 4.0 + warp * 3.0, 4, 2.2, 0.45);
+    float regional = fbm(p * 2.8 + warp * 2.5, 4, 2.1, 0.48);
+    float micro = fbm(p * 8.0 + warp * 4.0, 3, 2.4, 0.40);
 
-    float h = continents * 0.9 + ridges * 0.55 + detail * 0.25;
+    float regionalWeight = regionalDetailStrength
+                         * altitudeBandWeight(regionalDetailStartAltitude, regionalDetailEndAltitude);
+    float microWeight = microDetailStrength
+                      * altitudeBandWeight(microDetailStartAltitude, microDetailEndAltitude);
+
+    float h = continents * 0.9;
+    h += regionalWeight * (ridges * 0.55 + regional * 0.22);
+    h += microWeight * (micro * 0.18 + ridges * 0.12);
     h = sign(h) * pow(abs(h), 1.15);
     return h;
 }
@@ -145,5 +167,6 @@ void main()
     vec3 localNormal = computeNormal(sphereDir);
     teNormal = normalize(mat3(transpose(inverse(model))) * localNormal);
 
-    gl_Position = projection * view * worldPos;
+    vec4 relativeWorldPos = vec4(worldPos.xyz - cameraPos, 1.0);
+    gl_Position = projection * cameraRelativeView * relativeWorldPos;
 }

@@ -299,14 +299,18 @@ void PlanetRenderer::applyCommonUniforms(const ShaderProgram& program,
                                          const RenderPatch& patch) const
 {
     const FaceBasis& face = kPlanetFaces[patch.faceIndex];
+    const glm::mat4 cameraRelativeView = glm::mat4(glm::mat3(viewMatrix));
+    const float cameraAltitude = glm::max(glm::length(camera.position) - settings_.planetRadius, 0.0f);
 
     program.use();
     program.setMat4("model", modelMatrix_);
     program.setMat4("view", viewMatrix);
+    program.setMat4("cameraRelativeView", cameraRelativeView);
     program.setMat4("projection", projectionMatrix);
     program.setVec3("cameraPos", camera.position);
     program.setVec3("lightDir", lightDirection_);
     program.setFloat("time", settings_.animationTime);
+    program.setFloat("cameraAltitude", cameraAltitude);
     program.setFloat("tessMin", settings_.tessellationMin);
     program.setFloat("tessMax", settings_.tessellationMax);
     program.setFloat("tessMinDist", settings_.tessellationNearDistance);
@@ -315,6 +319,12 @@ void PlanetRenderer::applyCommonUniforms(const ShaderProgram& program,
     program.setFloat("seaLevelRadius", seaLevelRadius());
     program.setFloat("heightScale", settings_.terrainHeightScale);
     program.setFloat("noiseScale", settings_.terrainNoiseScale);
+    program.setFloat("regionalDetailStrength", settings_.regionalDetailStrength);
+    program.setFloat("microDetailStrength", settings_.microDetailStrength);
+    program.setFloat("regionalDetailStartAltitude", settings_.regionalDetailStartAltitude);
+    program.setFloat("regionalDetailEndAltitude", settings_.regionalDetailEndAltitude);
+    program.setFloat("microDetailStartAltitude", settings_.microDetailStartAltitude);
+    program.setFloat("microDetailEndAltitude", settings_.microDetailEndAltitude);
     program.setFloat("gridCount", static_cast<float>(kNodeGridResolution));
     program.setFloat("coarseLineWidth", settings_.coarseGridLineWidth);
     program.setFloat("oceanAlpha", settings_.oceanAlpha);

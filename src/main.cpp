@@ -198,10 +198,18 @@ void drawDebugPanel(ApplicationState& state)
     ImGui::SliderFloat("Planet Radius", &settings.planetRadius, 5.0f, 80.0f, "%.1f");
     ImGui::SliderFloat("Height Scale", &settings.terrainHeightScale, 0.0f, 8.0f, "%.2f");
     ImGui::SliderFloat("Noise Scale", &settings.terrainNoiseScale, 0.2f, 10.0f, "%.2f");
+    ImGui::SliderFloat("Regional Detail", &settings.regionalDetailStrength, 0.0f, 1.2f, "%.2f");
+    ImGui::SliderFloat("Micro Detail", &settings.microDetailStrength, 0.0f, 0.8f, "%.2f");
     ImGui::Checkbox("Animate Terrain", &settings.animateTerrain);
     if (!settings.animateTerrain) {
         ImGui::SliderFloat("Animation Time", &settings.animationTime, 0.0f, 60.0f, "%.2f");
     }
+
+    ImGui::Text("Distance Detail Bands");
+    ImGui::SliderFloat("Regional Start Alt", &settings.regionalDetailStartAltitude, 0.0f, settings.regionalDetailEndAltitude, "%.1f");
+    ImGui::SliderFloat("Regional End Alt", &settings.regionalDetailEndAltitude, settings.regionalDetailStartAltitude + 1.0f, 240.0f, "%.1f");
+    ImGui::SliderFloat("Micro Start Alt", &settings.microDetailStartAltitude, 0.0f, settings.microDetailEndAltitude, "%.1f");
+    ImGui::SliderFloat("Micro End Alt", &settings.microDetailEndAltitude, settings.microDetailStartAltitude + 1.0f, 120.0f, "%.1f");
 
     ImGui::Separator();
     ImGui::Text("Ocean Shell");
@@ -236,6 +244,7 @@ void drawDebugPanel(ApplicationState& state)
     ImGui::SliderFloat("Move Speed", &state.camera.movementSpeed, 1.0f, 40.0f, "%.1f");
     ImGui::SliderFloat("Mouse Sensitivity", &state.camera.mouseSensitivity, 0.02f, 0.5f, "%.2f");
     ImGui::Text("Position: %.1f %.1f %.1f", state.camera.position.x, state.camera.position.y, state.camera.position.z);
+    ImGui::Text("Altitude: %.1f", glm::max(glm::length(state.camera.position) - settings.planetRadius, 0.0f));
     ImGui::Text("FOV: %.1f", state.camera.fieldOfView);
 
     ImGui::End();

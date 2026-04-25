@@ -25,6 +25,12 @@ struct PlanetRenderSettings {
     float tessellationFarDistance = 90.0f;
     float terrainHeightScale = 1.2f;
     float terrainNoiseScale = 2.8f;
+    float regionalDetailStrength = 0.55f;
+    float microDetailStrength = 0.22f;
+    float regionalDetailStartAltitude = 18.0f;
+    float regionalDetailEndAltitude = 120.0f;
+    float microDetailStartAltitude = 6.0f;
+    float microDetailEndAltitude = 42.0f;
     float coarseGridLineWidth = 1.6f;
     float oceanAlpha = 0.78f;
     float oceanFresnelStrength = 0.65f;

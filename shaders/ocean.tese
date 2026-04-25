@@ -10,7 +10,9 @@ out vec2 teTexCoord;
 
 uniform mat4 model;
 uniform mat4 view;
+uniform mat4 cameraRelativeView;
 uniform mat4 projection;
+uniform vec3 cameraPos;
 uniform vec3 faceNormal;
 uniform vec3 faceAxisU;
 uniform vec3 faceAxisV;
@@ -36,5 +38,6 @@ void main()
 
     teWorldPos = worldPos.xyz;
     teNormal = normalize(mat3(transpose(inverse(model))) * sphereDir);
-    gl_Position = projection * view * worldPos;
+    vec4 relativeWorldPos = vec4(worldPos.xyz - cameraPos, 1.0);
+    gl_Position = projection * cameraRelativeView * relativeWorldPos;
 }
