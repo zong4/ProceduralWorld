@@ -86,13 +86,49 @@ xmake run -y
 
 ### Planned
 
-| Module | Work Planned | Target Points |
-|--------|--------------|---------------|
-| **Texture splatting** (1p) | Replace procedural biome colors with sampled textures; weight-blend by height + slope (splat map); add per-biome normal maps | 0.5p remaining |
-| **Hydraulic erosion** (1–2p) | GPU compute shader particle simulation; iterative sediment carry/deposit modifying the heightmap; produces natural valleys and gullies | 1–2p |
-| **Water reflection & refraction** (1–2p) | Planar or screen-space reflection; refraction with depth-based color blend; Fresnel coefficient for reflection intensity | 1p remaining |
-| **Procedural sky & sun** (2p) | Preetham or Nishita atmospheric scattering model; time-of-day sun direction | 2p |
-| **Scene lighting from sky** (1–3p) | Sun direction drives scene directional light; sky color drives ambient; unified physically-based illumination | 1–3p |
-| **Procedural vegetation** (1–∞p) | Instanced billboard grass as baseline; L-system or SDF trees as stretch goal; placement filtered by slope and height | 1p+ |
+#### Texture splatting — up to 1p remaining
 
-**Planned subtotal: 6.5–9.5p**
+| What to build | Expected score |
+|---------------|----------------|
+| + Sample real textures per biome, blend by splat map | 1p |
+
+#### Hydraulic erosion — 1–2p
+
+| What to build | Expected score |
+|---------------|----------------|
+| Basic hydraulic erosion: particle simulation on CPU or simple GPU pass, visibly smoother valleys and ridges | 1p |
+| + Full GPU compute shader, iterative sediment carry/deposit, realistic gullies and alluvial fans | 2p |
+
+#### Water reflection & refraction — 1p remaining
+
+| What to build | Expected score |
+|---------------|----------------|
+| + Planar reflection + refraction with depth-based color blend + Fresnel | 2p |
+
+#### Procedural sky & sun — 2–5p total
+
+| What to build | Expected score |
+|---------------|----------------|
+| Basic sky gradient + hardcoded sun disc | ~1p |
+| + Preetham or Nishita atmospheric scattering, physically correct sky color | 2p |
+| + Sun direction drives scene directional light color and intensity | 3–4p |
+| + Full day/night cycle, sky-ambient coupling, god rays or horizon glow | 5p |
+
+#### Procedural vegetation — 1p+
+
+| What to build | Expected score |
+|---------------|----------------|
+| Instanced billboard grass, placement filtered by slope and height | 1p |
+| + 3D tree meshes (L-system or SDF), wind animation, density variation | 2–3p+ |
+
+<!-- ### Score Summary
+
+| Scenario | Points |
+|----------|--------|
+| Current | 5.5p |
+| + Texture splatting (finish) | +0.5p → **6p** |
+| + Erosion (basic) | +1p → **7p** |
+| + Water (reflection + refraction) | +1p → **8p** |
+| + Sky (Nishita + lighting) | +3p → **11p** |
+| + Vegetation (billboards) | +1p → **12p** |
+| + Vegetation (trees) + sky stretch | +2–3p → **14–15p** | -->
