@@ -126,18 +126,6 @@ void onKeyPressed(GLFWwindow* window, int key, int, int action, int)
     }
     if (key == GLFW_KEY_3) settings.renderMode = PlanetRenderMode::HeightMap;
     if (key == GLFW_KEY_4) settings.renderMode = PlanetRenderMode::Normals;
-    if (key == GLFW_KEY_T) settings.animateTerrain = !settings.animateTerrain;
-
-    if (key == GLFW_KEY_EQUAL || key == GLFW_KEY_KP_ADD) {
-        settings.tessellationMax = glm::min(settings.tessellationMax + 2.0f, 64.0f);
-        std::cout << "Tessellation max: " << settings.tessellationMax << "\n";
-    }
-
-    if (key == GLFW_KEY_MINUS || key == GLFW_KEY_KP_SUBTRACT) {
-        settings.tessellationMax = glm::max(settings.tessellationMax - 2.0f, 1.0f);
-        std::cout << "Tessellation max: " << settings.tessellationMax << "\n";
-    }
-
     if (key == GLFW_KEY_TAB) {
         state->showDebugPanel = !state->showDebugPanel;
     }
@@ -155,7 +143,7 @@ void handleKeyboardMovement(GLFWwindow* window, ApplicationState& state)
     if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) state.camera.move(FlyCamera::MovementDirection::Up, state.deltaSeconds);
 }
 
-void printControls(const PlanetRenderSettings& settings)
+void printControls()
 {
     std::cout << "\n=== Procedural Planet Controls ===\n";
     std::cout << "  W/A/S/D   : move camera\n";
@@ -167,8 +155,6 @@ void printControls(const PlanetRenderSettings& settings)
     std::cout << "  2         : toggle wireframe overlay\n";
     std::cout << "  3         : height map mode\n";
     std::cout << "  4         : normal map mode\n";
-    std::cout << "  +/-       : tessellation max level (current: " << settings.tessellationMax << ")\n";
-    std::cout << "  T         : toggle animated terrain\n";
     std::cout << "  Tab       : toggle ImGui panel\n";
     std::cout << "  ESC       : quit\n\n";
 }
@@ -179,11 +165,9 @@ void drawDebugPanel(ApplicationState& state)
 
     PlanetRenderSettings& settings = state.renderer.settings();
     const float fps = 1.0f / glm::max(state.deltaSeconds, 0.0001f);
-    int renderModeIndex = static_cast<int>(settings.renderMode);
-    const char* renderModeNames[] = {"Shaded", "Unused", "Height Map", "Normals"};
 
     ImGui::SetNextWindowPos(ImVec2(16.0f, 16.0f), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(360.0f, 440.0f), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(340.0f, 360.0f), ImGuiCond_FirstUseEver);
 
     if (!ImGui::Begin("Planet Controls", &state.showDebugPanel)) {
         ImGui::End();
@@ -192,52 +176,49 @@ void drawDebugPanel(ApplicationState& state)
 
     ImGui::Text("FPS: %.1f", fps);
     ImGui::Text("Visible patches: %zu", state.renderer.visiblePatchCount());
+    const PlanetRenderer::CullingStats& cullingStats = state.renderer.cullingStats();
+    ImGui::Text(
+        "LOD nodes: %zu | Split: %zu",
+        cullingStats.visitedNodes,
+        cullingStats.splitNodes
+    );
+    ImGui::Text(
+        "Culled: %zu frustum | %zu horizon",
+        cullingStats.frustumCulledNodes,
+        cullingStats.horizonCulledNodes
+    );
     ImGui::Separator();
 
-    ImGui::Text("Planet Shape");
+    ImGui::Text("Shape");
     ImGui::SliderFloat("Planet Radius", &settings.planetRadius, 5.0f, 80.0f, "%.1f");
     ImGui::SliderFloat("Height Scale", &settings.terrainHeightScale, 0.0f, 8.0f, "%.2f");
     ImGui::SliderFloat("Noise Scale", &settings.terrainNoiseScale, 0.2f, 10.0f, "%.2f");
     ImGui::SliderFloat("Regional Detail", &settings.regionalDetailStrength, 0.0f, 1.2f, "%.2f");
     ImGui::SliderFloat("Micro Detail", &settings.microDetailStrength, 0.0f, 0.8f, "%.2f");
-    ImGui::Checkbox("Animate Terrain", &settings.animateTerrain);
-    if (!settings.animateTerrain) {
-        ImGui::SliderFloat("Animation Time", &settings.animationTime, 0.0f, 60.0f, "%.2f");
-    }
-
-    ImGui::Text("Distance Detail Bands");
-    ImGui::SliderFloat("Regional Start Alt", &settings.regionalDetailStartAltitude, 0.0f, settings.regionalDetailEndAltitude, "%.1f");
-    ImGui::SliderFloat("Regional End Alt", &settings.regionalDetailEndAltitude, settings.regionalDetailStartAltitude + 1.0f, 240.0f, "%.1f");
-    ImGui::SliderFloat("Micro Start Alt", &settings.microDetailStartAltitude, 0.0f, settings.microDetailEndAltitude, "%.1f");
-    ImGui::SliderFloat("Micro End Alt", &settings.microDetailEndAltitude, settings.microDetailStartAltitude + 1.0f, 120.0f, "%.1f");
-
     ImGui::Separator();
-    ImGui::Text("Ocean Shell");
+    ImGui::Text("Ocean");
     ImGui::Checkbox("Render Ocean", &settings.renderOcean);
     ImGui::SliderFloat("Sea Level Offset", &settings.seaLevelOffset, -1.5f, 1.5f, "%.2f");
     ImGui::SliderFloat("Ocean Alpha", &settings.oceanAlpha, 0.05f, 1.0f, "%.2f");
-    ImGui::SliderFloat("Ocean Fresnel", &settings.oceanFresnelStrength, 0.0f, 2.0f, "%.2f");
 
     ImGui::Separator();
-    ImGui::Text("LOD and Tessellation");
+    ImGui::Text("Detail");
     ImGui::SliderFloat("Tessellation Max", &settings.tessellationMax, 1.0f, 32.0f, "%.1f");
     ImGui::SliderFloat("Tessellation Min", &settings.tessellationMin, 1.0f, settings.tessellationMax, "%.1f");
     ImGui::SliderFloat("Tess Near", &settings.tessellationNearDistance, 1.0f, 60.0f, "%.1f");
     ImGui::SliderFloat("Tess Far", &settings.tessellationFarDistance, settings.tessellationNearDistance + 1.0f, 200.0f, "%.1f");
-    ImGui::SliderFloat("Coarse Grid Width", &settings.coarseGridLineWidth, 0.5f, 5.0f, "%.2f");
     ImGui::Checkbox("Wire Overlay", &settings.showWireOverlay);
 
     ImGui::Separator();
     ImGui::Text("Render Mode");
-    if (ImGui::Combo("Mode", &renderModeIndex, renderModeNames, IM_ARRAYSIZE(renderModeNames))) {
-        if (renderModeIndex == 0) settings.renderMode = PlanetRenderMode::Shaded;
-        if (renderModeIndex == 2) settings.renderMode = PlanetRenderMode::HeightMap;
-        if (renderModeIndex == 3) settings.renderMode = PlanetRenderMode::Normals;
-    }
-    if (renderModeIndex == 1) {
-        renderModeIndex = 0;
-        settings.renderMode = PlanetRenderMode::Shaded;
-    }
+    int renderModeIndex = 0;
+    if (settings.renderMode == PlanetRenderMode::HeightMap) renderModeIndex = 1;
+    if (settings.renderMode == PlanetRenderMode::Normals) renderModeIndex = 2;
+    if (ImGui::RadioButton("Shaded", renderModeIndex == 0)) settings.renderMode = PlanetRenderMode::Shaded;
+    ImGui::SameLine();
+    if (ImGui::RadioButton("Height", renderModeIndex == 1)) settings.renderMode = PlanetRenderMode::HeightMap;
+    ImGui::SameLine();
+    if (ImGui::RadioButton("Normals", renderModeIndex == 2)) settings.renderMode = PlanetRenderMode::Normals;
 
     ImGui::Separator();
     ImGui::Text("Camera");
@@ -310,7 +291,7 @@ int main()
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    printControls(appState.renderer.settings());
+    printControls();
 
     while (!glfwWindowShouldClose(window))
     {
@@ -318,15 +299,13 @@ int main()
         appState.deltaSeconds = currentTime - appState.previousFrameTime;
         appState.previousFrameTime = currentTime;
 
-        if (appState.renderer.settings().animateTerrain) {
-            appState.renderer.updateAnimationTime(currentTime);
-        }
-
         handleKeyboardMovement(window, appState);
 
         int framebufferWidth = 0;
         int framebufferHeight = 0;
         glfwGetFramebufferSize(window, &framebufferWidth, &framebufferHeight);
+        framebufferWidth = glm::max(framebufferWidth, 1);
+        framebufferHeight = glm::max(framebufferHeight, 1);
 
         const glm::mat4 projectionMatrix = glm::perspective(
             glm::radians(appState.camera.fieldOfView),

@@ -59,8 +59,6 @@ xmake run -y
 - `2`: toggle wireframe overlay
 - `3`: height-map mode
 - `4`: normal mode
-- `+` / `-`: increase or decrease tessellation
-- `T`: toggle animated terrain time
 - `Esc`: quit
 
 ## Notes

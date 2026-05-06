@@ -39,17 +39,22 @@ struct PlanetRenderSettings {
     PlanetRenderMode renderMode = PlanetRenderMode::Shaded;
     bool showWireOverlay = false;
     bool renderOcean = true;
-    bool animateTerrain = false;
-    float animationTime = 0.0f;
 };
 
 class PlanetRenderer
 {
 public:
+    struct CullingStats {
+        std::size_t visitedNodes = 0;
+        std::size_t frustumCulledNodes = 0;
+        std::size_t horizonCulledNodes = 0;
+        std::size_t splitNodes = 0;
+        std::size_t emittedPatches = 0;
+    };
+
     PlanetRenderer();
 
     void initialize();
-    void updateAnimationTime(float seconds);
     void setPlanetRotation(float yawDegrees, float pitchDegrees);
 
     PlanetRenderSettings& settings();
@@ -59,6 +64,7 @@ public:
 
     const char* currentModeLabel() const;
     std::size_t visiblePatchCount() const;
+    const CullingStats& cullingStats() const;
 
 private:
     struct FaceBasis {
@@ -78,6 +84,10 @@ private:
         glm::vec2 uvMin{0.0f, 0.0f};
         glm::vec2 uvSize{1.0f, 1.0f};
         int depth = 0;
+    };
+
+    struct Frustum {
+        std::array<glm::vec4, 6> planes{};
     };
 
     struct TerrainMesh {
@@ -108,24 +118,32 @@ private:
     float planetYawDegrees_ = 0.0f;
     float planetPitchDegrees_ = 0.0f;
     std::vector<RenderPatch> visiblePatches_;
+    CullingStats lastCullingStats_;
     bool initialized_ = false;
 
     static glm::vec3 cubeSphereDirection(const FaceBasis& face, const glm::vec2& uv);
     static glm::vec3 nodeCenterDirection(const FaceBasis& face, const QuadtreeNode& node);
+    static Frustum extractFrustum(const glm::mat4& viewProjectionMatrix);
+    static glm::vec4 normalizePlane(const glm::vec4& plane);
     glm::vec3 worldDirection(const glm::vec3& localDirection) const;
     glm::vec3 nodeCenterWorldPosition(const FaceBasis& face, const QuadtreeNode& node, float radius) const;
 
     float nodeWorldRadius(const FaceBasis& face, const QuadtreeNode& node) const;
+    bool isNodeOutsideFrustum(const Frustum& frustum, const FaceBasis& face, const QuadtreeNode& node) const;
     bool isNodeHiddenByHorizon(const FlyCamera& camera, const FaceBasis& face, const QuadtreeNode& node) const;
     bool shouldSplitNode(const FlyCamera& camera, const FaceBasis& face, const QuadtreeNode& node, int framebufferHeight) const;
 
     void collectVisiblePatches(const FlyCamera& camera,
+                               const Frustum& frustum,
                                int faceIndex,
                                const QuadtreeNode& node,
                                int framebufferHeight,
+                               CullingStats& stats,
                                std::vector<RenderPatch>& outPatches) const;
 
-    std::vector<RenderPatch> buildVisiblePatches(const FlyCamera& camera, int framebufferHeight) const;
+    std::vector<RenderPatch> buildVisiblePatches(const FlyCamera& camera,
+                                                 const Frustum& frustum,
+                                                 int framebufferHeight);
 
     void applyCommonUniforms(const ShaderProgram& program,
                              const FlyCamera& camera,

@@ -17,7 +17,6 @@ uniform vec3 cameraPos;
 uniform vec3 faceNormal;
 uniform vec3 faceAxisU;
 uniform vec3 faceAxisV;
-uniform float time;
 uniform float cameraAltitude;
 uniform float planetRadius;
 uniform float heightScale;

@@ -9,7 +9,6 @@ out vec4 FragColor;
 
 uniform vec3 lightDir;
 uniform vec3 cameraPos;
-uniform float time;
 uniform int renderMode;    // 0=shaded, 2=height map, 3=normals
 
 #include "terrain_types.glsl"

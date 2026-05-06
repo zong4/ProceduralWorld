@@ -50,11 +50,6 @@ void PlanetRenderer::initialize()
     initialized_ = true;
 }
 
-void PlanetRenderer::updateAnimationTime(float seconds)
-{
-    settings_.animationTime = seconds;
-}
-
 void PlanetRenderer::setPlanetRotation(float yawDegrees, float pitchDegrees)
 {
     planetYawDegrees_ = yawDegrees;
@@ -86,7 +81,8 @@ void PlanetRenderer::render(const FlyCamera& camera,
     glGetIntegerv(GL_VIEWPORT, viewport);
     const int framebufferHeight = std::max(viewport[3], 1);
 
-    visiblePatches_ = buildVisiblePatches(camera, framebufferHeight);
+    const Frustum frustum = extractFrustum(projectionMatrix * viewMatrix);
+    visiblePatches_ = buildVisiblePatches(camera, frustum, framebufferHeight);
     drawTerrainPass(camera, viewMatrix, projectionMatrix);
     drawOceanPass(camera, viewMatrix, projectionMatrix);
     drawWireOverlayPass(camera, viewMatrix, projectionMatrix);
@@ -108,6 +104,11 @@ const char* PlanetRenderer::currentModeLabel() const
 std::size_t PlanetRenderer::visiblePatchCount() const
 {
     return visiblePatches_.size();
+}
+
+const PlanetRenderer::CullingStats& PlanetRenderer::cullingStats() const
+{
+    return lastCullingStats_;
 }
 
 float PlanetRenderer::seaLevelRadius() const
@@ -181,6 +182,32 @@ glm::vec3 PlanetRenderer::nodeCenterDirection(const FaceBasis& face, const Quadt
     return cubeSphereDirection(face, node.uvMin + glm::vec2(node.uvSize * 0.5f));
 }
 
+PlanetRenderer::Frustum PlanetRenderer::extractFrustum(const glm::mat4& viewProjectionMatrix)
+{
+    const glm::vec4 row0(viewProjectionMatrix[0][0], viewProjectionMatrix[1][0], viewProjectionMatrix[2][0], viewProjectionMatrix[3][0]);
+    const glm::vec4 row1(viewProjectionMatrix[0][1], viewProjectionMatrix[1][1], viewProjectionMatrix[2][1], viewProjectionMatrix[3][1]);
+    const glm::vec4 row2(viewProjectionMatrix[0][2], viewProjectionMatrix[1][2], viewProjectionMatrix[2][2], viewProjectionMatrix[3][2]);
+    const glm::vec4 row3(viewProjectionMatrix[0][3], viewProjectionMatrix[1][3], viewProjectionMatrix[2][3], viewProjectionMatrix[3][3]);
+
+    Frustum frustum;
+    frustum.planes[0] = normalizePlane(row3 + row0);
+    frustum.planes[1] = normalizePlane(row3 - row0);
+    frustum.planes[2] = normalizePlane(row3 + row1);
+    frustum.planes[3] = normalizePlane(row3 - row1);
+    frustum.planes[4] = normalizePlane(row3 + row2);
+    frustum.planes[5] = normalizePlane(row3 - row2);
+    return frustum;
+}
+
+glm::vec4 PlanetRenderer::normalizePlane(const glm::vec4& plane)
+{
+    const float normalLength = glm::length(glm::vec3(plane));
+    if (normalLength <= 0.00001f) {
+        return plane;
+    }
+    return plane / normalLength;
+}
+
 glm::vec3 PlanetRenderer::worldDirection(const glm::vec3& localDirection) const
 {
     return glm::normalize(glm::mat3(modelMatrix_) * localDirection);
@@ -207,6 +234,26 @@ float PlanetRenderer::nodeWorldRadius(const FaceBasis& face, const QuadtreeNode&
     patchRadius = glm::max(patchRadius, glm::length(worldDirection(cubeSphereDirection(face, uv01)) * sampleRadius - center));
     patchRadius = glm::max(patchRadius, glm::length(worldDirection(cubeSphereDirection(face, uv11)) * sampleRadius - center));
     return glm::max(patchRadius, 0.001f);
+}
+
+bool PlanetRenderer::isNodeOutsideFrustum(const Frustum& frustum,
+                                          const FaceBasis& face,
+                                          const QuadtreeNode& node) const
+{
+    const float boundsRadius = settings_.planetRadius
+                             + settings_.terrainHeightScale * 2.0f
+                             + glm::abs(settings_.seaLevelOffset * settings_.terrainHeightScale);
+    const glm::vec3 center = nodeCenterWorldPosition(face, node, boundsRadius);
+    const float radius = nodeWorldRadius(face, node) + settings_.terrainHeightScale * 2.0f;
+
+    for (const glm::vec4& plane : frustum.planes) {
+        const float signedDistance = glm::dot(glm::vec3(plane), center) + plane.w;
+        if (signedDistance < -radius) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 bool PlanetRenderer::isNodeHiddenByHorizon(const FlyCamera& camera,
@@ -244,18 +291,28 @@ bool PlanetRenderer::shouldSplitNode(const FlyCamera& camera,
 }
 
 void PlanetRenderer::collectVisiblePatches(const FlyCamera& camera,
+                                           const Frustum& frustum,
                                            int faceIndex,
                                            const QuadtreeNode& node,
                                            int framebufferHeight,
+                                           CullingStats& stats,
                                            std::vector<RenderPatch>& outPatches) const
 {
     const FaceBasis& face = kPlanetFaces[faceIndex];
+    ++stats.visitedNodes;
+
+    if (isNodeOutsideFrustum(frustum, face, node)) {
+        ++stats.frustumCulledNodes;
+        return;
+    }
 
     if (isNodeHiddenByHorizon(camera, face, node)) {
+        ++stats.horizonCulledNodes;
         return;
     }
 
     if (shouldSplitNode(camera, face, node, framebufferHeight)) {
+        ++stats.splitNodes;
         const float childSize = node.uvSize * 0.5f;
 
         for (int childY = 0; childY < 2; ++childY) {
@@ -264,7 +321,7 @@ void PlanetRenderer::collectVisiblePatches(const FlyCamera& camera,
                 childNode.uvMin = node.uvMin + glm::vec2(childX * childSize, childY * childSize);
                 childNode.uvSize = childSize;
                 childNode.depth = node.depth + 1;
-                collectVisiblePatches(camera, faceIndex, childNode, framebufferHeight, outPatches);
+                collectVisiblePatches(camera, frustum, faceIndex, childNode, framebufferHeight, stats, outPatches);
             }
         }
         return;
@@ -275,20 +332,24 @@ void PlanetRenderer::collectVisiblePatches(const FlyCamera& camera,
     patch.uvMin = node.uvMin;
     patch.uvSize = glm::vec2(node.uvSize);
     patch.depth = node.depth;
+    ++stats.emittedPatches;
     outPatches.push_back(patch);
 }
 
 std::vector<PlanetRenderer::RenderPatch> PlanetRenderer::buildVisiblePatches(const FlyCamera& camera,
-                                                                             int framebufferHeight) const
+                                                                             const Frustum& frustum,
+                                                                             int framebufferHeight)
 {
     std::vector<RenderPatch> patches;
     patches.reserve(256);
+    CullingStats stats;
 
     const QuadtreeNode rootNode;
     for (int faceIndex = 0; faceIndex < static_cast<int>(kPlanetFaces.size()); ++faceIndex) {
-        collectVisiblePatches(camera, faceIndex, rootNode, framebufferHeight, patches);
+        collectVisiblePatches(camera, frustum, faceIndex, rootNode, framebufferHeight, stats, patches);
     }
 
+    lastCullingStats_ = stats;
     return patches;
 }
 
@@ -309,7 +370,6 @@ void PlanetRenderer::applyCommonUniforms(const ShaderProgram& program,
     program.setMat4("projection", projectionMatrix);
     program.setVec3("cameraPos", camera.position);
     program.setVec3("lightDir", lightDirection_);
-    program.setFloat("time", settings_.animationTime);
     program.setFloat("cameraAltitude", cameraAltitude);
     program.setFloat("tessMin", settings_.tessellationMin);
     program.setFloat("tessMax", settings_.tessellationMax);
