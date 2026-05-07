@@ -8,6 +8,7 @@ out vec3 teWorldPos;
 out vec3 teNormal;
 out vec2 teTexCoord;
 out float teHeight;
+out vec4 teClipSpacePos;
 
 uniform mat4 model;
 uniform mat4 view;
@@ -27,6 +28,7 @@ uniform float regionalDetailStartAltitude;
 uniform float regionalDetailEndAltitude;
 uniform float microDetailStartAltitude;
 uniform float microDetailEndAltitude;
+uniform vec4 clipPlane;
 
 vec3 hash3(vec3 p)
 {
@@ -167,5 +169,7 @@ void main()
     teNormal = normalize(mat3(transpose(inverse(model))) * localNormal);
 
     vec4 relativeWorldPos = vec4(worldPos.xyz - cameraPos, 1.0);
-    gl_Position = projection * cameraRelativeView * relativeWorldPos;
+    teClipSpacePos = projection * cameraRelativeView * relativeWorldPos;
+    gl_Position = teClipSpacePos;
+    gl_ClipDistance[0] = dot(worldPos, clipPlane);
 }

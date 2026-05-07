@@ -32,10 +32,12 @@ struct PlanetRenderSettings {
     float microDetailStartAltitude = 6.0f;
     float microDetailEndAltitude = 42.0f;
     float coarseGridLineWidth = 1.6f;
-    float oceanAlpha = 0.78f;
-    float oceanFresnelStrength = 0.65f;
-    glm::vec3 oceanShallowColor = glm::vec3(0.10f, 0.42f, 0.66f);
-    glm::vec3 oceanDeepColor = glm::vec3(0.02f, 0.10f, 0.24f);
+    float oceanAlpha = 0.90f;
+    float oceanFresnelStrength = 1.20f;
+    float oceanDistortionStrength = 0.025f;
+    float oceanDepthRange = 8.0f;
+    glm::vec3 oceanShallowColor = glm::vec3(0.18f, 0.58f, 0.78f);
+    glm::vec3 oceanDeepColor = glm::vec3(0.01f, 0.06f, 0.18f);
     PlanetRenderMode renderMode = PlanetRenderMode::Shaded;
     bool showWireOverlay = false;
     bool renderOcean = true;
@@ -100,6 +102,17 @@ private:
         void draw() const;
     };
 
+    struct RenderTarget {
+        GLuint framebufferObject = 0;
+        GLuint colorTexture = 0;
+        GLuint depthTexture = 0;
+        int width = 0;
+        int height = 0;
+
+        void release();
+        void create(int targetWidth, int targetHeight);
+    };
+
     static constexpr int kNodeGridResolution = 8;
     static constexpr int kMinimumLodDepth = 1;
     static constexpr int kMaximumLodDepth = 6;
@@ -109,6 +122,8 @@ private:
 
     PlanetRenderSettings settings_;
     TerrainMesh terrainMesh_;
+    RenderTarget reflectionTarget_;
+    RenderTarget refractionTarget_;
     ShaderProgram terrainProgram_;
     ShaderProgram oceanProgram_;
     ShaderProgram wireOverlayProgram_;
@@ -154,6 +169,17 @@ private:
     float seaLevelRadius() const;
 
     void drawTerrainPass(const FlyCamera& camera, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix);
+    void drawTerrainPass(const FlyCamera& camera,
+                         const glm::mat4& viewMatrix,
+                         const glm::mat4& projectionMatrix,
+                         bool useClipPlane,
+                         float clipPlaneY,
+                         bool keepAboveClipPlane);
     void drawOceanPass(const FlyCamera& camera, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix);
+    void drawReflectionRefractionPasses(const FlyCamera& camera,
+                                        const glm::mat4& viewMatrix,
+                                        const glm::mat4& projectionMatrix,
+                                        int framebufferWidth,
+                                        int framebufferHeight);
     void drawWireOverlayPass(const FlyCamera& camera, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix);
 };

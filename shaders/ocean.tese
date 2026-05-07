@@ -7,6 +7,7 @@ in vec2 tcTexCoord[];
 out vec3 teWorldPos;
 out vec3 teNormal;
 out vec2 teTexCoord;
+out vec4 teClipSpacePos;
 
 uniform mat4 model;
 uniform mat4 view;
@@ -17,6 +18,7 @@ uniform vec3 faceNormal;
 uniform vec3 faceAxisU;
 uniform vec3 faceAxisV;
 uniform float seaLevelRadius;
+uniform vec4 clipPlane;
 
 vec3 cubeFacePoint(vec2 uv)
 {
@@ -39,5 +41,7 @@ void main()
     teWorldPos = worldPos.xyz;
     teNormal = normalize(mat3(transpose(inverse(model))) * sphereDir);
     vec4 relativeWorldPos = vec4(worldPos.xyz - cameraPos, 1.0);
-    gl_Position = projection * cameraRelativeView * relativeWorldPos;
+    teClipSpacePos = projection * cameraRelativeView * relativeWorldPos;
+    gl_Position = teClipSpacePos;
+    gl_ClipDistance[0] = dot(worldPos, clipPlane);
 }

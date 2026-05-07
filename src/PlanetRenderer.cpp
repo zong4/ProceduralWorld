@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iostream>
 
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -18,6 +19,71 @@ PlanetRenderer::PlanetRenderer()
     : modelMatrix_(1.0f),
       lightDirection_(glm::normalize(glm::vec3(-0.6f, -1.0f, -0.4f)))
 {
+}
+
+void PlanetRenderer::RenderTarget::release()
+{
+    if (depthTexture != 0) {
+        glDeleteTextures(1, &depthTexture);
+        depthTexture = 0;
+    }
+    if (colorTexture != 0) {
+        glDeleteTextures(1, &colorTexture);
+        colorTexture = 0;
+    }
+    if (framebufferObject != 0) {
+        glDeleteFramebuffers(1, &framebufferObject);
+        framebufferObject = 0;
+    }
+    width = 0;
+    height = 0;
+}
+
+void PlanetRenderer::RenderTarget::create(int targetWidth, int targetHeight)
+{
+    if (targetWidth <= 0 || targetHeight <= 0) {
+        return;
+    }
+
+    if (width == targetWidth && height == targetHeight && framebufferObject != 0) {
+        return;
+    }
+
+    release();
+
+    width = targetWidth;
+    height = targetHeight;
+
+    glGenFramebuffers(1, &framebufferObject);
+    glBindFramebuffer(GL_FRAMEBUFFER, framebufferObject);
+
+    glGenTextures(1, &colorTexture);
+    glBindTexture(GL_TEXTURE_2D, colorTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, colorTexture, 0);
+
+    glGenTextures(1, &depthTexture);
+    glBindTexture(GL_TEXTURE_2D, depthTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24, width, height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthTexture, 0);
+
+    const GLenum drawBuffers[] = { GL_COLOR_ATTACHMENT0 };
+    glDrawBuffers(1, drawBuffers);
+
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+        std::cerr << "[PlanetRenderer] Failed to create render target framebuffer\n";
+        release();
+    }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
 void PlanetRenderer::initialize()
@@ -79,10 +145,12 @@ void PlanetRenderer::render(const FlyCamera& camera,
 
     GLint viewport[4];
     glGetIntegerv(GL_VIEWPORT, viewport);
+    const int framebufferWidth = std::max(viewport[2], 1);
     const int framebufferHeight = std::max(viewport[3], 1);
 
     const Frustum frustum = extractFrustum(projectionMatrix * viewMatrix);
     visiblePatches_ = buildVisiblePatches(camera, frustum, framebufferHeight);
+    drawReflectionRefractionPasses(camera, viewMatrix, projectionMatrix, framebufferWidth, framebufferHeight);
     drawTerrainPass(camera, viewMatrix, projectionMatrix);
     drawOceanPass(camera, viewMatrix, projectionMatrix);
     drawWireOverlayPass(camera, viewMatrix, projectionMatrix);
@@ -389,6 +457,8 @@ void PlanetRenderer::applyCommonUniforms(const ShaderProgram& program,
     program.setFloat("coarseLineWidth", settings_.coarseGridLineWidth);
     program.setFloat("oceanAlpha", settings_.oceanAlpha);
     program.setFloat("oceanFresnelStrength", settings_.oceanFresnelStrength);
+    program.setFloat("oceanDistortionStrength", settings_.oceanDistortionStrength);
+    program.setFloat("oceanDepthRange", settings_.oceanDepthRange);
     program.setInt("renderMode", static_cast<int>(settings_.renderMode));
     program.setVec2("nodeUvMin", patch.uvMin);
     program.setVec2("nodeUvSize", patch.uvSize);
@@ -403,12 +473,31 @@ void PlanetRenderer::drawTerrainPass(const FlyCamera& camera,
                                      const glm::mat4& viewMatrix,
                                      const glm::mat4& projectionMatrix)
 {
+    drawTerrainPass(camera, viewMatrix, projectionMatrix, false, 0.0f, true);
+}
+
+void PlanetRenderer::drawTerrainPass(const FlyCamera& camera,
+                                     const glm::mat4& viewMatrix,
+                                     const glm::mat4& projectionMatrix,
+                                     bool useClipPlane,
+                                     float clipPlaneY,
+                                     bool keepAboveClipPlane)
+{
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+    if (useClipPlane) {
+        glEnable(GL_CLIP_DISTANCE0);
+    } else {
+        glDisable(GL_CLIP_DISTANCE0);
+    }
 
     for (const RenderPatch& patch : visiblePatches_) {
         applyCommonUniforms(terrainProgram_, camera, viewMatrix, projectionMatrix, patch);
+        terrainProgram_.setVec4("clipPlane", useClipPlane ? glm::vec4(0.0f, keepAboveClipPlane ? 1.0f : -1.0f, 0.0f, -clipPlaneY)
+                                                         : glm::vec4(0.0f, 0.0f, 0.0f, -1.0e9f));
         terrainMesh_.draw();
     }
+
+    glDisable(GL_CLIP_DISTANCE0);
 }
 
 void PlanetRenderer::drawOceanPass(const FlyCamera& camera,
@@ -424,12 +513,84 @@ void PlanetRenderer::drawOceanPass(const FlyCamera& camera,
     glDepthMask(GL_FALSE);
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, reflectionTarget_.colorTexture);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, refractionTarget_.colorTexture);
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, refractionTarget_.depthTexture);
+
     for (const RenderPatch& patch : visiblePatches_) {
         applyCommonUniforms(oceanProgram_, camera, viewMatrix, projectionMatrix, patch);
+        oceanProgram_.setInt("reflectionTexture", 0);
+        oceanProgram_.setInt("refractionTexture", 1);
+        oceanProgram_.setInt("refractionDepthTexture", 2);
         terrainMesh_.draw();
     }
 
     glDepthMask(GL_TRUE);
+    glDisable(GL_BLEND);
+}
+
+void PlanetRenderer::drawReflectionRefractionPasses(const FlyCamera& camera,
+                                                    const glm::mat4& viewMatrix,
+                                                    const glm::mat4& projectionMatrix,
+                                                    int framebufferWidth,
+                                                    int framebufferHeight)
+{
+    if (!settings_.renderOcean) {
+        return;
+    }
+
+    reflectionTarget_.create(framebufferWidth, framebufferHeight);
+    refractionTarget_.create(framebufferWidth, framebufferHeight);
+    if (reflectionTarget_.framebufferObject == 0 || refractionTarget_.framebufferObject == 0) {
+        return;
+    }
+
+    const float seaLevelY = seaLevelRadius();
+    const glm::vec3 normal(0.0f, 1.0f, 0.0f);
+    const float reflectionPlaneY = seaLevelY;
+    const float refractionPlaneY = seaLevelY;
+
+    glBindFramebuffer(GL_FRAMEBUFFER, reflectionTarget_.framebufferObject);
+    glViewport(0, 0, reflectionTarget_.width, reflectionTarget_.height);
+    glClearColor(0.53f, 0.73f, 0.94f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    FlyCamera reflectedCamera = camera;
+    reflectedCamera.position = glm::vec3(
+        camera.position.x,
+        2.0f * seaLevelY - camera.position.y,
+        camera.position.z
+    );
+    reflectedCamera.front = glm::normalize(glm::vec3(
+        camera.front.x,
+        -camera.front.y,
+        camera.front.z
+    ));
+    reflectedCamera.up = glm::normalize(glm::vec3(
+        camera.up.x,
+        -camera.up.y,
+        camera.up.z
+    ));
+    reflectedCamera.right = glm::normalize(glm::cross(reflectedCamera.front, reflectedCamera.worldUp));
+    const glm::mat4 reflectionView = glm::lookAt(
+        reflectedCamera.position,
+        reflectedCamera.position + reflectedCamera.front,
+        reflectedCamera.up
+    );
+    drawTerrainPass(reflectedCamera, reflectionView, projectionMatrix, true, reflectionPlaneY, false);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, refractionTarget_.framebufferObject);
+    glViewport(0, 0, refractionTarget_.width, refractionTarget_.height);
+    glClearColor(0.53f, 0.73f, 0.94f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    drawTerrainPass(camera, viewMatrix, projectionMatrix, true, refractionPlaneY, true);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glViewport(0, 0, framebufferWidth, framebufferHeight);
 }
 
 void PlanetRenderer::drawWireOverlayPass(const FlyCamera& camera,

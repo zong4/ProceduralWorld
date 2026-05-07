@@ -58,6 +58,11 @@ public:
         glUniform3fv(glGetUniformLocation(programId, uniformName.c_str()), 1, glm::value_ptr(value));
     }
 
+    void setVec4(const std::string& uniformName, const glm::vec4& value) const
+    {
+        glUniform4fv(glGetUniformLocation(programId, uniformName.c_str()), 1, glm::value_ptr(value));
+    }
+
     void setFloat(const std::string& uniformName, float value) const
     {
         glUniform1f(glGetUniformLocation(programId, uniformName.c_str()), value);

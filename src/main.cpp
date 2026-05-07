@@ -207,6 +207,9 @@ void drawDebugPanel(ApplicationState& state)
     ImGui::Checkbox("Render Ocean", &settings.renderOcean);
     ImGui::SliderFloat("Sea Level Offset", &settings.seaLevelOffset, -1.5f, 1.5f, "%.2f");
     ImGui::SliderFloat("Ocean Alpha", &settings.oceanAlpha, 0.05f, 1.0f, "%.2f");
+    ImGui::SliderFloat("Fresnel Strength", &settings.oceanFresnelStrength, 0.1f, 3.0f, "%.2f");
+    ImGui::SliderFloat("Distortion", &settings.oceanDistortionStrength, 0.0f, 0.08f, "%.3f");
+    ImGui::SliderFloat("Depth Range", &settings.oceanDepthRange, 1.0f, 30.0f, "%.1f");
 
     ImGui::Separator();
     ImGui::Text("Detail");
