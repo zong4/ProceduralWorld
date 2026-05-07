@@ -126,13 +126,14 @@ void onKeyPressed(GLFWwindow* window, int key, int, int action, int)
     PlanetRenderSettings& settings = state->renderer.settings();
 
     if (key == GLFW_KEY_ESCAPE) glfwSetWindowShouldClose(window, true);
-    if (key == GLFW_KEY_1) settings.renderMode = PlanetRenderMode::Shaded;
-    if (key == GLFW_KEY_2) {
-        settings.renderMode = PlanetRenderMode::Shaded;
-        settings.showWireOverlay = !settings.showWireOverlay;
+    if (key == GLFW_KEY_1) {
+        const int nextMode = (static_cast<int>(settings.renderMode) + 1) % 4;
+        settings.renderMode = static_cast<PlanetRenderMode>(nextMode);
     }
-    if (key == GLFW_KEY_3) settings.renderMode = PlanetRenderMode::HeightMap;
-    if (key == GLFW_KEY_4) settings.renderMode = PlanetRenderMode::Normals;
+    if (key == GLFW_KEY_2) {
+        const int nextWireMode = (static_cast<int>(settings.wireMode) + 1) % 3;
+        settings.wireMode = static_cast<PlanetWireMode>(nextWireMode);
+    }
     if (key == GLFW_KEY_TAB) {
         state->showDebugPanel = !state->showDebugPanel;
     }
@@ -158,10 +159,8 @@ void printControls()
     std::cout << "  LMB+drag  : rotate planet\n";
     std::cout << "  RMB+drag  : look around\n";
     std::cout << "  Scroll    : zoom FOV\n";
-    std::cout << "  1         : shaded mode\n";
-    std::cout << "  2         : toggle wireframe overlay\n";
-    std::cout << "  3         : height map mode\n";
-    std::cout << "  4         : normal map mode\n";
+    std::cout << "  1         : cycle render mode\n";
+    std::cout << "  2         : cycle wire overlay\n";
     std::cout << "  Tab       : toggle ImGui panel\n";
     std::cout << "  ESC       : quit\n\n";
 }
@@ -205,30 +204,76 @@ void drawDebugPanel(ApplicationState& state)
     ImGui::Separator();
     ImGui::Text("Ocean");
     ImGui::Checkbox("Render Ocean", &settings.renderOcean);
-    ImGui::SliderFloat("Sea Level Offset", &settings.seaLevelOffset, -1.5f, 1.5f, "%.2f");
-    ImGui::SliderFloat("Ocean Alpha", &settings.oceanAlpha, 0.05f, 1.0f, "%.2f");
-    ImGui::SliderFloat("Fresnel Strength", &settings.oceanFresnelStrength, 0.1f, 3.0f, "%.2f");
-    ImGui::SliderFloat("Distortion", &settings.oceanDistortionStrength, 0.0f, 0.08f, "%.3f");
-    ImGui::SliderFloat("Depth Range", &settings.oceanDepthRange, 1.0f, 30.0f, "%.1f");
+    ImGui::SliderFloat("Sea Level", &settings.seaLevelOffset, -1.5f, 1.5f, "%.2f");
+    ImGui::SliderFloat("Opacity", &settings.oceanAlpha, 0.05f, 1.0f, "%.2f");
+    ImGui::ColorEdit3("Shallow Color", &settings.oceanShallowColor.x);
+    ImGui::ColorEdit3("Deep Color", &settings.oceanDeepColor.x);
+    ImGui::ColorEdit3("Foam Color", &settings.oceanFoamColor.x);
+
+    if (ImGui::CollapsingHeader("Ocean Waves", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::SliderFloat("Wave Height", &settings.oceanWaveAmplitude, 0.0f, 0.08f, "%.3f");
+        ImGui::SliderFloat("Choppiness", &settings.oceanChoppiness, 0.0f, 0.08f, "%.3f");
+        ImGui::SliderFloat("Wave Tile Scale", &settings.oceanWaveTileScale, 4.0f, 28.0f, "%.1f");
+        ImGui::SliderFloat("FFT Normal", &settings.oceanWaveNormalStrength, 0.0f, 1.0f, "%.2f");
+    }
+
+    if (ImGui::CollapsingHeader("Ocean Material", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::SliderFloat("Fresnel", &settings.oceanFresnelStrength, 0.1f, 3.0f, "%.2f");
+        ImGui::SliderFloat("Refraction Distortion", &settings.oceanDistortionStrength, 0.0f, 0.08f, "%.3f");
+        ImGui::SliderFloat("Depth Blend", &settings.oceanDepthRange, 1.0f, 30.0f, "%.1f");
+        ImGui::SliderFloat("Detail Normal", &settings.oceanDetailNormalStrength, 0.0f, 0.8f, "%.2f");
+        ImGui::SliderFloat("Detail Scale", &settings.oceanDetailNormalScale, 4.0f, 96.0f, "%.1f");
+        ImGui::SliderFloat("Detail Fade", &settings.oceanDetailFadeDistance, 4.0f, 120.0f, "%.1f");
+        ImGui::SliderFloat("Specular Strength", &settings.oceanSpecularStrength, 0.0f, 1.5f, "%.2f");
+        ImGui::SliderFloat("Specular Sharpness", &settings.oceanSpecularSharpness, 0.5f, 4.0f, "%.2f");
+    }
+
+    if (ImGui::CollapsingHeader("Ocean Foam", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::SliderFloat("Foam Amount", &settings.oceanFoamAmount, 0.0f, 1.5f, "%.2f");
+        ImGui::SliderFloat("Foam Threshold", &settings.oceanFoamThreshold, 0.0f, 1.0f, "%.2f");
+        ImGui::SliderFloat("Foam Softness", &settings.oceanFoamSoftness, 0.02f, 0.30f, "%.2f");
+        ImGui::SliderFloat("Foam Scale", &settings.oceanFoamScale, 0.2f, 8.0f, "%.1f");
+        ImGui::SliderFloat("Foam Noise", &settings.oceanFoamNoiseStrength, 0.0f, 0.5f, "%.2f");
+        ImGui::SliderFloat("Crest Power", &settings.oceanFoamCrestPower, 1.0f, 5.0f, "%.1f");
+        ImGui::SliderFloat("Slope Weight", &settings.oceanFoamSlopeWeight, 0.0f, 1.5f, "%.2f");
+        ImGui::SliderFloat("Fold Weight", &settings.oceanFoamFoldWeight, 0.0f, 1.5f, "%.2f");
+        ImGui::SliderFloat("Foam Fade", &settings.oceanFoamFadeDistance, 10.0f, 240.0f, "%.1f");
+    }
+
+    if (ImGui::CollapsingHeader("Ocean Advanced")) {
+        ImGui::SliderFloat("Ocean Tess Max", &settings.oceanTessellationMax, 1.0f, 4.0f, "%.1f");
+        ImGui::SliderFloat("Ocean Tess Min", &settings.oceanTessellationMin, 1.0f, settings.oceanTessellationMax, "%.1f");
+        ImGui::SliderFloat("Ocean Tess Near", &settings.oceanTessellationNearDistance, 1.0f, 40.0f, "%.1f");
+        ImGui::SliderFloat("Ocean Tess Far", &settings.oceanTessellationFarDistance, settings.oceanTessellationNearDistance + 1.0f, 140.0f, "%.1f");
+    }
 
     ImGui::Separator();
-    ImGui::Text("Detail");
-    ImGui::SliderFloat("Tessellation Max", &settings.tessellationMax, 1.0f, 32.0f, "%.1f");
-    ImGui::SliderFloat("Tessellation Min", &settings.tessellationMin, 1.0f, settings.tessellationMax, "%.1f");
-    ImGui::SliderFloat("Tess Near", &settings.tessellationNearDistance, 1.0f, 60.0f, "%.1f");
-    ImGui::SliderFloat("Tess Far", &settings.tessellationFarDistance, settings.tessellationNearDistance + 1.0f, 200.0f, "%.1f");
-    ImGui::Checkbox("Wire Overlay", &settings.showWireOverlay);
+    ImGui::Text("Terrain Detail");
+    ImGui::SliderFloat("Land Tess Max", &settings.tessellationMax, 1.0f, 4.0f, "%.1f");
+    ImGui::SliderFloat("Land Tess Min", &settings.tessellationMin, 1.0f, settings.tessellationMax, "%.1f");
+    ImGui::SliderFloat("Land Tess Near", &settings.tessellationNearDistance, 1.0f, 60.0f, "%.1f");
+    ImGui::SliderFloat("Land Tess Far", &settings.tessellationFarDistance, settings.tessellationNearDistance + 1.0f, 200.0f, "%.1f");
+    int wireModeIndex = static_cast<int>(settings.wireMode);
+    if (ImGui::RadioButton("No Wire", wireModeIndex == 0)) settings.wireMode = PlanetWireMode::None;
+    ImGui::SameLine();
+    if (ImGui::RadioButton("Land Wire", wireModeIndex == 1)) settings.wireMode = PlanetWireMode::Terrain;
+    ImGui::SameLine();
+    if (ImGui::RadioButton("Ocean Wire", wireModeIndex == 2)) settings.wireMode = PlanetWireMode::Ocean;
 
     ImGui::Separator();
     ImGui::Text("Render Mode");
-    int renderModeIndex = 0;
-    if (settings.renderMode == PlanetRenderMode::HeightMap) renderModeIndex = 1;
-    if (settings.renderMode == PlanetRenderMode::Normals) renderModeIndex = 2;
-    if (ImGui::RadioButton("Shaded", renderModeIndex == 0)) settings.renderMode = PlanetRenderMode::Shaded;
+    int renderModeIndex = 1;
+    if (settings.renderMode == PlanetRenderMode::Unshaded) renderModeIndex = 0;
+    if (settings.renderMode == PlanetRenderMode::Shaded) renderModeIndex = 1;
+    if (settings.renderMode == PlanetRenderMode::HeightMap) renderModeIndex = 2;
+    if (settings.renderMode == PlanetRenderMode::Normals) renderModeIndex = 3;
+    if (ImGui::RadioButton("Unshaded", renderModeIndex == 0)) settings.renderMode = PlanetRenderMode::Unshaded;
     ImGui::SameLine();
-    if (ImGui::RadioButton("Height", renderModeIndex == 1)) settings.renderMode = PlanetRenderMode::HeightMap;
+    if (ImGui::RadioButton("Shaded", renderModeIndex == 1)) settings.renderMode = PlanetRenderMode::Shaded;
     ImGui::SameLine();
-    if (ImGui::RadioButton("Normals", renderModeIndex == 2)) settings.renderMode = PlanetRenderMode::Normals;
+    if (ImGui::RadioButton("Height", renderModeIndex == 2)) settings.renderMode = PlanetRenderMode::HeightMap;
+    ImGui::SameLine();
+    if (ImGui::RadioButton("Normals", renderModeIndex == 3)) settings.renderMode = PlanetRenderMode::Normals;
 
     ImGui::Separator();
     ImGui::Text("Camera");
@@ -335,7 +380,7 @@ int main()
         ImGui::NewFrame();
 
         drawDebugPanel(appState);
-        appState.renderer.render(appState.camera, viewMatrix, projectionMatrix);
+        appState.renderer.render(appState.camera, viewMatrix, projectionMatrix, currentTime);
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 

@@ -1,5 +1,9 @@
 vec4 debugSurfaceOutput(int renderMode, SurfaceData surface, vec3 shadingNormal)
 {
+    if (renderMode == 1) {
+        return vec4(surface.baseColor, 1.0);
+    }
+
     if (renderMode == 3) {
         return vec4(normalize(shadingNormal) * 0.5 + 0.5, 1.0);
     }

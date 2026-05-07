@@ -110,7 +110,18 @@ void PlanetRenderer::initialize()
                                        "shaders/terrain.tese",
                                        "shaders/wire_coarse.frag");
 
+    oceanWireOverlayProgram_ = ShaderProgram("shaders/ocean.vert",
+                                             "shaders/ocean.tesc",
+                                             "shaders/ocean.tese",
+                                             "shaders/wire_fine.frag");
+
+    oceanCoarseGridProgram_ = ShaderProgram("shaders/ocean.vert",
+                                            "shaders/ocean.tesc",
+                                            "shaders/ocean.tese",
+                                            "shaders/wire_coarse.frag");
+
     terrainMesh_.buildGrid(kNodeGridResolution);
+    fftOcean_.initialize();
     glPatchParameteri(GL_PATCH_VERTICES, 4);
 
     initialized_ = true;
@@ -139,9 +150,11 @@ const PlanetRenderSettings& PlanetRenderer::settings() const
 
 void PlanetRenderer::render(const FlyCamera& camera,
                             const glm::mat4& viewMatrix,
-                            const glm::mat4& projectionMatrix)
+                            const glm::mat4& projectionMatrix,
+                            float timeSeconds)
 {
     if (!initialized_) return;
+    currentTimeSeconds_ = timeSeconds;
 
     GLint viewport[4];
     glGetIntegerv(GL_VIEWPORT, viewport);
@@ -150,6 +163,7 @@ void PlanetRenderer::render(const FlyCamera& camera,
 
     const Frustum frustum = extractFrustum(projectionMatrix * viewMatrix);
     visiblePatches_ = buildVisiblePatches(camera, frustum, framebufferHeight);
+    fftOcean_.update(timeSeconds);
     drawReflectionRefractionPasses(camera, viewMatrix, projectionMatrix, framebufferWidth, framebufferHeight);
     drawTerrainPass(camera, viewMatrix, projectionMatrix);
     drawOceanPass(camera, viewMatrix, projectionMatrix);
@@ -158,14 +172,23 @@ void PlanetRenderer::render(const FlyCamera& camera,
 
 const char* PlanetRenderer::currentModeLabel() const
 {
+    const char* wireLabel = "";
+    if (settings_.wireMode == PlanetWireMode::Terrain) {
+        wireLabel = "+TerrainWire";
+    } else if (settings_.wireMode == PlanetWireMode::Ocean) {
+        wireLabel = "+OceanWire";
+    }
+
     switch (settings_.renderMode) {
+    case PlanetRenderMode::Unshaded:
+        return settings_.wireMode == PlanetWireMode::None ? "Unshaded" : wireLabel[1] == 'T' ? "Unshaded+TerrainWire" : "Unshaded+OceanWire";
     case PlanetRenderMode::HeightMap:
-        return settings_.showWireOverlay ? "Height+Wire" : "HeightMap";
+        return settings_.wireMode == PlanetWireMode::None ? "HeightMap" : wireLabel[1] == 'T' ? "Height+TerrainWire" : "Height+OceanWire";
     case PlanetRenderMode::Normals:
-        return settings_.showWireOverlay ? "Normals+Wire" : "Normals";
+        return settings_.wireMode == PlanetWireMode::None ? "Normals" : wireLabel[1] == 'T' ? "Normals+TerrainWire" : "Normals+OceanWire";
     case PlanetRenderMode::Shaded:
     default:
-        return settings_.showWireOverlay ? "Shaded+Wire" : "Shaded";
+        return settings_.wireMode == PlanetWireMode::None ? "Shaded" : wireLabel[1] == 'T' ? "Shaded+TerrainWire" : "Shaded+OceanWire";
     }
 }
 
@@ -453,17 +476,39 @@ void PlanetRenderer::applyCommonUniforms(const ShaderProgram& program,
     program.setFloat("regionalDetailEndAltitude", settings_.regionalDetailEndAltitude);
     program.setFloat("microDetailStartAltitude", settings_.microDetailStartAltitude);
     program.setFloat("microDetailEndAltitude", settings_.microDetailEndAltitude);
+    program.setFloat("timeSeconds", currentTimeSeconds_);
     program.setFloat("gridCount", static_cast<float>(kNodeGridResolution));
     program.setFloat("coarseLineWidth", settings_.coarseGridLineWidth);
     program.setFloat("oceanAlpha", settings_.oceanAlpha);
     program.setFloat("oceanFresnelStrength", settings_.oceanFresnelStrength);
     program.setFloat("oceanDistortionStrength", settings_.oceanDistortionStrength);
     program.setFloat("oceanDepthRange", settings_.oceanDepthRange);
+    program.setFloat("oceanWaveAmplitude", settings_.oceanWaveAmplitude);
+    program.setFloat("oceanChoppiness", settings_.oceanChoppiness);
+    program.setFloat("oceanWaveTileScale", settings_.oceanWaveTileScale);
+    program.setFloat("oceanHeightTexelSize", fftOcean_.texelSize());
+    program.setFloat("oceanWaveNormalStrength", settings_.oceanWaveNormalStrength);
+    program.setFloat("oceanDetailNormalStrength", settings_.oceanDetailNormalStrength);
+    program.setFloat("oceanDetailNormalScale", settings_.oceanDetailNormalScale);
+    program.setFloat("oceanDetailFadeDistance", settings_.oceanDetailFadeDistance);
+    program.setFloat("oceanSpecularStrength", settings_.oceanSpecularStrength);
+    program.setFloat("oceanSpecularSharpness", settings_.oceanSpecularSharpness);
+    program.setFloat("oceanFoamAmount", settings_.oceanFoamAmount);
+    program.setFloat("oceanFoamThreshold", settings_.oceanFoamThreshold);
+    program.setFloat("oceanFoamSoftness", settings_.oceanFoamSoftness);
+    program.setFloat("oceanFoamScale", settings_.oceanFoamScale);
+    program.setFloat("oceanFoamNoiseStrength", settings_.oceanFoamNoiseStrength);
+    program.setFloat("oceanFoamCrestPower", settings_.oceanFoamCrestPower);
+    program.setFloat("oceanFoamSlopeWeight", settings_.oceanFoamSlopeWeight);
+    program.setFloat("oceanFoamFoldWeight", settings_.oceanFoamFoldWeight);
+    program.setFloat("oceanFoamFadeDistance", settings_.oceanFoamFadeDistance);
+    program.setVec2("oceanWindDirection", fftOcean_.settings().windDirection);
     program.setInt("renderMode", static_cast<int>(settings_.renderMode));
     program.setVec2("nodeUvMin", patch.uvMin);
     program.setVec2("nodeUvSize", patch.uvSize);
     program.setVec3("oceanShallowColor", settings_.oceanShallowColor);
     program.setVec3("oceanDeepColor", settings_.oceanDeepColor);
+    program.setVec3("oceanFoamColor", settings_.oceanFoamColor);
     program.setVec3("faceNormal", face.normal);
     program.setVec3("faceAxisU", face.axisU);
     program.setVec3("faceAxisV", face.axisV);
@@ -519,12 +564,37 @@ void PlanetRenderer::drawOceanPass(const FlyCamera& camera,
     glBindTexture(GL_TEXTURE_2D, refractionTarget_.colorTexture);
     glActiveTexture(GL_TEXTURE2);
     glBindTexture(GL_TEXTURE_2D, refractionTarget_.depthTexture);
+    glActiveTexture(GL_TEXTURE3);
+    glBindTexture(GL_TEXTURE_2D, fftOcean_.heightTexture());
+    glActiveTexture(GL_TEXTURE4);
+    glBindTexture(GL_TEXTURE_2D, fftOcean_.normalTexture());
+    glActiveTexture(GL_TEXTURE5);
+    glBindTexture(GL_TEXTURE_2D, fftOcean_.detailNormalTextureA());
+    glActiveTexture(GL_TEXTURE6);
+    glBindTexture(GL_TEXTURE_2D, fftOcean_.detailNormalTextureB());
+    glActiveTexture(GL_TEXTURE7);
+    glBindTexture(GL_TEXTURE_2D, fftOcean_.foamNoiseTexture());
+    glActiveTexture(GL_TEXTURE8);
+    glBindTexture(GL_TEXTURE_2D, fftOcean_.displacementTexture());
+    glActiveTexture(GL_TEXTURE9);
+    glBindTexture(GL_TEXTURE_2D, fftOcean_.foldingTexture());
 
     for (const RenderPatch& patch : visiblePatches_) {
         applyCommonUniforms(oceanProgram_, camera, viewMatrix, projectionMatrix, patch);
+        oceanProgram_.setFloat("tessMin", settings_.oceanTessellationMin);
+        oceanProgram_.setFloat("tessMax", settings_.oceanTessellationMax);
+        oceanProgram_.setFloat("tessMinDist", settings_.oceanTessellationNearDistance);
+        oceanProgram_.setFloat("tessMaxDist", settings_.oceanTessellationFarDistance);
         oceanProgram_.setInt("reflectionTexture", 0);
         oceanProgram_.setInt("refractionTexture", 1);
         oceanProgram_.setInt("refractionDepthTexture", 2);
+        oceanProgram_.setInt("oceanHeightTexture", 3);
+        oceanProgram_.setInt("oceanNormalTexture", 4);
+        oceanProgram_.setInt("waterDetailNormalTextureA", 5);
+        oceanProgram_.setInt("waterDetailNormalTextureB", 6);
+        oceanProgram_.setInt("foamNoiseTexture", 7);
+        oceanProgram_.setInt("oceanDisplacementTexture", 8);
+        oceanProgram_.setInt("oceanFoldingTexture", 9);
         terrainMesh_.draw();
     }
 
@@ -597,8 +667,25 @@ void PlanetRenderer::drawWireOverlayPass(const FlyCamera& camera,
                                          const glm::mat4& viewMatrix,
                                          const glm::mat4& projectionMatrix)
 {
-    if (!settings_.showWireOverlay) {
+    if (settings_.wireMode == PlanetWireMode::None) {
         return;
+    }
+
+    const bool drawOceanWire = settings_.wireMode == PlanetWireMode::Ocean;
+    if (drawOceanWire && !settings_.renderOcean) {
+        return;
+    }
+
+    ShaderProgram& fineProgram = drawOceanWire ? oceanWireOverlayProgram_ : wireOverlayProgram_;
+    ShaderProgram& coarseProgram = drawOceanWire ? oceanCoarseGridProgram_ : coarseGridProgram_;
+
+    if (drawOceanWire) {
+        glActiveTexture(GL_TEXTURE3);
+        glBindTexture(GL_TEXTURE_2D, fftOcean_.heightTexture());
+        glActiveTexture(GL_TEXTURE4);
+        glBindTexture(GL_TEXTURE_2D, fftOcean_.normalTexture());
+        glActiveTexture(GL_TEXTURE8);
+        glBindTexture(GL_TEXTURE_2D, fftOcean_.displacementTexture());
     }
 
     glEnable(GL_POLYGON_OFFSET_LINE);
@@ -606,7 +693,16 @@ void PlanetRenderer::drawWireOverlayPass(const FlyCamera& camera,
     glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
     for (const RenderPatch& patch : visiblePatches_) {
-        applyCommonUniforms(wireOverlayProgram_, camera, viewMatrix, projectionMatrix, patch);
+        applyCommonUniforms(fineProgram, camera, viewMatrix, projectionMatrix, patch);
+        if (drawOceanWire) {
+            fineProgram.setFloat("tessMin", settings_.oceanTessellationMin);
+            fineProgram.setFloat("tessMax", settings_.oceanTessellationMax);
+            fineProgram.setFloat("tessMinDist", settings_.oceanTessellationNearDistance);
+            fineProgram.setFloat("tessMaxDist", settings_.oceanTessellationFarDistance);
+            fineProgram.setInt("oceanHeightTexture", 3);
+            fineProgram.setInt("oceanNormalTexture", 4);
+            fineProgram.setInt("oceanDisplacementTexture", 8);
+        }
         terrainMesh_.draw();
     }
 
@@ -617,7 +713,16 @@ void PlanetRenderer::drawWireOverlayPass(const FlyCamera& camera,
     glDepthMask(GL_FALSE);
 
     for (const RenderPatch& patch : visiblePatches_) {
-        applyCommonUniforms(coarseGridProgram_, camera, viewMatrix, projectionMatrix, patch);
+        applyCommonUniforms(coarseProgram, camera, viewMatrix, projectionMatrix, patch);
+        if (drawOceanWire) {
+            coarseProgram.setFloat("tessMin", settings_.oceanTessellationMin);
+            coarseProgram.setFloat("tessMax", settings_.oceanTessellationMax);
+            coarseProgram.setFloat("tessMinDist", settings_.oceanTessellationNearDistance);
+            coarseProgram.setFloat("tessMaxDist", settings_.oceanTessellationFarDistance);
+            coarseProgram.setInt("oceanHeightTexture", 3);
+            coarseProgram.setInt("oceanNormalTexture", 4);
+            coarseProgram.setInt("oceanDisplacementTexture", 8);
+        }
         terrainMesh_.draw();
     }
 

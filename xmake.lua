@@ -13,6 +13,7 @@ target("ProceduralWorld")
     set_kind("binary")
     add_files("src/*.cpp")
     add_includedirs("include")
+    add_includedirs("third_party/stb")
     add_packages("glfw", "glad", "glm", "imgui")
 
     after_build(function(target)
@@ -25,6 +26,12 @@ target("ProceduralWorld")
 
         -- Copy the shaders directory to the target output directory
         os.cp("shaders", shader_dst)
+
+        local asset_dst = path.join(target:targetdir(), "assets")
+        if os.isdir(asset_dst) then
+            os.rm(asset_dst)
+        end
+        os.cp("assets", asset_dst)
     end)
 
     if is_plat("windows") then
