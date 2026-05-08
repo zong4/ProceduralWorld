@@ -113,6 +113,11 @@ float runtimeTerrainDetail(vec3 sphereDir, float baseHeight)
         regionalDetailEndAltitude,
         cameraAltitude
     ));
+    float ridgeWeight = regionalDetailStrength * (1.0 - smoothstep(
+        regionalDetailStartAltitude * 0.22,
+        regionalDetailEndAltitude * 0.36,
+        cameraAltitude
+    ));
     float microWeight = microDetailStrength * (1.0 - smoothstep(
         microDetailStartAltitude,
         microDetailEndAltitude,
@@ -126,24 +131,50 @@ float runtimeTerrainDetail(vec3 sphereDir, float baseHeight)
         fbm3(p + vec3(0.0, 0.0, 5.3))
     );
 
-    float continentalShelf = smoothstep(-0.30, 0.38, baseHeight);
+    float landMask = smoothstep(seaLevelOffset - 0.015, seaLevelOffset + 0.075, baseHeight);
+    float shoreDetailFade = smoothstep(0.018, 0.115, abs(baseHeight - seaLevelOffset));
+    float landDetailMask = landMask * shoreDetailFade;
+    float highlandMask = smoothstep(seaLevelOffset + 0.10, seaLevelOffset + 0.55, baseHeight);
+    float continentalShelf = smoothstep(seaLevelOffset - 0.22, seaLevelOffset + 0.36, baseHeight);
     vec3 mountainP = p * mountainMaskScale + warp * 1.35;
     float mountainBands = 1.0 - abs(gradientLikeNoise(mountainP));
     mountainBands = pow(clamp(mountainBands, 0.0, 1.0), 1.85);
     float mountainField = fbm3(mountainP * 0.72 + vec3(11.7, 2.3, 6.1));
-    float mountainMask = smoothstep(0.44, 0.78, mountainBands * 0.68 + mountainField * 0.32);
+    float mountainMask = smoothstep(0.40, 0.74, mountainBands * 0.68 + mountainField * 0.32);
+    mountainMask = max(mountainMask, highlandMask * 0.42);
     mountainMask = pow(clamp(mountainMask * continentalShelf, 0.0, 1.0), 1.15);
+
+    float massifNoise = fbm3(p * 1.35 + warp * 0.9 + vec3(14.3, 5.2, 8.7)) * 2.0 - 1.0;
+    float massifMask = smoothstep(0.04, 0.54, massifNoise) * mountainMask;
+    massifMask = pow(clamp(massifMask, 0.0, 1.0), 1.08);
+    float massifSecondary = fbm3(p * 2.6 + warp * 1.3 + vec3(6.4, 17.8, 3.1)) * 2.0 - 1.0;
+    float massifHeight = massifMask * (0.25 + massifSecondary * 0.09);
 
     float ridges = 1.0 - abs(gradientLikeNoise(p * 7.0 + warp * 3.4));
     ridges = pow(clamp(ridges, 0.0, 1.0), mountainRidgeSharpness);
+    float fineRidges = 1.0 - abs(gradientLikeNoise(p * 22.0 + warp * 7.5));
+    fineRidges = pow(clamp(fineRidges, 0.0, 1.0), mountainRidgeSharpness + 1.65);
+    float fineRidgeBreakup = fbm3(p * 34.0 + warp * 9.0 + vec3(17.3, 4.8, 9.6));
+    float detailPeaks = fineRidges * smoothstep(0.36, 0.82, fineRidgeBreakup);
+    float summitMask = smoothstep(seaLevelOffset + 0.42, seaLevelOffset + 0.88, baseHeight);
+    summitMask = max(summitMask, mountainMask * highlandMask);
+    float alpineFold = 1.0 - abs(gradientLikeNoise(p * 12.5 + warp * 4.8 + vec3(5.1, 13.7, 2.4)));
+    alpineFold = pow(clamp(alpineFold, 0.0, 1.0), max(mountainRidgeSharpness - 0.35, 1.0));
+    float alpineBreakup = fbm3(p * 18.0 + warp * 6.5 + vec3(23.4, 7.2, 14.9));
+    float summitPeaks = alpineFold * smoothstep(0.48, 0.86, alpineBreakup);
     float regional = fbm3(p * 4.2 + warp * 2.5) * 2.0 - 1.0;
     float rollingDetail = fbm3(p * 2.2 + warp * 1.6) * 2.0 - 1.0;
-    float micro = fbm3(p * 10.0 + warp * 4.0) * 2.0 - 1.0;
+    float micro = fbm3(p * 15.0 + warp * 5.0) * 2.0 - 1.0;
 
     float detail = 0.0;
-    detail += regionalWeight * rollingDetail * 0.08 * (1.0 - mountainMask * 0.45);
-    detail += regionalWeight * mountainMaskStrength * mountainMask * (ridges * 0.26 + regional * 0.10);
-    detail += microWeight * (micro * 0.055 + ridges * mountainMask * 0.055);
+    detail += ridgeWeight * rollingDetail * 0.12 * (1.0 - mountainMask * 0.45);
+    detail += regionalWeight * mountainMaskStrength * massifHeight;
+    detail += ridgeWeight * mountainMaskStrength * mountainMask * (ridges * 0.42 + regional * 0.16);
+    detail += ridgeWeight * mountainMaskStrength * summitMask * (summitPeaks * 0.11 + alpineFold * 0.055);
+    detail += microWeight * (micro * 0.080 + ridges * mountainMask * 0.085);
+    detail += microWeight * mountainMaskStrength * mountainMask * (detailPeaks * 0.115 + fineRidges * highlandMask * 0.045);
+    detail += microWeight * mountainMaskStrength * summitMask * (detailPeaks * 0.095 + summitPeaks * 0.105 + fineRidges * 0.055);
+    detail *= landDetailMask;
     return detail;
 }
 

@@ -23,6 +23,7 @@ uniform vec3 oceanDeepColor;
 uniform vec3 oceanSSSColor;
 uniform int renderMode;
 uniform int faceIndex;
+uniform float planetRadius;
 uniform float oceanAlpha;
 uniform float oceanShallowAlpha;
 uniform float oceanDeepAlpha;
@@ -167,10 +168,11 @@ void main()
     vec3 proceduralUv = vec3(teTexCoord, float(faceIndex));
     float proceduralWaterDepth = max(texture(proceduralWaterDepthTexture, proceduralUv).r, 0.0);
     float depthPixelWidth = max(fwidth(proceduralWaterDepth) * 2.0, oceanShoreBlendWidth);
-    depthPixelWidth *= mix(0.75, 1.85, smoothstep(280.0, 1600.0, distanceToCamera));
-    float waterCoverage = smoothstep(depthPixelWidth * 0.25, depthPixelWidth, proceduralWaterDepth);
+    float nearWaterCoverage = smoothstep(depthPixelWidth * 0.25, depthPixelWidth, proceduralWaterDepth);
+    float farOceanCoverage = smoothstep(planetRadius * 3.5, planetRadius * 8.0, distanceToCamera);
+    float waterCoverage = mix(nearWaterCoverage, 1.0, farOceanCoverage);
 
-    if (waterCoverage <= 0.01) {
+    if (farOceanCoverage < 0.20 && waterCoverage <= 0.01) {
         discard;
     }
 

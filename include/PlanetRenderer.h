@@ -37,17 +37,22 @@ struct PlanetRenderSettings {
     float oceanTessellationMin = 1.0f;
     float oceanTessellationNearDistance = 40.0f;
     float oceanTessellationFarDistance = 550.0f;
-    float terrainHeightScale = 12.0f;
+    float terrainHeightScale = 18.0f;
     float terrainNoiseScale = 0.5f;
-    float mountainMaskStrength = 0.75f;
+    float mountainMaskStrength = 1.25f;
     float mountainMaskScale = 2.4f;
     float mountainRidgeSharpness = 2.8f;
-    float regionalDetailStrength = 0.55f;
+    int erosionIterations = 18;
+    float erosionStrength = 0.065f;
+    float erosionTalus = 0.030f;
+    float erosionSediment = 0.58f;
+    float erosionThermalStrength = 0.018f;
+    float regionalDetailStrength = 0.95f;
     float microDetailStrength = 0.22f;
-    float regionalDetailStartAltitude = 180.0f;
-    float regionalDetailEndAltitude = 1200.0f;
-    float microDetailStartAltitude = 60.0f;
-    float microDetailEndAltitude = 420.0f;
+    float regionalDetailStartAltitude = 900.0f;
+    float regionalDetailEndAltitude = 2200.0f;
+    float microDetailStartAltitude = 90.0f;
+    float microDetailEndAltitude = 520.0f;
     glm::vec3 terrainLowlandColor = glm::vec3(0.23f, 0.44f, 0.18f);
     glm::vec3 terrainForestColor = glm::vec3(0.10f, 0.30f, 0.12f);
     glm::vec3 terrainDesertColor = glm::vec3(0.70f, 0.57f, 0.32f);
@@ -74,7 +79,7 @@ struct PlanetRenderSettings {
     float atmosphereExposure = 1.15f;
     glm::vec3 atmosphereRayleighColor = glm::vec3(0.32f, 0.56f, 1.0f);
     glm::vec3 atmosphereMieColor = glm::vec3(1.0f, 0.72f, 0.42f);
-    float cameraNearPlane = 0.20f;
+    float cameraNearPlane = 1.0f;
     float cameraFarPlane = 5000.0f;
     float oceanAlpha = 0.96f;
     float oceanShallowAlpha = 0.48f;
@@ -114,6 +119,7 @@ struct PlanetRenderSettings {
     glm::vec3 oceanSSSColor = glm::vec3(0.18f, 0.82f, 0.78f);
     PlanetRenderMode renderMode = PlanetRenderMode::Shaded;
     PlanetWireMode wireMode = PlanetWireMode::None;
+    int terrainMaskDebugMode = 0;
     bool renderOcean = true;
 };
 
@@ -239,6 +245,7 @@ private:
     GLuint proceduralHeightTexture_ = 0;
     GLuint proceduralWaterDepthTexture_ = 0;
     GLuint proceduralShoreMaskTexture_ = 0;
+    GLuint proceduralErosionMaskTexture_ = 0;
     GLuint proceduralTemperatureTexture_ = 0;
     GLuint proceduralMoistureTexture_ = 0;
     GLuint proceduralBiomeTexture_ = 0;

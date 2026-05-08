@@ -23,19 +23,13 @@ void PlanetProceduralData::generate(const PlanetRenderSettings& settings, int fa
     maxHeight_ = std::numeric_limits<float>::lowest();
     maxWaterDepth_ = 0.0f;
 
-    std::size_t totalSamples = 0;
-    std::size_t waterSamples = 0;
-    std::size_t shoreSamples = 0;
-
-    const float seaLevelRadius = settings.planetRadius + settings.seaLevelOffset * settings.terrainHeightScale;
-    const float shoreWidth = std::max(settings.oceanShoreBlendWidth, 0.001f);
-
     for (std::size_t faceIndex = 0; faceIndex < faces_.size(); ++faceIndex) {
         FaceData& faceData = faces_[faceIndex];
         faceData.resolution = resolution_;
         faceData.height.assign(static_cast<std::size_t>(resolution_ * resolution_), 0.0f);
         faceData.waterDepth.assign(static_cast<std::size_t>(resolution_ * resolution_), 0.0f);
         faceData.shoreMask.assign(static_cast<std::size_t>(resolution_ * resolution_), 0.0f);
+        faceData.erosionMask.assign(static_cast<std::size_t>(resolution_ * resolution_), 0.0f);
         faceData.temperature.assign(static_cast<std::size_t>(resolution_ * resolution_), 0.0f);
         faceData.moisture.assign(static_cast<std::size_t>(resolution_ * resolution_), 0.0f);
         faceData.biomeId.assign(static_cast<std::size_t>(resolution_ * resolution_), 0.0f);
@@ -48,6 +42,34 @@ void PlanetProceduralData::generate(const PlanetRenderSettings& settings, int fa
                 );
                 const glm::vec3 sphereDir = cubeSphereDirection(kFaces[faceIndex], uv);
                 const float normalizedHeight = terrainHeight(settings, sphereDir);
+                const std::size_t index = static_cast<std::size_t>(y * resolution_ + x);
+
+                faceData.height[index] = normalizedHeight;
+            }
+        }
+    }
+
+    applyErosion(settings);
+
+    std::size_t totalSamples = 0;
+    std::size_t waterSamples = 0;
+    std::size_t shoreSamples = 0;
+
+    const float seaLevelRadius = settings.planetRadius + settings.seaLevelOffset * settings.terrainHeightScale;
+    const float shoreWidth = std::max(settings.oceanShoreBlendWidth, 0.001f);
+
+    for (std::size_t faceIndex = 0; faceIndex < faces_.size(); ++faceIndex) {
+        FaceData& faceData = faces_[faceIndex];
+
+        for (int y = 0; y < resolution_; ++y) {
+            for (int x = 0; x < resolution_; ++x) {
+                const glm::vec2 uv(
+                    (static_cast<float>(x) + 0.5f) / static_cast<float>(resolution_),
+                    (static_cast<float>(y) + 0.5f) / static_cast<float>(resolution_)
+                );
+                const glm::vec3 sphereDir = cubeSphereDirection(kFaces[faceIndex], uv);
+                const std::size_t index = static_cast<std::size_t>(y * resolution_ + x);
+                const float normalizedHeight = faceData.height[index];
                 const float terrainRadius = settings.planetRadius + normalizedHeight * settings.terrainHeightScale;
                 const float signedWaterDepth = seaLevelRadius - terrainRadius;
                 const float waterDepth = std::max(signedWaterDepth, 0.0f);
@@ -55,9 +77,7 @@ void PlanetProceduralData::generate(const PlanetRenderSettings& settings, int fa
                 const float temperatureValue = temperature(settings, sphereDir, normalizedHeight);
                 const float moistureValue = moisture(sphereDir, shoreMask);
                 const float biomeValue = classifyBiome(normalizedHeight, waterDepth, shoreMask, temperatureValue, moistureValue);
-                const std::size_t index = static_cast<std::size_t>(y * resolution_ + x);
 
-                faceData.height[index] = normalizedHeight;
                 faceData.waterDepth[index] = waterDepth;
                 faceData.shoreMask[index] = shoreMask;
                 faceData.temperature[index] = temperatureValue;
@@ -83,6 +103,102 @@ void PlanetProceduralData::generate(const PlanetRenderSettings& settings, int fa
     }
 
     generated_ = true;
+}
+
+void PlanetProceduralData::applyErosion(const PlanetRenderSettings& settings)
+{
+    const int iterations = std::clamp(settings.erosionIterations, 0, 256);
+    const float erosionStrength = std::max(settings.erosionStrength, 0.0f);
+    const float thermalStrength = std::max(settings.erosionThermalStrength, 0.0f);
+    if (iterations <= 0 || (erosionStrength <= 0.0f && thermalStrength <= 0.0f)) {
+        return;
+    }
+
+    const int n = resolution_;
+    const float talus = std::max(settings.erosionTalus, 0.0001f);
+    const float sediment = glm::clamp(settings.erosionSediment, 0.0f, 1.0f);
+    const float seaLevel = settings.seaLevelOffset;
+    const auto indexOf = [n](int x, int y) {
+        return static_cast<std::size_t>(y * n + x);
+    };
+
+    for (FaceData& faceData : faces_) {
+        faceData.erosionMask.assign(faceData.height.size(), 0.0f);
+        std::vector<float> delta(faceData.height.size(), 0.0f);
+
+        for (int iteration = 0; iteration < iterations; ++iteration) {
+            std::fill(delta.begin(), delta.end(), 0.0f);
+
+            for (int y = 1; y < n - 1; ++y) {
+                for (int x = 1; x < n - 1; ++x) {
+                    const std::size_t center = indexOf(x, y);
+                    const float h = faceData.height[center];
+                    const float landMask = glm::smoothstep(seaLevel + 0.02f, seaLevel + 0.20f, h);
+                    if (landMask <= 0.001f) {
+                        continue;
+                    }
+
+                    float lowestHeight = h;
+                    std::size_t lowestIndex = center;
+                    for (int oy = -1; oy <= 1; ++oy) {
+                        for (int ox = -1; ox <= 1; ++ox) {
+                            if (ox == 0 && oy == 0) {
+                                continue;
+                            }
+                            const std::size_t neighbor = indexOf(x + ox, y + oy);
+                            const float neighborHeight = faceData.height[neighbor];
+                            if (neighborHeight < lowestHeight) {
+                                lowestHeight = neighborHeight;
+                                lowestIndex = neighbor;
+                            }
+                        }
+                    }
+
+                    const float slope = h - lowestHeight;
+                    if (lowestIndex != center && slope > talus) {
+                        const float channel = std::min((slope - talus) * erosionStrength * landMask, slope * 0.38f);
+                        delta[center] -= channel;
+                        delta[lowestIndex] += channel * sediment;
+                    }
+
+                    if (thermalStrength > 0.0f) {
+                        for (int oy = -1; oy <= 1; ++oy) {
+                            for (int ox = -1; ox <= 1; ++ox) {
+                                if ((ox == 0 && oy == 0) || (ox != 0 && oy != 0)) {
+                                    continue;
+                                }
+                                const std::size_t neighbor = indexOf(x + ox, y + oy);
+                                const float slopeToNeighbor = h - faceData.height[neighbor];
+                                if (slopeToNeighbor > talus * 1.45f) {
+                                    const float slide = std::min(
+                                        (slopeToNeighbor - talus * 1.45f) * thermalStrength * landMask,
+                                        slopeToNeighbor * 0.18f
+                                    );
+                                    delta[center] -= slide;
+                                    delta[neighbor] += slide;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            for (std::size_t i = 0; i < faceData.height.size(); ++i) {
+                faceData.height[i] += delta[i];
+                faceData.erosionMask[i] += std::abs(delta[i]);
+            }
+        }
+
+        float maxErosion = 0.0f;
+        for (float value : faceData.erosionMask) {
+            maxErosion = std::max(maxErosion, value);
+        }
+        if (maxErosion > 0.000001f) {
+            for (float& value : faceData.erosionMask) {
+                value = std::sqrt(glm::clamp(value / maxErosion, 0.0f, 1.0f));
+            }
+        }
+    }
 }
 
 glm::vec3 PlanetProceduralData::cubeSphereDirection(const FaceBasis& face, const glm::vec2& uv)
@@ -167,8 +283,13 @@ float PlanetProceduralData::terrainHeight(const PlanetRenderSettings& settings, 
     mountainMask *= continentalShelf;
     mountainMask = std::pow(glm::clamp(mountainMask, 0.0f, 1.0f), 1.15f);
 
+    float massifBase = fbm(mountainP * 0.35f + glm::vec3(14.3f, 5.2f, 8.7f), 4, 2.0f, 0.5f) * 0.5f + 0.5f;
+    massifBase = glm::smoothstep(0.46f, 0.72f, massifBase) * mountainMask;
+    const float massifShape = fbm(mountainP * 0.95f + glm::vec3(6.4f, 17.8f, 3.1f), 4, 2.0f, 0.5f);
+
     float h = continents * 0.72f;
-    h += settings.mountainMaskStrength * mountainMask * (0.18f + mountainField * 0.16f);
+    h += settings.mountainMaskStrength * massifBase * (0.20f + massifShape * 0.08f);
+    h += settings.mountainMaskStrength * mountainMask * (0.16f + mountainField * 0.14f);
     h = (h < 0.0f ? -1.0f : 1.0f) * std::pow(std::abs(h), 1.15f);
     return h;
 }

@@ -54,6 +54,7 @@ struct ApplicationState {
     float deltaSeconds = 0.0f;
     float previousFrameTime = 0.0f;
     bool showDebugPanel = true;
+    bool showPerformancePanel = false;
     float planetYawDegrees = 0.0f;
     float planetPitchDegrees = 0.0f;
     float cameraOrbitYawDegrees = 0.0f;
@@ -75,6 +76,11 @@ void copyProceduralSettings(PlanetRenderSettings& destination, const PlanetRende
     destination.mountainMaskStrength = source.mountainMaskStrength;
     destination.mountainMaskScale = source.mountainMaskScale;
     destination.mountainRidgeSharpness = source.mountainRidgeSharpness;
+    destination.erosionIterations = source.erosionIterations;
+    destination.erosionStrength = source.erosionStrength;
+    destination.erosionTalus = source.erosionTalus;
+    destination.erosionSediment = source.erosionSediment;
+    destination.erosionThermalStrength = source.erosionThermalStrength;
     destination.regionalDetailStrength = source.regionalDetailStrength;
     destination.microDetailStrength = source.microDetailStrength;
     destination.regionalDetailStartAltitude = source.regionalDetailStartAltitude;
@@ -242,12 +248,18 @@ void onCharacterTyped(GLFWwindow* window, unsigned int codepoint)
     ImGui_ImplGlfw_CharCallback(window, codepoint);
 }
 
-void onKeyPressed(GLFWwindow* window, int key, int, int action, int)
+void onKeyPressed(GLFWwindow* window, int key, int, int action, int modifiers)
 {
-    ImGui_ImplGlfw_KeyCallback(window, key, 0, action, 0);
+    ImGui_ImplGlfw_KeyCallback(window, key, 0, action, modifiers);
     if (action != GLFW_PRESS) return;
 
     ApplicationState* state = getState(window);
+    const bool controlDown = (modifiers & GLFW_MOD_CONTROL) != 0;
+    if (state->workflowStage == WorkflowStage::Render && controlDown && key == GLFW_KEY_1) {
+        state->showPerformancePanel = !state->showPerformancePanel;
+        return;
+    }
+
     if (ImGui::GetIO().WantCaptureKeyboard) return;
 
     if (state->workflowStage != WorkflowStage::Render) {
@@ -303,6 +315,7 @@ void printControls()
     std::cout << "  Scroll    : dolly camera toward/away from planet\n";
     std::cout << "  1         : cycle render mode\n";
     std::cout << "  2         : cycle wire overlay\n";
+    std::cout << "  Ctrl+1    : toggle performance monitor\n";
     std::cout << "  Tab       : toggle ImGui panel\n";
     std::cout << "  ESC       : quit\n\n";
 }
@@ -327,15 +340,22 @@ void drawProceduralPanel(ApplicationState& state)
     ImGui::SliderFloat("Mountain Mask", &settings.mountainMaskStrength, 0.0f, 1.5f, "%.2f");
     ImGui::SliderFloat("Mountain Scale", &settings.mountainMaskScale, 0.5f, 8.0f, "%.2f");
     ImGui::SliderFloat("Ridge Sharpness", &settings.mountainRidgeSharpness, 1.0f, 6.0f, "%.2f");
+    if (ImGui::CollapsingHeader("Erosion Bake", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::SliderInt("Iterations", &settings.erosionIterations, 0, 80);
+        ImGui::SliderFloat("Strength", &settings.erosionStrength, 0.0f, 0.20f, "%.3f");
+        ImGui::SliderFloat("Talus", &settings.erosionTalus, 0.005f, 0.12f, "%.3f");
+        ImGui::SliderFloat("Sediment", &settings.erosionSediment, 0.0f, 1.0f, "%.2f");
+        ImGui::SliderFloat("Thermal", &settings.erosionThermalStrength, 0.0f, 0.08f, "%.3f");
+    }
     ImGui::SliderFloat("Regional Detail", &settings.regionalDetailStrength, 0.0f, 1.2f, "%.2f");
     ImGui::SliderFloat("Micro Detail", &settings.microDetailStrength, 0.0f, 0.8f, "%.2f");
     ImGui::SliderInt("Face Resolution", &state.generationFaceResolution, 32, 256);
 
     if (ImGui::CollapsingHeader("Altitude Detail Bands")) {
-        ImGui::SliderFloat("Regional Start", &settings.regionalDetailStartAltitude, 0.0f, 600.0f, "%.1f");
-        ImGui::SliderFloat("Regional End", &settings.regionalDetailEndAltitude, settings.regionalDetailStartAltitude + 10.0f, 2400.0f, "%.1f");
-        ImGui::SliderFloat("Micro Start", &settings.microDetailStartAltitude, 0.0f, 300.0f, "%.1f");
-        ImGui::SliderFloat("Micro End", &settings.microDetailEndAltitude, settings.microDetailStartAltitude + 10.0f, 1200.0f, "%.1f");
+        ImGui::SliderFloat("Regional Start", &settings.regionalDetailStartAltitude, 0.0f, 1800.0f, "%.1f");
+        ImGui::SliderFloat("Regional End", &settings.regionalDetailEndAltitude, settings.regionalDetailStartAltitude + 10.0f, 5000.0f, "%.1f");
+        ImGui::SliderFloat("Micro Start", &settings.microDetailStartAltitude, 0.0f, 800.0f, "%.1f");
+        ImGui::SliderFloat("Micro End", &settings.microDetailEndAltitude, settings.microDetailStartAltitude + 10.0f, 2000.0f, "%.1f");
     }
 
     if (ImGui::CollapsingHeader("Terrain Materials")) {
@@ -397,7 +417,6 @@ void drawRenderModeControls(PlanetRenderSettings& settings)
 void drawRenderPanel(ApplicationState& state)
 {
     PlanetRenderSettings& settings = state.renderer.settings();
-    const float fps = 1.0f / glm::max(state.deltaSeconds, 0.0001f);
 
     if (ImGui::Button("Back To Procedural", ImVec2(-1.0f, 28.0f))) {
         returnToProceduralSetup(state);
@@ -405,33 +424,12 @@ void drawRenderPanel(ApplicationState& state)
     }
 
     ImGui::Separator();
-    ImGui::Text("FPS: %.1f", fps);
-    ImGui::Text("Visible patches: %zu", state.renderer.visiblePatchCount());
     if (state.generatedPlanet.isGenerated()) {
         ImGui::Text("Generated data: %d face resolution", state.generatedPlanet.resolution());
         ImGui::Text("Water %.1f%% | Shore %.1f%% | Max depth %.2f",
                     state.generatedPlanet.waterCoverage() * 100.0f,
                     state.generatedPlanet.shoreCoverage() * 100.0f,
                     state.generatedPlanet.maxWaterDepth());
-    }
-    const PlanetRenderer::CullingStats& cullingStats = state.renderer.cullingStats();
-    ImGui::Text("LOD nodes: %zu | Split: %zu", cullingStats.visitedNodes, cullingStats.splitNodes);
-    ImGui::Text("Culled: %zu frustum | %zu horizon", cullingStats.frustumCulledNodes, cullingStats.horizonCulledNodes);
-
-    if (ImGui::CollapsingHeader("Performance", ImGuiTreeNodeFlags_DefaultOpen)) {
-        const PlanetRenderer::PerformanceStats& perf = state.renderer.performanceStats();
-        ImGui::Text("CPU submit timings, not blocking GPU");
-        ImGui::Text("Total: %.2f ms", perf.totalMs);
-        ImGui::Text("Culling: %.2f | FFT: %.2f %s", perf.cullingMs, perf.fftMs, perf.fftUpdated ? "(updated)" : "(reused)");
-        ImGui::Text("FFT cascades: %d | stride: %d frame(s)", perf.fftCascadeCount, perf.fftFrameStride);
-        ImGui::Text("Reflection/Refraction: %.2f", perf.reflectionRefractionMs);
-        ImGui::Text("Reflection: %s | Refraction: %s",
-                    perf.reflectionEnabled ? (perf.reflectionUpdated ? "updated" : "reused") : "off",
-                    perf.refractionEnabled ? (perf.refractionUpdated ? "updated" : "reused") : "off");
-        ImGui::Text("Refl weight: %.2f | Refr weight: %.2f", perf.reflectionWeight, perf.refractionWeight);
-        ImGui::Text("Ocean patches: %zu / %zu", perf.oceanPatchCount, state.renderer.visiblePatchCount());
-        ImGui::Text("Terrain: %.2f | Ocean: %.2f", perf.terrainMs, perf.oceanMs);
-        ImGui::Text("Atmosphere: %.2f | Wire: %.2f", perf.atmosphereMs, perf.wireMs);
     }
 
     ImGui::Separator();
@@ -512,7 +510,7 @@ void drawRenderPanel(ApplicationState& state)
         ImGui::SliderFloat("Ocean Tess Min", &settings.oceanTessellationMin, 1.0f, settings.oceanTessellationMax, "%.1f");
         ImGui::SliderFloat("Ocean Tess Near", &settings.oceanTessellationNearDistance, 10.0f, 400.0f, "%.1f");
         ImGui::SliderFloat("Ocean Tess Far", &settings.oceanTessellationFarDistance, settings.oceanTessellationNearDistance + 10.0f, 1400.0f, "%.1f");
-        ImGui::SliderFloat("Near Plane", &settings.cameraNearPlane, 0.02f, 2.0f, "%.2f");
+        ImGui::SliderFloat("Near Plane", &settings.cameraNearPlane, 0.20f, 2.0f, "%.2f");
         ImGui::SliderFloat("Far Plane", &settings.cameraFarPlane, 1000.0f, 12000.0f, "%.0f");
     }
 
@@ -528,6 +526,71 @@ void drawRenderPanel(ApplicationState& state)
     state.renderSettings = settings;
 }
 
+void drawPerformancePanel(ApplicationState& state)
+{
+    if (!state.showPerformancePanel || state.workflowStage != WorkflowStage::Render) return;
+
+    const ImVec4 black(0.015f, 0.013f, 0.010f, 0.96f);
+    const ImVec4 panel(0.055f, 0.048f, 0.032f, 0.98f);
+    const ImVec4 gold(0.96f, 0.70f, 0.23f, 1.0f);
+    const ImVec4 mutedGold(0.70f, 0.52f, 0.22f, 1.0f);
+    const ImVec4 text(0.98f, 0.90f, 0.72f, 1.0f);
+
+    ImGui::SetNextWindowPos(ImVec2(420.0f, 16.0f), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(360.0f, 280.0f), ImGuiCond_FirstUseEver);
+
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, black);
+    ImGui::PushStyleColor(ImGuiCol_TitleBg, panel);
+    ImGui::PushStyleColor(ImGuiCol_TitleBgActive, ImVec4(0.20f, 0.14f, 0.04f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_Border, mutedGold);
+    ImGui::PushStyleColor(ImGuiCol_Text, text);
+    ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(0.24f, 0.16f, 0.04f, 0.85f));
+    ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImVec4(0.35f, 0.24f, 0.07f, 0.90f));
+    ImGui::PushStyleColor(ImGuiCol_HeaderActive, ImVec4(0.45f, 0.30f, 0.08f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_Separator, mutedGold);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.4f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 3.0f);
+
+    if (ImGui::Begin("Performance Monitor  Ctrl+1", &state.showPerformancePanel)) {
+        const float fps = 1.0f / glm::max(state.deltaSeconds, 0.0001f);
+        const PlanetRenderer::PerformanceStats& perf = state.renderer.performanceStats();
+        const PlanetRenderer::CullingStats& cullingStats = state.renderer.cullingStats();
+
+        ImGui::PushStyleColor(ImGuiCol_Text, gold);
+        ImGui::Text("CPU Submit Timings");
+        ImGui::PopStyleColor();
+        ImGui::Text("Not blocking GPU");
+        ImGui::Separator();
+
+        ImGui::Text("FPS: %.1f", fps);
+        ImGui::Text("Camera distance: %.1f", glm::length(state.camera.position));
+        ImGui::Text("Camera altitude: %.1f", glm::max(glm::length(state.camera.position) - state.renderer.settings().planetRadius, 0.0f));
+        ImGui::Text("Total: %.2f ms", perf.totalMs);
+        ImGui::Text("Culling: %.2f ms", perf.cullingMs);
+        ImGui::Text("FFT: %.2f ms %s", perf.fftMs, perf.fftUpdated ? "updated" : "reused");
+        ImGui::Text("Reflection/Refraction: %.2f ms", perf.reflectionRefractionMs);
+        ImGui::Text("Terrain: %.2f ms | Ocean: %.2f ms", perf.terrainMs, perf.oceanMs);
+        ImGui::Text("Atmosphere: %.2f ms | Wire: %.2f ms", perf.atmosphereMs, perf.wireMs);
+
+        ImGui::Separator();
+        ImGui::Text("Visible patches: %zu", state.renderer.visiblePatchCount());
+        ImGui::Text("Ocean patches: %zu / %zu", perf.oceanPatchCount, state.renderer.visiblePatchCount());
+        ImGui::Text("LOD nodes: %zu | Split: %zu", cullingStats.visitedNodes, cullingStats.splitNodes);
+        ImGui::Text("Culled: %zu frustum | %zu horizon", cullingStats.frustumCulledNodes, cullingStats.horizonCulledNodes);
+
+        ImGui::Separator();
+        ImGui::Text("FFT cascades: %d | stride: %d", perf.fftCascadeCount, perf.fftFrameStride);
+        ImGui::Text("Reflection: %s | Refraction: %s",
+                    perf.reflectionEnabled ? (perf.reflectionUpdated ? "updated" : "reused") : "off",
+                    perf.refractionEnabled ? (perf.refractionUpdated ? "updated" : "reused") : "off");
+        ImGui::Text("Refl weight: %.2f | Refr weight: %.2f", perf.reflectionWeight, perf.refractionWeight);
+    }
+    ImGui::End();
+
+    ImGui::PopStyleVar(2);
+    ImGui::PopStyleColor(9);
+}
+
 void drawDebugPanel(ApplicationState& state)
 {
     if (!state.showDebugPanel) return;
@@ -539,8 +602,40 @@ void drawDebugPanel(ApplicationState& state)
         ? "Render Controls"
         : "Procedural Generation";
 
+    const ImVec4 deepNavy(0.018f, 0.035f, 0.070f, 0.96f);
+    const ImVec4 panelBlue(0.045f, 0.105f, 0.180f, 0.98f);
+    const ImVec4 activeBlue(0.070f, 0.210f, 0.360f, 1.0f);
+    const ImVec4 lineBlue(0.115f, 0.340f, 0.580f, 1.0f);
+    const ImVec4 brightBlue(0.180f, 0.560f, 0.920f, 1.0f);
+    const ImVec4 hoverBlue(0.130f, 0.420f, 0.720f, 0.92f);
+    const ImVec4 textBlue(0.820f, 0.930f, 1.000f, 1.0f);
+
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, deepNavy);
+    ImGui::PushStyleColor(ImGuiCol_TitleBg, panelBlue);
+    ImGui::PushStyleColor(ImGuiCol_TitleBgActive, activeBlue);
+    ImGui::PushStyleColor(ImGuiCol_Border, lineBlue);
+    ImGui::PushStyleColor(ImGuiCol_Text, textBlue);
+    ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(0.060f, 0.170f, 0.290f, 0.88f));
+    ImGui::PushStyleColor(ImGuiCol_HeaderHovered, hoverBlue);
+    ImGui::PushStyleColor(ImGuiCol_HeaderActive, activeBlue);
+    ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.035f, 0.080f, 0.135f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0.070f, 0.180f, 0.310f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_FrameBgActive, ImVec4(0.090f, 0.245f, 0.430f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_SliderGrab, brightBlue);
+    ImGui::PushStyleColor(ImGuiCol_SliderGrabActive, ImVec4(0.380f, 0.760f, 1.000f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_CheckMark, brightBlue);
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.070f, 0.185f, 0.320f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.105f, 0.300f, 0.540f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.140f, 0.420f, 0.760f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_Separator, lineBlue);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.4f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 3.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 2.0f);
+
     if (!ImGui::Begin(title, &state.showDebugPanel)) {
         ImGui::End();
+        ImGui::PopStyleVar(3);
+        ImGui::PopStyleColor(18);
         return;
     }
 
@@ -551,6 +646,8 @@ void drawDebugPanel(ApplicationState& state)
     }
 
     ImGui::End();
+    ImGui::PopStyleVar(3);
+    ImGui::PopStyleColor(18);
 }
 } // namespace
 
@@ -668,6 +765,7 @@ int main()
         ImGui::NewFrame();
 
         drawDebugPanel(appState);
+        drawPerformancePanel(appState);
         if (appState.workflowStage == WorkflowStage::Render) {
             appState.renderer.render(appState.camera, viewMatrix, projectionMatrix, currentTime);
         }
