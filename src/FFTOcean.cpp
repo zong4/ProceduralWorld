@@ -136,22 +136,16 @@ void FFTOcean::initialize(const Settings& settings)
         settings_.resolution = 128;
     }
     settings_.windDirection = glm::normalize(settings_.windDirection);
+    settings_.cascadeCount = std::clamp(settings_.cascadeCount, 1, kMaxCascadeCount);
     resolution_ = settings_.resolution;
 
     const std::size_t pixelCount = static_cast<std::size_t>(resolution_ * resolution_);
-    initialSpectrum_.resize(pixelCount);
-    initialSpectrumConjugate_.resize(pixelCount);
-    frequencySpectrum_.resize(pixelCount);
-    displacementSpectrumX_.resize(pixelCount);
-    displacementSpectrumZ_.resize(pixelCount);
-    spatialHeights_.resize(pixelCount);
-    spatialDisplacementX_.resize(pixelCount);
-    spatialDisplacementZ_.resize(pixelCount);
     heightPixels_.resize(pixelCount);
     normalPixels_.resize(pixelCount);
     displacementPixels_.resize(pixelCount);
     foldingPixels_.resize(pixelCount);
 
+    configureCascades();
     buildInitialSpectrum();
 
     glGenTextures(1, &heightTexture_);
@@ -293,22 +287,22 @@ int FFTOcean::index(int x, int y) const
     return y * resolution_ + x;
 }
 
-glm::vec2 FFTOcean::waveVector(int x, int y) const
+glm::vec2 FFTOcean::waveVector(int x, int y, float patchLength) const
 {
     const int halfResolution = resolution_ / 2;
-    const float kx = 2.0f * kPi * static_cast<float>(x - halfResolution) / settings_.patchLength;
-    const float ky = 2.0f * kPi * static_cast<float>(y - halfResolution) / settings_.patchLength;
+    const float kx = 2.0f * kPi * static_cast<float>(x - halfResolution) / patchLength;
+    const float ky = 2.0f * kPi * static_cast<float>(y - halfResolution) / patchLength;
     return glm::vec2(kx, ky);
 }
 
-float FFTOcean::phillipsSpectrum(const glm::vec2& k) const
+float FFTOcean::phillipsSpectrum(const glm::vec2& k, float spectrumAmplitude, float windSpeed) const
 {
     const float kLength = glm::length(k);
     if (kLength < 0.00001f) {
         return 0.0f;
     }
 
-    const float largestWave = settings_.windSpeed * settings_.windSpeed / kGravity;
+    const float largestWave = windSpeed * windSpeed / kGravity;
     const float dampingLength = largestWave * 0.001f;
     const float kDotWind = glm::dot(glm::normalize(k), settings_.windDirection);
     const float directionalTerm = kDotWind * kDotWind;
@@ -318,7 +312,7 @@ float FFTOcean::phillipsSpectrum(const glm::vec2& k) const
     const float shortWaveTerm = std::exp(-k2 * dampingLength * dampingLength);
     const float againstWindDamping = kDotWind < 0.0f ? 0.18f : 1.0f;
 
-    return settings_.spectrumAmplitude
+    return spectrumAmplitude
          * longWaveTerm
          * directionalTerm
          * shortWaveTerm
@@ -326,22 +320,50 @@ float FFTOcean::phillipsSpectrum(const glm::vec2& k) const
          / k4;
 }
 
+void FFTOcean::configureCascades()
+{
+    const std::size_t pixelCount = static_cast<std::size_t>(resolution_ * resolution_);
+    for (int cascadeIndex = 0; cascadeIndex < kMaxCascadeCount; ++cascadeIndex) {
+        CascadeState& cascade = cascades_[cascadeIndex];
+        cascade.patchLength = settings_.patchLength * settings_.cascadePatchLengthMultipliers[static_cast<std::size_t>(cascadeIndex)];
+        cascade.spectrumAmplitude = settings_.spectrumAmplitude * settings_.cascadeAmplitudeMultipliers[static_cast<std::size_t>(cascadeIndex)];
+        cascade.heightWeight = settings_.cascadeHeightWeights[static_cast<std::size_t>(cascadeIndex)];
+        cascade.displacementWeight = settings_.cascadeDisplacementWeights[static_cast<std::size_t>(cascadeIndex)];
+        cascade.speedMultiplier = settings_.cascadeSpeedMultipliers[static_cast<std::size_t>(cascadeIndex)];
+        cascade.initialSpectrum.resize(pixelCount);
+        cascade.initialSpectrumConjugate.resize(pixelCount);
+        cascade.frequencySpectrum.resize(pixelCount);
+        cascade.displacementSpectrumX.resize(pixelCount);
+        cascade.displacementSpectrumZ.resize(pixelCount);
+        cascade.spatialHeights.resize(pixelCount);
+        cascade.spatialDisplacementX.resize(pixelCount);
+        cascade.spatialDisplacementZ.resize(pixelCount);
+    }
+}
+
 void FFTOcean::buildInitialSpectrum()
 {
-    std::mt19937 generator(1337);
+    for (int cascadeIndex = 0; cascadeIndex < settings_.cascadeCount; ++cascadeIndex) {
+        buildInitialSpectrum(cascades_[cascadeIndex], cascadeIndex * 92821);
+    }
+}
+
+void FFTOcean::buildInitialSpectrum(CascadeState& cascade, int seedOffset)
+{
+    std::mt19937 generator(static_cast<std::mt19937::result_type>(1337 + seedOffset));
 
     for (int y = 0; y < resolution_; ++y) {
         for (int x = 0; x < resolution_; ++x) {
-            const glm::vec2 k = waveVector(x, y);
-            const float spectrum = std::sqrt(phillipsSpectrum(k));
+            const glm::vec2 k = waveVector(x, y, cascade.patchLength);
+            const float spectrum = std::sqrt(phillipsSpectrum(k, cascade.spectrumAmplitude, settings_.windSpeed));
             const Complex h0(gaussian(generator) * spectrum, gaussian(generator) * spectrum);
-            initialSpectrum_[index(x, y)] = h0;
+            cascade.initialSpectrum[index(x, y)] = h0;
         }
     }
 
     for (int y = 0; y < resolution_; ++y) {
         for (int x = 0; x < resolution_; ++x) {
-            initialSpectrumConjugate_[index(x, y)] = std::conj(initialSpectrum_[index(resolution_ - x, resolution_ - y)]);
+            cascade.initialSpectrumConjugate[index(x, y)] = std::conj(cascade.initialSpectrum[index(resolution_ - x, resolution_ - y)]);
         }
     }
 }
@@ -415,46 +437,68 @@ void FFTOcean::update(float timeSeconds)
         return;
     }
 
-    for (int y = 0; y < resolution_; ++y) {
-        for (int x = 0; x < resolution_; ++x) {
-            const glm::vec2 k = waveVector(x, y);
-            const float omega = std::sqrt(kGravity * glm::length(k));
-            const Complex phase(std::cos(omega * timeSeconds), std::sin(omega * timeSeconds));
-            const int pixelIndex = index(x, y);
-            frequencySpectrum_[pixelIndex] = initialSpectrum_[pixelIndex] * phase
-                                           + initialSpectrumConjugate_[pixelIndex] * std::conj(phase);
+    std::fill(heightPixels_.begin(), heightPixels_.end(), 0.0f);
+    std::fill(displacementPixels_.begin(), displacementPixels_.end(), glm::vec2(0.0f));
 
-            const float kLength = glm::length(k);
-            if (kLength > 0.00001f) {
-                const Complex minusI(0.0f, -1.0f);
-                displacementSpectrumX_[pixelIndex] = minusI * (k.x / kLength) * frequencySpectrum_[pixelIndex];
-                displacementSpectrumZ_[pixelIndex] = minusI * (k.y / kLength) * frequencySpectrum_[pixelIndex];
-            } else {
-                displacementSpectrumX_[pixelIndex] = Complex(0.0f, 0.0f);
-                displacementSpectrumZ_[pixelIndex] = Complex(0.0f, 0.0f);
+    for (int cascadeIndex = 0; cascadeIndex < settings_.cascadeCount; ++cascadeIndex) {
+        CascadeState& cascade = cascades_[cascadeIndex];
+        for (int y = 0; y < resolution_; ++y) {
+            for (int x = 0; x < resolution_; ++x) {
+                const glm::vec2 k = waveVector(x, y, cascade.patchLength);
+                const float omega = std::sqrt(kGravity * glm::length(k)) * cascade.speedMultiplier;
+                const Complex phase(std::cos(omega * timeSeconds), std::sin(omega * timeSeconds));
+                const int pixelIndex = index(x, y);
+                cascade.frequencySpectrum[pixelIndex] = cascade.initialSpectrum[pixelIndex] * phase
+                                                       + cascade.initialSpectrumConjugate[pixelIndex] * std::conj(phase);
+
+                const float kLength = glm::length(k);
+                if (kLength > 0.00001f) {
+                    const Complex minusI(0.0f, -1.0f);
+                    cascade.displacementSpectrumX[pixelIndex] = minusI * (k.x / kLength) * cascade.frequencySpectrum[pixelIndex];
+                    cascade.displacementSpectrumZ[pixelIndex] = minusI * (k.y / kLength) * cascade.frequencySpectrum[pixelIndex];
+                } else {
+                    cascade.displacementSpectrumX[pixelIndex] = Complex(0.0f, 0.0f);
+                    cascade.displacementSpectrumZ[pixelIndex] = Complex(0.0f, 0.0f);
+                }
+            }
+        }
+
+        cascade.spatialHeights = cascade.frequencySpectrum;
+        cascade.spatialDisplacementX = cascade.displacementSpectrumX;
+        cascade.spatialDisplacementZ = cascade.displacementSpectrumZ;
+        inverseFft2D(cascade.spatialHeights);
+        inverseFft2D(cascade.spatialDisplacementX);
+        inverseFft2D(cascade.spatialDisplacementZ);
+
+        for (int y = 0; y < resolution_; ++y) {
+            for (int x = 0; x < resolution_; ++x) {
+                const int pixelIndex = index(x, y);
+                const float checkerboardSign = ((x + y) & 1) != 0 ? -1.0f : 1.0f;
+                const float height = cascade.spatialHeights[pixelIndex].real()
+                                   * checkerboardSign
+                                   * settings_.heightScale
+                                   * cascade.heightWeight;
+                heightPixels_[pixelIndex] += height;
+
+                const float displacementX = cascade.spatialDisplacementX[pixelIndex].real()
+                                          * checkerboardSign
+                                          * settings_.heightScale
+                                          * 0.35f
+                                          * cascade.displacementWeight;
+                const float displacementZ = cascade.spatialDisplacementZ[pixelIndex].real()
+                                          * checkerboardSign
+                                          * settings_.heightScale
+                                          * 0.35f
+                                          * cascade.displacementWeight;
+                displacementPixels_[pixelIndex] += glm::vec2(displacementX, displacementZ);
             }
         }
     }
 
-    spatialHeights_ = frequencySpectrum_;
-    spatialDisplacementX_ = displacementSpectrumX_;
-    spatialDisplacementZ_ = displacementSpectrumZ_;
-    inverseFft2D(spatialHeights_);
-    inverseFft2D(spatialDisplacementX_);
-    inverseFft2D(spatialDisplacementZ_);
-
     for (int y = 0; y < resolution_; ++y) {
         for (int x = 0; x < resolution_; ++x) {
             const int pixelIndex = index(x, y);
-            const float checkerboardSign = ((x + y) & 1) != 0 ? -1.0f : 1.0f;
-            float height = spatialHeights_[index(x, y)].real();
-            height *= checkerboardSign;
-            height *= settings_.heightScale;
-            heightPixels_[pixelIndex] = glm::clamp(height, -settings_.heightLimit, settings_.heightLimit);
-
-            const float displacementX = spatialDisplacementX_[pixelIndex].real() * checkerboardSign * settings_.heightScale * 0.35f;
-            const float displacementZ = spatialDisplacementZ_[pixelIndex].real() * checkerboardSign * settings_.heightScale * 0.35f;
-            displacementPixels_[pixelIndex] = glm::vec2(displacementX, displacementZ);
+            heightPixels_[pixelIndex] = glm::clamp(heightPixels_[pixelIndex], -settings_.heightLimit, settings_.heightLimit);
         }
     }
 

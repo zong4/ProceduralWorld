@@ -11,6 +11,8 @@
 #include "FlyCamera.h"
 #include "ShaderProgram.h"
 
+class PlanetProceduralData;
+
 enum class PlanetRenderMode : int {
     Shaded = 0,
     Unshaded = 1,
@@ -25,51 +27,80 @@ enum class PlanetWireMode : int {
 };
 
 struct PlanetRenderSettings {
-    float planetRadius = 20.0f;
+    float planetRadius = 200.0f;
     float seaLevelOffset = 0.0f;
     float tessellationMax = 1.0f;
     float tessellationMin = 1.0f;
-    float tessellationNearDistance = 8.0f;
-    float tessellationFarDistance = 90.0f;
+    float tessellationNearDistance = 80.0f;
+    float tessellationFarDistance = 900.0f;
     float oceanTessellationMax = 1.0f;
     float oceanTessellationMin = 1.0f;
-    float oceanTessellationNearDistance = 4.0f;
-    float oceanTessellationFarDistance = 55.0f;
-    float terrainHeightScale = 1.2f;
-    float terrainNoiseScale = 2.8f;
+    float oceanTessellationNearDistance = 40.0f;
+    float oceanTessellationFarDistance = 550.0f;
+    float terrainHeightScale = 12.0f;
+    float terrainNoiseScale = 0.5f;
     float regionalDetailStrength = 0.55f;
     float microDetailStrength = 0.22f;
-    float regionalDetailStartAltitude = 18.0f;
-    float regionalDetailEndAltitude = 120.0f;
-    float microDetailStartAltitude = 6.0f;
-    float microDetailEndAltitude = 42.0f;
+    float regionalDetailStartAltitude = 180.0f;
+    float regionalDetailEndAltitude = 1200.0f;
+    float microDetailStartAltitude = 60.0f;
+    float microDetailEndAltitude = 420.0f;
     float coarseGridLineWidth = 1.6f;
-    float oceanAlpha = 0.90f;
-    float oceanFresnelStrength = 1.20f;
+    glm::vec3 skyColor = glm::vec3(0.0f);
+    float fogDensity = 0.0f;
+    bool renderAtmosphere = true;
+    float atmosphereHeight = 28.0f;
+    float atmosphereDensity = 1.0f;
+    float atmosphereRayleighStrength = 1.25f;
+    float atmosphereMieStrength = 0.32f;
+    float atmosphereMieAnisotropy = 0.76f;
+    float atmosphereExposure = 1.15f;
+    glm::vec3 atmosphereRayleighColor = glm::vec3(0.32f, 0.56f, 1.0f);
+    glm::vec3 atmosphereMieColor = glm::vec3(1.0f, 0.72f, 0.42f);
+    float cameraNearPlane = 0.20f;
+    float cameraFarPlane = 5000.0f;
+    float oceanAlpha = 0.96f;
+    float oceanShallowAlpha = 0.48f;
+    float oceanDeepAlpha = 0.98f;
+    float oceanFresnelStrength = 1.30f;
     float oceanDistortionStrength = 0.025f;
-    float oceanDepthRange = 8.0f;
-    float oceanWaveAmplitude = 0.008f;
-    float oceanChoppiness = 0.018f;
-    float oceanWaveTileScale = 18.0f;
-    float oceanWaveNormalStrength = 0.22f;
-    float oceanDetailNormalStrength = 0.24f;
-    float oceanDetailNormalScale = 42.0f;
-    float oceanDetailFadeDistance = 32.0f;
-    float oceanSpecularStrength = 0.55f;
-    float oceanSpecularSharpness = 1.0f;
-    float oceanFoamAmount = 0.45f;
-    float oceanFoamThreshold = 0.72f;
-    float oceanFoamSoftness = 0.06f;
-    float oceanFoamScale = 2.0f;
+    float oceanDepthRange = 4.0f;
+    float oceanShallowDepthRange = 0.45f;
+    float oceanDepthScale = 6.0f;
+    float oceanTintStrength = 0.02f;
+    float oceanWaveAmplitude = 0.0f;
+    float oceanChoppiness = 0.0f;
+    float oceanWaveTileScale = 4.0f;
+    float oceanWaveNormalStrength = 1.0f;
+    float oceanDetailNormalStrength = 0.22f;
+    float oceanDetailNormalScale = 58.0f;
+    float oceanDetailFadeDistance = 1080.0f;
+    float oceanSpecularStrength = 0.35f;
+    float oceanSpecularSharpness = 1.40f;
+    float oceanRoughness = 0.29f;
+    float oceanFoamRoughness = 0.72f;
+    float oceanSSSStrength = 0.26f;
+    float oceanSSSPower = 3.0f;
+    float oceanFoamAmount = 0.42f;
+    float oceanFoamThreshold = 0.64f;
+    float oceanFoamSoftness = 0.075f;
+    float oceanFoamScale = 0.20f;
     float oceanFoamNoiseStrength = 0.09f;
-    float oceanFoamCrestPower = 3.2f;
-    float oceanFoamSlopeWeight = 0.45f;
-    float oceanFoamFoldWeight = 0.35f;
-    float oceanFoamFadeDistance = 80.0f;
-    glm::vec3 oceanShallowColor = glm::vec3(0.18f, 0.58f, 0.78f);
+    float oceanFoamCrestPower = 2.4f;
+    float oceanFoamSlopeWeight = 0.42f;
+    float oceanFoamFoldWeight = 0.32f;
+    float oceanFoamFadeDistance = 800.0f;
+    float oceanFoamBrightness = 1.45f;
+    float oceanShoreFoamStrength = 0.35f;
+    float oceanShoreFoamWidth = 0.45f;
+    float oceanShoreBlendWidth = 0.32f;
+    bool renderOceanReflectionRefraction = true;
+    float oceanReflectionResolutionScale = 0.5f;
+    glm::vec3 oceanShallowColor = glm::vec3(0.0f, 0.20f, 0.31f);
     glm::vec3 oceanDeepColor = glm::vec3(0.01f, 0.06f, 0.18f);
     glm::vec3 oceanFoamColor = glm::vec3(0.92f, 0.97f, 1.0f);
-    PlanetRenderMode renderMode = PlanetRenderMode::Unshaded;
+    glm::vec3 oceanSSSColor = glm::vec3(0.18f, 0.82f, 0.78f);
+    PlanetRenderMode renderMode = PlanetRenderMode::Shaded;
     PlanetWireMode wireMode = PlanetWireMode::None;
     bool renderOcean = true;
 };
@@ -85,10 +116,22 @@ public:
         std::size_t emittedPatches = 0;
     };
 
+    struct PerformanceStats {
+        float totalMs = 0.0f;
+        float cullingMs = 0.0f;
+        float fftMs = 0.0f;
+        float reflectionRefractionMs = 0.0f;
+        float terrainMs = 0.0f;
+        float oceanMs = 0.0f;
+        float atmosphereMs = 0.0f;
+        float wireMs = 0.0f;
+    };
+
     PlanetRenderer();
 
     void initialize();
     void setPlanetRotation(float yawDegrees, float pitchDegrees);
+    void setProceduralData(const PlanetProceduralData& proceduralData);
 
     PlanetRenderSettings& settings();
     const PlanetRenderSettings& settings() const;
@@ -98,6 +141,7 @@ public:
     const char* currentModeLabel() const;
     std::size_t visiblePatchCount() const;
     const CullingStats& cullingStats() const;
+    const PerformanceStats& performanceStats() const;
 
 private:
     struct FaceBasis {
@@ -133,6 +177,16 @@ private:
         void draw() const;
     };
 
+    struct SphereMesh {
+        GLuint vertexArrayObject = 0;
+        GLuint vertexBufferObject = 0;
+        GLuint indexBufferObject = 0;
+        GLsizei indexCount = 0;
+
+        void buildSphere(int longitudeSegments, int latitudeSegments);
+        void draw() const;
+    };
+
     struct RenderTarget {
         GLuint framebufferObject = 0;
         GLuint colorTexture = 0;
@@ -153,15 +207,22 @@ private:
 
     PlanetRenderSettings settings_;
     TerrainMesh terrainMesh_;
+    SphereMesh atmosphereMesh_;
     RenderTarget reflectionTarget_;
     RenderTarget refractionTarget_;
     FFTOcean fftOcean_;
+    GLuint proceduralHeightTexture_ = 0;
+    GLuint proceduralWaterDepthTexture_ = 0;
+    GLuint proceduralShoreMaskTexture_ = 0;
+    int proceduralDataResolution_ = 0;
+    bool hasProceduralOceanData_ = false;
     ShaderProgram terrainProgram_;
     ShaderProgram oceanProgram_;
     ShaderProgram wireOverlayProgram_;
     ShaderProgram coarseGridProgram_;
     ShaderProgram oceanWireOverlayProgram_;
     ShaderProgram oceanCoarseGridProgram_;
+    ShaderProgram atmosphereProgram_;
     glm::mat4 modelMatrix_;
     glm::vec3 lightDirection_;
     float currentTimeSeconds_ = 0.0f;
@@ -169,6 +230,7 @@ private:
     float planetPitchDegrees_ = 0.0f;
     std::vector<RenderPatch> visiblePatches_;
     CullingStats lastCullingStats_;
+    PerformanceStats lastPerformanceStats_;
     bool initialized_ = false;
 
     static glm::vec3 cubeSphereDirection(const FaceBasis& face, const glm::vec2& uv);
@@ -211,6 +273,7 @@ private:
                          float clipPlaneY,
                          bool keepAboveClipPlane);
     void drawOceanPass(const FlyCamera& camera, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix);
+    void drawAtmospherePass(const FlyCamera& camera, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix);
     void drawReflectionRefractionPasses(const FlyCamera& camera,
                                         const glm::mat4& viewMatrix,
                                         const glm::mat4& projectionMatrix,

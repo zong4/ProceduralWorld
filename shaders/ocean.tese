@@ -6,6 +6,7 @@ in vec2 tcTexCoord[];
 
 out vec3 teWorldPos;
 out vec3 teNormal;
+out vec3 teSphereDir;
 out vec2 teTexCoord;
 out vec2 teWaveUv;
 out vec2 teFoamCoord;
@@ -55,9 +56,9 @@ void main()
     float heightSlope = length(vec2(heightRight - normalizedWaveHeight, heightUp - normalizedWaveHeight));
     float waveHeight = normalizedWaveHeight * oceanWaveAmplitude;
     teWaveHeight = waveHeight;
-    float crestByHeight = smoothstep(0.58, 0.92, normalizedWaveHeight * 0.5 + 0.5);
-    float crestBySlope = smoothstep(0.015, 0.085, heightSlope);
-    teWaveCrest = clamp(crestByHeight * 0.72 + crestBySlope * 0.36, 0.0, 1.0);
+    float crestByHeight = smoothstep(0.60, 0.90, normalizedWaveHeight * 0.5 + 0.5);
+    float crestBySlope = smoothstep(0.026, 0.095, heightSlope);
+    teWaveCrest = clamp(crestByHeight * (0.82 + crestBySlope * 0.36), 0.0, 1.0);
     vec3 localTangent = normalize(faceAxisU - sphereDir * dot(faceAxisU, sphereDir));
     vec3 localBitangent = normalize(cross(sphereDir, localTangent));
     if (dot(localBitangent, faceAxisV) < 0.0) {
@@ -71,6 +72,7 @@ void main()
 
     teWorldPos = worldPos.xyz;
     teNormal = normalize(mat3(transpose(inverse(model))) * sphereDir);
+    teSphereDir = sphereDir;
     teTangent = normalize(mat3(model) * localTangent);
     teBitangent = normalize(mat3(model) * localBitangent);
     vec4 relativeWorldPos = vec4(worldPos.xyz - cameraPos, 1.0);

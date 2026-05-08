@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <complex>
 #include <vector>
 
@@ -18,6 +19,12 @@ public:
         float choppiness = 0.65f;
         float heightScale = 420.0f;
         float heightLimit = 1.0f;
+        int cascadeCount = 3;
+        std::array<float, 3> cascadePatchLengthMultipliers = { 2.2f, 0.85f, 0.28f };
+        std::array<float, 3> cascadeAmplitudeMultipliers = { 0.85f, 0.38f, 0.13f };
+        std::array<float, 3> cascadeHeightWeights = { 0.72f, 0.30f, 0.12f };
+        std::array<float, 3> cascadeDisplacementWeights = { 0.95f, 0.45f, 0.16f };
+        std::array<float, 3> cascadeSpeedMultipliers = { 0.85f, 1.08f, 1.35f };
     };
 
     FFTOcean() = default;
@@ -38,6 +45,23 @@ public:
 
 private:
     using Complex = std::complex<float>;
+    static constexpr int kMaxCascadeCount = 3;
+
+    struct CascadeState {
+        float patchLength = 48.0f;
+        float spectrumAmplitude = 0.0007f;
+        float heightWeight = 1.0f;
+        float displacementWeight = 1.0f;
+        float speedMultiplier = 1.0f;
+        std::vector<Complex> initialSpectrum;
+        std::vector<Complex> initialSpectrumConjugate;
+        std::vector<Complex> frequencySpectrum;
+        std::vector<Complex> displacementSpectrumX;
+        std::vector<Complex> displacementSpectrumZ;
+        std::vector<Complex> spatialHeights;
+        std::vector<Complex> spatialDisplacementX;
+        std::vector<Complex> spatialDisplacementZ;
+    };
 
     Settings settings_;
     int resolution_ = 0;
@@ -48,14 +72,7 @@ private:
     GLuint detailNormalTextureA_ = 0;
     GLuint detailNormalTextureB_ = 0;
     GLuint foamNoiseTexture_ = 0;
-    std::vector<Complex> initialSpectrum_;
-    std::vector<Complex> initialSpectrumConjugate_;
-    std::vector<Complex> frequencySpectrum_;
-    std::vector<Complex> displacementSpectrumX_;
-    std::vector<Complex> displacementSpectrumZ_;
-    std::vector<Complex> spatialHeights_;
-    std::vector<Complex> spatialDisplacementX_;
-    std::vector<Complex> spatialDisplacementZ_;
+    std::array<CascadeState, kMaxCascadeCount> cascades_;
     std::vector<float> heightPixels_;
     std::vector<glm::vec3> normalPixels_;
     std::vector<glm::vec2> displacementPixels_;
@@ -63,9 +80,11 @@ private:
     bool initialized_ = false;
 
     int index(int x, int y) const;
-    glm::vec2 waveVector(int x, int y) const;
-    float phillipsSpectrum(const glm::vec2& k) const;
+    glm::vec2 waveVector(int x, int y, float patchLength) const;
+    float phillipsSpectrum(const glm::vec2& k, float spectrumAmplitude, float windSpeed) const;
+    void configureCascades();
     void buildInitialSpectrum();
+    void buildInitialSpectrum(CascadeState& cascade, int seedOffset);
     void buildStaticDetailTextures();
     void inverseFft2D(std::vector<Complex>& data) const;
     void fft1D(std::vector<Complex>& data, bool inverse) const;
