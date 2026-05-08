@@ -24,6 +24,9 @@ namespace
 {
 constexpr int kWindowWidth = 1280;
 constexpr int kWindowHeight = 720;
+constexpr float kLockedCameraFov = 50.0f;
+constexpr float kOrbitAngularSpeedDegrees = 42.0f;
+constexpr float kPlanetAutoSpinDegreesPerSecond = 3.0f;
 
 enum class WorkflowStage {
     ProceduralSetup,
@@ -53,6 +56,9 @@ struct ApplicationState {
     bool showDebugPanel = true;
     float planetYawDegrees = 0.0f;
     float planetPitchDegrees = 0.0f;
+    float cameraOrbitYawDegrees = 0.0f;
+    float cameraOrbitPitchDegrees = 12.0f;
+    float cameraOrbitDistance = 420.0f;
 };
 
 ApplicationState* getState(GLFWwindow* window)
@@ -66,12 +72,75 @@ void copyProceduralSettings(PlanetRenderSettings& destination, const PlanetRende
     destination.seaLevelOffset = source.seaLevelOffset;
     destination.terrainHeightScale = source.terrainHeightScale;
     destination.terrainNoiseScale = source.terrainNoiseScale;
+    destination.mountainMaskStrength = source.mountainMaskStrength;
+    destination.mountainMaskScale = source.mountainMaskScale;
+    destination.mountainRidgeSharpness = source.mountainRidgeSharpness;
     destination.regionalDetailStrength = source.regionalDetailStrength;
     destination.microDetailStrength = source.microDetailStrength;
     destination.regionalDetailStartAltitude = source.regionalDetailStartAltitude;
     destination.regionalDetailEndAltitude = source.regionalDetailEndAltitude;
     destination.microDetailStartAltitude = source.microDetailStartAltitude;
     destination.microDetailEndAltitude = source.microDetailEndAltitude;
+    destination.terrainLowlandColor = source.terrainLowlandColor;
+    destination.terrainForestColor = source.terrainForestColor;
+    destination.terrainDesertColor = source.terrainDesertColor;
+    destination.terrainRockColor = source.terrainRockColor;
+    destination.terrainBeachColor = source.terrainBeachColor;
+    destination.terrainSnowColor = source.terrainSnowColor;
+    destination.terrainBeachWidth = source.terrainBeachWidth;
+    destination.terrainShoreLift = source.terrainShoreLift;
+    destination.terrainRockSlopeStart = source.terrainRockSlopeStart;
+    destination.terrainRockSlopeEnd = source.terrainRockSlopeEnd;
+    destination.terrainSnowStart = source.terrainSnowStart;
+    destination.terrainSnowEnd = source.terrainSnowEnd;
+    destination.terrainMaterialNoiseScale = source.terrainMaterialNoiseScale;
+    destination.terrainMaterialNoiseStrength = source.terrainMaterialNoiseStrength;
+}
+
+float minCameraOrbitDistance(const PlanetRenderSettings& settings)
+{
+    return settings.planetRadius + glm::max(settings.terrainHeightScale, 1.0f) + 4.0f;
+}
+
+float maxCameraOrbitDistance(const PlanetRenderSettings& settings)
+{
+    return glm::max(settings.planetRadius * 8.0f, minCameraOrbitDistance(settings) + 10.0f);
+}
+
+void updateOrbitCamera(ApplicationState& state, const PlanetRenderSettings& settings)
+{
+    state.camera.fieldOfView = kLockedCameraFov;
+    state.cameraOrbitPitchDegrees = glm::clamp(state.cameraOrbitPitchDegrees, -82.0f, 82.0f);
+    state.cameraOrbitDistance = glm::clamp(
+        state.cameraOrbitDistance,
+        minCameraOrbitDistance(settings),
+        maxCameraOrbitDistance(settings)
+    );
+
+    const float yaw = glm::radians(state.cameraOrbitYawDegrees);
+    const float pitch = glm::radians(state.cameraOrbitPitchDegrees);
+    const float cp = glm::cos(pitch);
+    state.camera.position = glm::vec3(
+        glm::sin(yaw) * cp,
+        glm::sin(pitch),
+        glm::cos(yaw) * cp
+    ) * state.cameraOrbitDistance;
+    state.camera.lookAt(glm::vec3(0.0f));
+}
+
+void setOrbitFromCameraPosition(ApplicationState& state, const PlanetRenderSettings& settings)
+{
+    state.cameraOrbitDistance = glm::clamp(
+        glm::length(state.camera.position),
+        minCameraOrbitDistance(settings),
+        maxCameraOrbitDistance(settings)
+    );
+    if (state.cameraOrbitDistance > 0.001f) {
+        const glm::vec3 direction = glm::normalize(state.camera.position);
+        state.cameraOrbitPitchDegrees = glm::degrees(glm::asin(glm::clamp(direction.y, -1.0f, 1.0f)));
+        state.cameraOrbitYawDegrees = glm::degrees(glm::atan(direction.x, direction.z));
+    }
+    updateOrbitCamera(state, settings);
 }
 
 void startPlanetGeneration(ApplicationState& state)
@@ -92,7 +161,7 @@ void finishPlanetGeneration(ApplicationState& state)
     state.workflowStage = WorkflowStage::Render;
 
     state.camera.position = glm::vec3(0.0f, generatedSettings.planetRadius * 0.45f, generatedSettings.planetRadius * 2.10f);
-    state.camera.fieldOfView = glm::clamp(state.camera.fieldOfView, 25.0f, 70.0f);
+    setOrbitFromCameraPosition(state, generatedSettings);
 }
 
 void returnToProceduralSetup(ApplicationState& state)
@@ -112,7 +181,16 @@ void onMouseScrolled(GLFWwindow* window, double, double yOffset)
 {
     ImGui_ImplGlfw_ScrollCallback(window, 0.0, yOffset);
     if (ImGui::GetIO().WantCaptureMouse) return;
-    getState(window)->camera.zoom(static_cast<float>(yOffset) * 2.0f);
+
+    ApplicationState* state = getState(window);
+    if (state->workflowStage != WorkflowStage::Render) {
+        return;
+    }
+
+    const PlanetRenderSettings& settings = state->renderer.settings();
+    const float scrollStep = glm::max(state->cameraOrbitDistance * 0.09f, settings.planetRadius * 0.035f);
+    state->cameraOrbitDistance -= static_cast<float>(yOffset) * scrollStep;
+    updateOrbitCamera(*state, settings);
 }
 
 void onMouseMoved(GLFWwindow* window, double xPosition, double yPosition)
@@ -151,22 +229,7 @@ void onMouseMoved(GLFWwindow* window, double xPosition, double yPosition)
         state->firstLeftMouseSample = true;
     }
 
-    if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS) {
-        if (state->firstRightMouseSample) {
-            state->lastRightMouseX = static_cast<float>(xPosition);
-            state->lastRightMouseY = static_cast<float>(yPosition);
-            state->firstRightMouseSample = false;
-        }
-
-        const float deltaX = static_cast<float>(xPosition) - state->lastRightMouseX;
-        const float deltaY = state->lastRightMouseY - static_cast<float>(yPosition);
-        state->lastRightMouseX = static_cast<float>(xPosition);
-        state->lastRightMouseY = static_cast<float>(yPosition);
-
-        state->camera.rotate(deltaX, deltaY);
-    } else {
-        state->firstRightMouseSample = true;
-    }
+    state->firstRightMouseSample = true;
 }
 
 void onMouseButtonChanged(GLFWwindow* window, int button, int action, int modifiers)
@@ -216,22 +279,28 @@ void handleKeyboardMovement(GLFWwindow* window, ApplicationState& state)
     if (state.workflowStage != WorkflowStage::Render) return;
     if (ImGui::GetIO().WantCaptureKeyboard) return;
 
-    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) state.camera.move(FlyCamera::MovementDirection::Forward, state.deltaSeconds);
-    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) state.camera.move(FlyCamera::MovementDirection::Backward, state.deltaSeconds);
-    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) state.camera.move(FlyCamera::MovementDirection::Left, state.deltaSeconds);
-    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) state.camera.move(FlyCamera::MovementDirection::Right, state.deltaSeconds);
-    if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) state.camera.move(FlyCamera::MovementDirection::Down, state.deltaSeconds);
-    if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) state.camera.move(FlyCamera::MovementDirection::Up, state.deltaSeconds);
+    const PlanetRenderSettings& settings = state.renderer.settings();
+    const float orbitStep = kOrbitAngularSpeedDegrees * state.deltaSeconds;
+    const float distanceStep = glm::max(state.cameraOrbitDistance * 0.90f, settings.planetRadius * 0.40f) * state.deltaSeconds;
+
+    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) state.cameraOrbitYawDegrees -= orbitStep;
+    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) state.cameraOrbitYawDegrees += orbitStep;
+    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) state.cameraOrbitDistance -= distanceStep;
+    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) state.cameraOrbitDistance += distanceStep;
+    if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) state.cameraOrbitPitchDegrees -= orbitStep;
+    if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) state.cameraOrbitPitchDegrees += orbitStep;
+
+    updateOrbitCamera(state, settings);
 }
 
 void printControls()
 {
     std::cout << "\n=== Procedural Planet Controls ===\n";
-    std::cout << "  W/A/S/D   : move camera\n";
-    std::cout << "  Q/E       : move up/down\n";
+    std::cout << "  W/S       : dolly camera toward/away from planet\n";
+    std::cout << "  A/D       : orbit camera around planet\n";
+    std::cout << "  Q/E       : orbit camera latitude\n";
     std::cout << "  LMB+drag  : rotate planet\n";
-    std::cout << "  RMB+drag  : look around\n";
-    std::cout << "  Scroll    : zoom FOV\n";
+    std::cout << "  Scroll    : dolly camera toward/away from planet\n";
     std::cout << "  1         : cycle render mode\n";
     std::cout << "  2         : cycle wire overlay\n";
     std::cout << "  Tab       : toggle ImGui panel\n";
@@ -255,6 +324,9 @@ void drawProceduralPanel(ApplicationState& state)
     ImGui::SliderFloat("Sea Level", &settings.seaLevelOffset, -1.5f, 1.5f, "%.2f");
     ImGui::SliderFloat("Height Scale", &settings.terrainHeightScale, 0.0f, 80.0f, "%.2f");
     ImGui::SliderFloat("Noise Scale", &settings.terrainNoiseScale, 0.2f, 10.0f, "%.2f");
+    ImGui::SliderFloat("Mountain Mask", &settings.mountainMaskStrength, 0.0f, 1.5f, "%.2f");
+    ImGui::SliderFloat("Mountain Scale", &settings.mountainMaskScale, 0.5f, 8.0f, "%.2f");
+    ImGui::SliderFloat("Ridge Sharpness", &settings.mountainRidgeSharpness, 1.0f, 6.0f, "%.2f");
     ImGui::SliderFloat("Regional Detail", &settings.regionalDetailStrength, 0.0f, 1.2f, "%.2f");
     ImGui::SliderFloat("Micro Detail", &settings.microDetailStrength, 0.0f, 0.8f, "%.2f");
     ImGui::SliderInt("Face Resolution", &state.generationFaceResolution, 32, 256);
@@ -264,6 +336,23 @@ void drawProceduralPanel(ApplicationState& state)
         ImGui::SliderFloat("Regional End", &settings.regionalDetailEndAltitude, settings.regionalDetailStartAltitude + 10.0f, 2400.0f, "%.1f");
         ImGui::SliderFloat("Micro Start", &settings.microDetailStartAltitude, 0.0f, 300.0f, "%.1f");
         ImGui::SliderFloat("Micro End", &settings.microDetailEndAltitude, settings.microDetailStartAltitude + 10.0f, 1200.0f, "%.1f");
+    }
+
+    if (ImGui::CollapsingHeader("Terrain Materials")) {
+        ImGui::ColorEdit3("Lowland Color", &settings.terrainLowlandColor.x);
+        ImGui::ColorEdit3("Forest Color", &settings.terrainForestColor.x);
+        ImGui::ColorEdit3("Desert Color", &settings.terrainDesertColor.x);
+        ImGui::ColorEdit3("Rock Color", &settings.terrainRockColor.x);
+        ImGui::ColorEdit3("Beach Color", &settings.terrainBeachColor.x);
+        ImGui::ColorEdit3("Snow Color", &settings.terrainSnowColor.x);
+        ImGui::SliderFloat("Beach Width", &settings.terrainBeachWidth, 0.005f, 0.20f, "%.3f");
+        ImGui::SliderFloat("Shore Lift", &settings.terrainShoreLift, 0.0f, 0.12f, "%.3f");
+        ImGui::SliderFloat("Rock Slope Start", &settings.terrainRockSlopeStart, 0.0f, 0.8f, "%.2f");
+        ImGui::SliderFloat("Rock Slope End", &settings.terrainRockSlopeEnd, settings.terrainRockSlopeStart + 0.01f, 1.0f, "%.2f");
+        ImGui::SliderFloat("Snow Start", &settings.terrainSnowStart, 0.2f, 1.0f, "%.2f");
+        ImGui::SliderFloat("Snow End", &settings.terrainSnowEnd, settings.terrainSnowStart + 0.01f, 1.2f, "%.2f");
+        ImGui::SliderFloat("Material Noise Scale", &settings.terrainMaterialNoiseScale, 0.002f, 0.20f, "%.3f");
+        ImGui::SliderFloat("Material Noise", &settings.terrainMaterialNoiseStrength, 0.0f, 0.4f, "%.2f");
     }
 
     ImGui::Spacing();
@@ -333,8 +422,14 @@ void drawRenderPanel(ApplicationState& state)
         const PlanetRenderer::PerformanceStats& perf = state.renderer.performanceStats();
         ImGui::Text("CPU submit timings, not blocking GPU");
         ImGui::Text("Total: %.2f ms", perf.totalMs);
-        ImGui::Text("Culling: %.2f | FFT: %.2f", perf.cullingMs, perf.fftMs);
+        ImGui::Text("Culling: %.2f | FFT: %.2f %s", perf.cullingMs, perf.fftMs, perf.fftUpdated ? "(updated)" : "(reused)");
+        ImGui::Text("FFT cascades: %d | stride: %d frame(s)", perf.fftCascadeCount, perf.fftFrameStride);
         ImGui::Text("Reflection/Refraction: %.2f", perf.reflectionRefractionMs);
+        ImGui::Text("Reflection: %s | Refraction: %s",
+                    perf.reflectionEnabled ? (perf.reflectionUpdated ? "updated" : "reused") : "off",
+                    perf.refractionEnabled ? (perf.refractionUpdated ? "updated" : "reused") : "off");
+        ImGui::Text("Refl weight: %.2f | Refr weight: %.2f", perf.reflectionWeight, perf.refractionWeight);
+        ImGui::Text("Ocean patches: %zu / %zu", perf.oceanPatchCount, state.renderer.visiblePatchCount());
         ImGui::Text("Terrain: %.2f | Ocean: %.2f", perf.terrainMs, perf.oceanMs);
         ImGui::Text("Atmosphere: %.2f | Wire: %.2f", perf.atmosphereMs, perf.wireMs);
     }
@@ -364,7 +459,6 @@ void drawRenderPanel(ApplicationState& state)
         ImGui::SliderFloat("Opacity Limit", &settings.oceanAlpha, 0.05f, 1.0f, "%.2f");
         ImGui::ColorEdit3("Shallow Color", &settings.oceanShallowColor.x);
         ImGui::ColorEdit3("Deep Color", &settings.oceanDeepColor.x);
-        ImGui::ColorEdit3("Foam Color", &settings.oceanFoamColor.x);
         ImGui::ColorEdit3("SSS Color", &settings.oceanSSSColor.x);
     }
 
@@ -373,6 +467,8 @@ void drawRenderPanel(ApplicationState& state)
         ImGui::SliderFloat("Choppiness", &settings.oceanChoppiness, 0.0f, 0.80f, "%.3f");
         ImGui::SliderFloat("Wave Tile Scale", &settings.oceanWaveTileScale, 4.0f, 28.0f, "%.1f");
         ImGui::SliderFloat("FFT Normal", &settings.oceanWaveNormalStrength, 0.0f, 1.0f, "%.2f");
+        ImGui::SliderInt("FFT Cascades", &settings.oceanFftCascadeCount, 1, 3);
+        ImGui::SliderInt("FFT Frame Stride", &settings.oceanFftFrameStride, 1, 8);
     }
 
     if (ImGui::CollapsingHeader("Ocean Material", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -390,27 +486,21 @@ void drawRenderPanel(ApplicationState& state)
         ImGui::SliderFloat("Specular Strength", &settings.oceanSpecularStrength, 0.0f, 1.5f, "%.2f");
         ImGui::SliderFloat("Specular Sharpness", &settings.oceanSpecularSharpness, 0.5f, 4.0f, "%.2f");
         ImGui::SliderFloat("Water Roughness", &settings.oceanRoughness, 0.02f, 0.35f, "%.3f");
-        ImGui::SliderFloat("Foam Roughness", &settings.oceanFoamRoughness, 0.20f, 1.0f, "%.2f");
         ImGui::SliderFloat("SSS Strength", &settings.oceanSSSStrength, 0.0f, 0.8f, "%.2f");
         ImGui::SliderFloat("SSS Power", &settings.oceanSSSPower, 1.0f, 8.0f, "%.1f");
+        ImGui::SliderFloat("Shore Blend", &settings.oceanShoreBlendWidth, 0.01f, 0.5f, "%.3f");
     }
 
-    if (ImGui::CollapsingHeader("Ocean Foam", ImGuiTreeNodeFlags_DefaultOpen)) {
-        ImGui::SliderFloat("Foam Amount", &settings.oceanFoamAmount, 0.0f, 1.5f, "%.2f");
-        ImGui::SliderFloat("Foam Threshold", &settings.oceanFoamThreshold, 0.0f, 1.0f, "%.2f");
-        ImGui::SliderFloat("Foam Softness", &settings.oceanFoamSoftness, 0.02f, 0.30f, "%.2f");
-        ImGui::SliderFloat("Foam Scale", &settings.oceanFoamScale, 0.02f, 2.0f, "%.2f");
-        ImGui::SliderFloat("Foam Noise", &settings.oceanFoamNoiseStrength, 0.0f, 0.5f, "%.2f");
-        ImGui::SliderFloat("Crest Power", &settings.oceanFoamCrestPower, 1.0f, 5.0f, "%.1f");
-        ImGui::SliderFloat("Slope Weight", &settings.oceanFoamSlopeWeight, 0.0f, 1.5f, "%.2f");
-        ImGui::SliderFloat("Fold Weight", &settings.oceanFoamFoldWeight, 0.0f, 1.5f, "%.2f");
-        ImGui::SliderFloat("Foam Fade", &settings.oceanFoamFadeDistance, 100.0f, 2400.0f, "%.1f");
-        ImGui::SliderFloat("Foam Brightness", &settings.oceanFoamBrightness, 0.5f, 3.0f, "%.2f");
-        ImGui::SliderFloat("Shore Foam", &settings.oceanShoreFoamStrength, 0.0f, 2.0f, "%.2f");
-        ImGui::SliderFloat("Shore Width", &settings.oceanShoreFoamWidth, 0.02f, 3.0f, "%.2f");
-        ImGui::SliderFloat("Shore Blend", &settings.oceanShoreBlendWidth, 0.02f, 2.0f, "%.2f");
-        ImGui::Checkbox("Reflection Passes", &settings.renderOceanReflectionRefraction);
-        ImGui::SliderFloat("Reflection Scale", &settings.oceanReflectionResolutionScale, 0.25f, 1.0f, "%.2f");
+    if (ImGui::CollapsingHeader("Ocean Reflection", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::Checkbox("Planar Targets", &settings.renderOceanReflectionRefraction);
+        ImGui::Checkbox("Reflection", &settings.renderOceanReflection);
+        ImGui::Checkbox("Refraction", &settings.renderOceanRefraction);
+        ImGui::SliderFloat("Target Scale", &settings.oceanReflectionResolutionScale, 0.25f, 1.0f, "%.2f");
+        ImGui::SliderInt("Reflection Stride", &settings.oceanReflectionFrameStride, 1, 8);
+        ImGui::SliderInt("Refraction Stride", &settings.oceanRefractionFrameStride, 1, 8);
+        ImGui::Checkbox("Auto Distance LOD", &settings.oceanAutoDistanceLod);
+        ImGui::SliderFloat("Reflection Max Alt", &settings.oceanReflectionMaxAltitude, 40.0f, 2000.0f, "%.1f");
+        ImGui::SliderFloat("Refraction Max Alt", &settings.oceanRefractionMaxAltitude, 10.0f, 800.0f, "%.1f");
     }
 
     if (ImGui::CollapsingHeader("Rendering Advanced")) {
@@ -428,7 +518,8 @@ void drawRenderPanel(ApplicationState& state)
 
     ImGui::Separator();
     ImGui::Text("Camera");
-    ImGui::SliderFloat("Move Speed", &state.camera.movementSpeed, 10.0f, 400.0f, "%.1f");
+    ImGui::SliderFloat("Orbit Distance", &state.cameraOrbitDistance, minCameraOrbitDistance(settings), maxCameraOrbitDistance(settings), "%.1f");
+    ImGui::SliderFloat("Orbit Pitch", &state.cameraOrbitPitchDegrees, -82.0f, 82.0f, "%.1f");
     ImGui::SliderFloat("Mouse Sensitivity", &state.camera.mouseSensitivity, 0.02f, 0.5f, "%.2f");
     ImGui::Text("Position: %.1f %.1f %.1f", state.camera.position.x, state.camera.position.y, state.camera.position.z);
     ImGui::Text("Altitude: %.1f", glm::max(glm::length(state.camera.position) - settings.planetRadius, 0.0f));
@@ -542,6 +633,11 @@ int main()
         }
 
         handleKeyboardMovement(window, appState);
+        if (appState.workflowStage == WorkflowStage::Render) {
+            appState.planetYawDegrees += kPlanetAutoSpinDegreesPerSecond * appState.deltaSeconds;
+            appState.renderer.setPlanetRotation(appState.planetYawDegrees, appState.planetPitchDegrees);
+            updateOrbitCamera(appState, appState.renderer.settings());
+        }
 
         int framebufferWidth = 0;
         int framebufferHeight = 0;

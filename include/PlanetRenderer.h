@@ -39,12 +39,29 @@ struct PlanetRenderSettings {
     float oceanTessellationFarDistance = 550.0f;
     float terrainHeightScale = 12.0f;
     float terrainNoiseScale = 0.5f;
+    float mountainMaskStrength = 0.75f;
+    float mountainMaskScale = 2.4f;
+    float mountainRidgeSharpness = 2.8f;
     float regionalDetailStrength = 0.55f;
     float microDetailStrength = 0.22f;
     float regionalDetailStartAltitude = 180.0f;
     float regionalDetailEndAltitude = 1200.0f;
     float microDetailStartAltitude = 60.0f;
     float microDetailEndAltitude = 420.0f;
+    glm::vec3 terrainLowlandColor = glm::vec3(0.23f, 0.44f, 0.18f);
+    glm::vec3 terrainForestColor = glm::vec3(0.10f, 0.30f, 0.12f);
+    glm::vec3 terrainDesertColor = glm::vec3(0.70f, 0.57f, 0.32f);
+    glm::vec3 terrainRockColor = glm::vec3(0.42f, 0.38f, 0.32f);
+    glm::vec3 terrainBeachColor = glm::vec3(0.72f, 0.66f, 0.46f);
+    glm::vec3 terrainSnowColor = glm::vec3(0.90f, 0.94f, 0.98f);
+    float terrainBeachWidth = 0.045f;
+    float terrainShoreLift = 0.035f;
+    float terrainRockSlopeStart = 0.24f;
+    float terrainRockSlopeEnd = 0.62f;
+    float terrainSnowStart = 0.72f;
+    float terrainSnowEnd = 0.95f;
+    float terrainMaterialNoiseScale = 0.030f;
+    float terrainMaterialNoiseStrength = 0.14f;
     float coarseGridLineWidth = 1.6f;
     glm::vec3 skyColor = glm::vec3(0.0f);
     float fogDensity = 0.0f;
@@ -78,27 +95,22 @@ struct PlanetRenderSettings {
     float oceanSpecularStrength = 0.35f;
     float oceanSpecularSharpness = 1.40f;
     float oceanRoughness = 0.29f;
-    float oceanFoamRoughness = 0.72f;
     float oceanSSSStrength = 0.26f;
     float oceanSSSPower = 3.0f;
-    float oceanFoamAmount = 0.42f;
-    float oceanFoamThreshold = 0.64f;
-    float oceanFoamSoftness = 0.075f;
-    float oceanFoamScale = 0.20f;
-    float oceanFoamNoiseStrength = 0.09f;
-    float oceanFoamCrestPower = 2.4f;
-    float oceanFoamSlopeWeight = 0.42f;
-    float oceanFoamFoldWeight = 0.32f;
-    float oceanFoamFadeDistance = 800.0f;
-    float oceanFoamBrightness = 1.45f;
-    float oceanShoreFoamStrength = 0.35f;
-    float oceanShoreFoamWidth = 0.45f;
-    float oceanShoreBlendWidth = 0.32f;
+    float oceanShoreBlendWidth = 0.08f;
     bool renderOceanReflectionRefraction = true;
+    bool renderOceanReflection = true;
+    bool renderOceanRefraction = true;
     float oceanReflectionResolutionScale = 0.5f;
+    int oceanReflectionFrameStride = 2;
+    int oceanRefractionFrameStride = 2;
+    bool oceanAutoDistanceLod = true;
+    float oceanReflectionMaxAltitude = 1200.0f;
+    float oceanRefractionMaxAltitude = 450.0f;
+    int oceanFftCascadeCount = 1;
+    int oceanFftFrameStride = 4;
     glm::vec3 oceanShallowColor = glm::vec3(0.0f, 0.20f, 0.31f);
     glm::vec3 oceanDeepColor = glm::vec3(0.01f, 0.06f, 0.18f);
-    glm::vec3 oceanFoamColor = glm::vec3(0.92f, 0.97f, 1.0f);
     glm::vec3 oceanSSSColor = glm::vec3(0.18f, 0.82f, 0.78f);
     PlanetRenderMode renderMode = PlanetRenderMode::Shaded;
     PlanetWireMode wireMode = PlanetWireMode::None;
@@ -125,6 +137,18 @@ public:
         float oceanMs = 0.0f;
         float atmosphereMs = 0.0f;
         float wireMs = 0.0f;
+        bool fftUpdated = false;
+        int fftCascadeCount = 0;
+        int fftFrameStride = 1;
+        bool reflectionUpdated = false;
+        bool refractionUpdated = false;
+        bool reflectionEnabled = false;
+        bool refractionEnabled = false;
+        int reflectionFrameStride = 1;
+        int refractionFrameStride = 1;
+        float reflectionWeight = 0.0f;
+        float refractionWeight = 0.0f;
+        std::size_t oceanPatchCount = 0;
     };
 
     PlanetRenderer();
@@ -201,6 +225,7 @@ private:
     static constexpr int kNodeGridResolution = 8;
     static constexpr int kMinimumLodDepth = 1;
     static constexpr int kMaximumLodDepth = 6;
+    static constexpr int kShoreMinimumLodDepth = 4;
     static constexpr float kLodSplitPixels = 140.0f;
 
     static const std::array<FaceBasis, 6> kPlanetFaces;
@@ -214,6 +239,11 @@ private:
     GLuint proceduralHeightTexture_ = 0;
     GLuint proceduralWaterDepthTexture_ = 0;
     GLuint proceduralShoreMaskTexture_ = 0;
+    GLuint proceduralTemperatureTexture_ = 0;
+    GLuint proceduralMoistureTexture_ = 0;
+    GLuint proceduralBiomeTexture_ = 0;
+    std::vector<float> proceduralWaterDepthCpu_;
+    std::vector<float> proceduralShoreMaskCpu_;
     int proceduralDataResolution_ = 0;
     bool hasProceduralOceanData_ = false;
     ShaderProgram terrainProgram_;
@@ -226,11 +256,24 @@ private:
     glm::mat4 modelMatrix_;
     glm::vec3 lightDirection_;
     float currentTimeSeconds_ = 0.0f;
+    float currentDeltaSeconds_ = 1.0f / 60.0f;
+    float lastRenderTimeSeconds_ = 0.0f;
     float planetYawDegrees_ = 0.0f;
     float planetPitchDegrees_ = 0.0f;
     std::vector<RenderPatch> visiblePatches_;
+    std::vector<RenderPatch> visibleOceanPatches_;
     CullingStats lastCullingStats_;
     PerformanceStats lastPerformanceStats_;
+    int oceanFftFrameCounter_ = 0;
+    int oceanReflectionFrameCounter_ = 0;
+    int oceanRefractionFrameCounter_ = 0;
+    bool lastReflectionUpdated_ = false;
+    bool lastRefractionUpdated_ = false;
+    bool lastReflectionEnabled_ = false;
+    bool lastRefractionEnabled_ = false;
+    float oceanReflectionWeight_ = 1.0f;
+    float oceanRefractionWeight_ = 1.0f;
+    bool hasLastRenderTimeSeconds_ = false;
     bool initialized_ = false;
 
     static glm::vec3 cubeSphereDirection(const FaceBasis& face, const glm::vec2& uv);
@@ -243,6 +286,7 @@ private:
     float nodeWorldRadius(const FaceBasis& face, const QuadtreeNode& node) const;
     bool isNodeOutsideFrustum(const Frustum& frustum, const FaceBasis& face, const QuadtreeNode& node) const;
     bool isNodeHiddenByHorizon(const FlyCamera& camera, const FaceBasis& face, const QuadtreeNode& node) const;
+    bool nodeHasShoreline(int faceIndex, const QuadtreeNode& node) const;
     bool shouldSplitNode(const FlyCamera& camera, const FaceBasis& face, const QuadtreeNode& node, int framebufferHeight) const;
 
     void collectVisiblePatches(const FlyCamera& camera,
@@ -256,6 +300,8 @@ private:
     std::vector<RenderPatch> buildVisiblePatches(const FlyCamera& camera,
                                                  const Frustum& frustum,
                                                  int framebufferHeight);
+    std::vector<RenderPatch> buildVisibleOceanPatches() const;
+    bool patchHasOceanCoverage(const RenderPatch& patch) const;
 
     void applyCommonUniforms(const ShaderProgram& program,
                              const FlyCamera& camera,

@@ -36,6 +36,9 @@ void PlanetProceduralData::generate(const PlanetRenderSettings& settings, int fa
         faceData.height.assign(static_cast<std::size_t>(resolution_ * resolution_), 0.0f);
         faceData.waterDepth.assign(static_cast<std::size_t>(resolution_ * resolution_), 0.0f);
         faceData.shoreMask.assign(static_cast<std::size_t>(resolution_ * resolution_), 0.0f);
+        faceData.temperature.assign(static_cast<std::size_t>(resolution_ * resolution_), 0.0f);
+        faceData.moisture.assign(static_cast<std::size_t>(resolution_ * resolution_), 0.0f);
+        faceData.biomeId.assign(static_cast<std::size_t>(resolution_ * resolution_), 0.0f);
 
         for (int y = 0; y < resolution_; ++y) {
             for (int x = 0; x < resolution_; ++x) {
@@ -49,11 +52,17 @@ void PlanetProceduralData::generate(const PlanetRenderSettings& settings, int fa
                 const float signedWaterDepth = seaLevelRadius - terrainRadius;
                 const float waterDepth = std::max(signedWaterDepth, 0.0f);
                 const float shoreMask = 1.0f - glm::smoothstep(0.0f, shoreWidth, std::abs(signedWaterDepth));
+                const float temperatureValue = temperature(settings, sphereDir, normalizedHeight);
+                const float moistureValue = moisture(sphereDir, shoreMask);
+                const float biomeValue = classifyBiome(normalizedHeight, waterDepth, shoreMask, temperatureValue, moistureValue);
                 const std::size_t index = static_cast<std::size_t>(y * resolution_ + x);
 
                 faceData.height[index] = normalizedHeight;
                 faceData.waterDepth[index] = waterDepth;
                 faceData.shoreMask[index] = shoreMask;
+                faceData.temperature[index] = temperatureValue;
+                faceData.moisture[index] = moistureValue;
+                faceData.biomeId[index] = biomeValue;
 
                 minHeight_ = std::min(minHeight_, normalizedHeight);
                 maxHeight_ = std::max(maxHeight_, normalizedHeight);
@@ -148,19 +157,61 @@ float PlanetProceduralData::terrainHeight(const PlanetRenderSettings& settings, 
     );
 
     const float continents = fbm(p + 1.8f * warp, 5, 2.0f, 0.5f);
-    float ridges = 1.0f - std::abs(gradientNoise(p * 1.7f + warp * 2.0f));
-    ridges = std::pow(ridges, 3.0f);
-    const float regional = fbm(p * 2.8f + warp * 2.5f, 4, 2.1f, 0.48f);
-    const float micro = fbm(p * 8.0f + warp * 4.0f, 3, 2.4f, 0.40f);
+    const float continentalShelf = glm::smoothstep(-0.30f, 0.38f, continents);
 
-    const float regionalWeight = settings.regionalDetailStrength
-                               * altitudeBandWeight(settings.regionalDetailStartAltitude, settings.regionalDetailEndAltitude);
-    const float microWeight = settings.microDetailStrength
-                            * altitudeBandWeight(settings.microDetailStartAltitude, settings.microDetailEndAltitude);
+    const glm::vec3 mountainP = p * settings.mountainMaskScale + warp * 1.35f;
+    float mountainBands = 1.0f - std::abs(gradientNoise(mountainP));
+    mountainBands = std::pow(glm::clamp(mountainBands, 0.0f, 1.0f), 1.85f);
+    const float mountainField = fbm(mountainP * 0.72f + glm::vec3(11.7f, 2.3f, 6.1f), 4, 2.05f, 0.50f) * 0.5f + 0.5f;
+    float mountainMask = glm::smoothstep(0.44f, 0.78f, mountainBands * 0.68f + mountainField * 0.32f);
+    mountainMask *= continentalShelf;
+    mountainMask = std::pow(glm::clamp(mountainMask, 0.0f, 1.0f), 1.15f);
 
-    float h = continents * 0.9f;
-    h += regionalWeight * (ridges * 0.55f + regional * 0.22f);
-    h += microWeight * (micro * 0.18f + ridges * 0.12f);
+    float h = continents * 0.72f;
+    h += settings.mountainMaskStrength * mountainMask * (0.18f + mountainField * 0.16f);
     h = (h < 0.0f ? -1.0f : 1.0f) * std::pow(std::abs(h), 1.15f);
     return h;
+}
+
+float PlanetProceduralData::temperature(const PlanetRenderSettings& settings, const glm::vec3& sphereDir, float height)
+{
+    const float latitude01 = std::abs(sphereDir.y);
+    const float latitudeTemperature = 1.0f - latitude01;
+    const float heightCooling = std::max(height - settings.seaLevelOffset, 0.0f) * 0.35f;
+    const float temperatureNoise = fbm(sphereDir * 3.0f + glm::vec3(8.1f, 2.7f, 5.4f), 4, 2.0f, 0.5f) * 0.12f;
+    return glm::clamp(latitudeTemperature - heightCooling + temperatureNoise, 0.0f, 1.0f);
+}
+
+float PlanetProceduralData::moisture(const glm::vec3& sphereDir, float shoreMask)
+{
+    const float moistureNoise = fbm(sphereDir * 4.0f + glm::vec3(1.2f, 9.3f, 4.8f), 5, 2.0f, 0.5f) * 0.5f + 0.5f;
+    const float shoreMoisture = shoreMask * 0.35f;
+    const float latitudeMoisture = 1.0f - std::abs(sphereDir.y) * 0.25f;
+    return glm::clamp(moistureNoise * 0.65f + shoreMoisture + latitudeMoisture * 0.15f, 0.0f, 1.0f);
+}
+
+float PlanetProceduralData::classifyBiome(float height, float waterDepth, float shoreMask, float temperature, float moisture)
+{
+    if (waterDepth > 0.08f) {
+        return 0.0f;
+    }
+    if (waterDepth > 0.0f) {
+        return 1.0f;
+    }
+    if (shoreMask > 0.45f) {
+        return 2.0f;
+    }
+    if (temperature < 0.22f || height > 0.78f) {
+        return 7.0f;
+    }
+    if (height > 0.62f) {
+        return 6.0f;
+    }
+    if (temperature > 0.62f && moisture < 0.32f) {
+        return 5.0f;
+    }
+    if (moisture > 0.58f && temperature > 0.32f) {
+        return 4.0f;
+    }
+    return 3.0f;
 }

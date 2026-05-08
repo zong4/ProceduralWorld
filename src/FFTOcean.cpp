@@ -213,12 +213,13 @@ void FFTOcean::release()
         glDeleteTextures(1, &detailNormalTextureB_);
         detailNormalTextureB_ = 0;
     }
-    if (foamNoiseTexture_ != 0) {
-        glDeleteTextures(1, &foamNoiseTexture_);
-        foamNoiseTexture_ = 0;
-    }
 
     initialized_ = false;
+}
+
+void FFTOcean::setCascadeCount(int cascadeCount)
+{
+    settings_.cascadeCount = std::clamp(cascadeCount, 1, kMaxCascadeCount);
 }
 
 void FFTOcean::buildStaticDetailTextures()
@@ -227,11 +228,9 @@ void FFTOcean::buildStaticDetailTextures()
 
     detailNormalTextureA_ = loadTextureFromFile(waterTextureRoot / "water_detail_normal_a.png", false);
     detailNormalTextureB_ = loadTextureFromFile(waterTextureRoot / "water_detail_normal_b.png", false);
-    foamNoiseTexture_ = loadTextureFromFile(waterTextureRoot / "foam_noise.png", true);
 
     std::vector<glm::vec3> detailNormalsA(static_cast<std::size_t>(kStaticTextureResolution * kStaticTextureResolution));
     std::vector<glm::vec3> detailNormalsB(static_cast<std::size_t>(kStaticTextureResolution * kStaticTextureResolution));
-    std::vector<float> foamNoise(static_cast<std::size_t>(kStaticTextureResolution * kStaticTextureResolution));
 
     auto sampleHeight = [](float u, float v, float phase) {
         const float directionalRipples =
@@ -256,13 +255,8 @@ void FFTOcean::buildStaticDetailTextures()
 
     for (int y = 0; y < kStaticTextureResolution; ++y) {
         for (int x = 0; x < kStaticTextureResolution; ++x) {
-            const float u = static_cast<float>(x) / static_cast<float>(kStaticTextureResolution);
-            const float v = static_cast<float>(y) / static_cast<float>(kStaticTextureResolution);
             detailNormalsA[static_cast<std::size_t>(y * kStaticTextureResolution + x)] = buildPackedNormal(x, y, 0.0f);
             detailNormalsB[static_cast<std::size_t>(y * kStaticTextureResolution + x)] = buildPackedNormal(x, y, 0.43f);
-            const float cellular = glm::abs(tileFbm(u * 1.7f + 0.13f, v * 1.7f + 0.41f) - 0.5f) * 2.0f;
-            const float wisps = tileFbm(u * 3.3f + 0.71f, v * 3.3f + 0.09f);
-            foamNoise[static_cast<std::size_t>(y * kStaticTextureResolution + x)] = glm::clamp(wisps * 0.72f + cellular * 0.28f, 0.0f, 1.0f);
         }
     }
 
@@ -273,10 +267,6 @@ void FFTOcean::buildStaticDetailTextures()
     if (detailNormalTextureB_ == 0) {
         detailNormalTextureB_ = createTexture2D(kStaticTextureResolution, kStaticTextureResolution, GL_RGB32F, GL_RGB, GL_FLOAT, detailNormalsB.data(), true);
         std::cout << "[FFTOcean] Using generated fallback: water_detail_normal_b\n";
-    }
-    if (foamNoiseTexture_ == 0) {
-        foamNoiseTexture_ = createTexture2D(kStaticTextureResolution, kStaticTextureResolution, GL_R32F, GL_RED, GL_FLOAT, foamNoise.data(), true);
-        std::cout << "[FFTOcean] Using generated fallback: foam_noise\n";
     }
 }
 

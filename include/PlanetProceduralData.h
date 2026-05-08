@@ -16,6 +16,9 @@ public:
         std::vector<float> height;
         std::vector<float> waterDepth;
         std::vector<float> shoreMask;
+        std::vector<float> temperature;
+        std::vector<float> moisture;
+        std::vector<float> biomeId;
     };
 
     void generate(const PlanetRenderSettings& settings, int faceResolution);
@@ -57,4 +60,7 @@ private:
 
     static float altitudeBandWeight(float startAltitude, float endAltitude);
     static float terrainHeight(const PlanetRenderSettings& settings, const glm::vec3& sphereDir);
+    static float temperature(const PlanetRenderSettings& settings, const glm::vec3& sphereDir, float height);
+    static float moisture(const glm::vec3& sphereDir, float shoreMask);
+    static float classifyBiome(float height, float waterDepth, float shoreMask, float temperature, float moisture);
 };

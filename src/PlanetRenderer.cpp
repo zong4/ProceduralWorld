@@ -159,6 +159,8 @@ void PlanetRenderer::setProceduralData(const PlanetProceduralData& proceduralDat
 {
     if (!proceduralData.isGenerated() || proceduralData.resolution() <= 0) {
         hasProceduralOceanData_ = false;
+        proceduralWaterDepthCpu_.clear();
+        proceduralShoreMaskCpu_.clear();
         return;
     }
 
@@ -167,18 +169,31 @@ void PlanetRenderer::setProceduralData(const PlanetProceduralData& proceduralDat
     std::vector<float> height(layerSize * 6, 0.0f);
     std::vector<float> waterDepth(layerSize * 6, 0.0f);
     std::vector<float> shoreMask(layerSize * 6, 0.0f);
+    std::vector<float> temperature(layerSize * 6, 0.0f);
+    std::vector<float> moisture(layerSize * 6, 0.0f);
+    std::vector<float> biomeId(layerSize * 6, 0.0f);
 
     const auto& faces = proceduralData.faces();
     for (std::size_t faceIndex = 0; faceIndex < faces.size(); ++faceIndex) {
         const auto& face = faces[faceIndex];
-        if (face.height.size() != layerSize || face.waterDepth.size() != layerSize || face.shoreMask.size() != layerSize) {
+        if (face.height.size() != layerSize
+            || face.waterDepth.size() != layerSize
+            || face.shoreMask.size() != layerSize
+            || face.temperature.size() != layerSize
+            || face.moisture.size() != layerSize
+            || face.biomeId.size() != layerSize) {
             hasProceduralOceanData_ = false;
+            proceduralWaterDepthCpu_.clear();
+            proceduralShoreMaskCpu_.clear();
             return;
         }
 
         std::copy(face.height.begin(), face.height.end(), height.begin() + static_cast<std::ptrdiff_t>(layerSize * faceIndex));
         std::copy(face.waterDepth.begin(), face.waterDepth.end(), waterDepth.begin() + static_cast<std::ptrdiff_t>(layerSize * faceIndex));
         std::copy(face.shoreMask.begin(), face.shoreMask.end(), shoreMask.begin() + static_cast<std::ptrdiff_t>(layerSize * faceIndex));
+        std::copy(face.temperature.begin(), face.temperature.end(), temperature.begin() + static_cast<std::ptrdiff_t>(layerSize * faceIndex));
+        std::copy(face.moisture.begin(), face.moisture.end(), moisture.begin() + static_cast<std::ptrdiff_t>(layerSize * faceIndex));
+        std::copy(face.biomeId.begin(), face.biomeId.end(), biomeId.begin() + static_cast<std::ptrdiff_t>(layerSize * faceIndex));
     }
 
     auto uploadTextureArray = [resolution](GLuint& texture, const std::vector<float>& pixels) {
@@ -210,6 +225,11 @@ void PlanetRenderer::setProceduralData(const PlanetProceduralData& proceduralDat
     uploadTextureArray(proceduralHeightTexture_, height);
     uploadTextureArray(proceduralWaterDepthTexture_, waterDepth);
     uploadTextureArray(proceduralShoreMaskTexture_, shoreMask);
+    uploadTextureArray(proceduralTemperatureTexture_, temperature);
+    uploadTextureArray(proceduralMoistureTexture_, moisture);
+    uploadTextureArray(proceduralBiomeTexture_, biomeId);
+    proceduralWaterDepthCpu_ = std::move(waterDepth);
+    proceduralShoreMaskCpu_ = std::move(shoreMask);
     proceduralDataResolution_ = resolution;
     hasProceduralOceanData_ = true;
 }
@@ -220,6 +240,13 @@ void PlanetRenderer::render(const FlyCamera& camera,
                             float timeSeconds)
 {
     if (!initialized_) return;
+    if (hasLastRenderTimeSeconds_) {
+        currentDeltaSeconds_ = glm::clamp(timeSeconds - lastRenderTimeSeconds_, 1.0f / 240.0f, 0.10f);
+    } else {
+        currentDeltaSeconds_ = 1.0f / 60.0f;
+        hasLastRenderTimeSeconds_ = true;
+    }
+    lastRenderTimeSeconds_ = timeSeconds;
     currentTimeSeconds_ = timeSeconds;
     PerformanceStats frameStats;
     using Clock = std::chrono::steady_clock;
@@ -236,15 +263,38 @@ void PlanetRenderer::render(const FlyCamera& camera,
     auto passStart = Clock::now();
     const Frustum frustum = extractFrustum(projectionMatrix * viewMatrix);
     visiblePatches_ = buildVisiblePatches(camera, frustum, framebufferHeight);
+    visibleOceanPatches_ = buildVisibleOceanPatches();
     frameStats.cullingMs = elapsedMs(passStart, Clock::now());
+    frameStats.oceanPatchCount = visibleOceanPatches_.size();
 
     passStart = Clock::now();
-    fftOcean_.update(timeSeconds);
+    const int fftCascadeCount = std::clamp(settings_.oceanFftCascadeCount, 1, 3);
+    const int fftFrameStride = std::max(settings_.oceanFftFrameStride, 1);
+    frameStats.fftCascadeCount = fftCascadeCount;
+    frameStats.fftFrameStride = fftFrameStride;
+    if (settings_.renderOcean) {
+        fftOcean_.setCascadeCount(fftCascadeCount);
+        frameStats.fftUpdated = (oceanFftFrameCounter_ % fftFrameStride) == 0;
+        if (frameStats.fftUpdated) {
+            fftOcean_.update(timeSeconds);
+        }
+        ++oceanFftFrameCounter_;
+    } else {
+        oceanFftFrameCounter_ = 0;
+    }
     frameStats.fftMs = elapsedMs(passStart, Clock::now());
 
     passStart = Clock::now();
     drawReflectionRefractionPasses(camera, viewMatrix, projectionMatrix, framebufferWidth, framebufferHeight);
     frameStats.reflectionRefractionMs = elapsedMs(passStart, Clock::now());
+    frameStats.reflectionUpdated = lastReflectionUpdated_;
+    frameStats.refractionUpdated = lastRefractionUpdated_;
+    frameStats.reflectionEnabled = lastReflectionEnabled_;
+    frameStats.refractionEnabled = lastRefractionEnabled_;
+    frameStats.reflectionFrameStride = std::max(settings_.oceanReflectionFrameStride, 1);
+    frameStats.refractionFrameStride = std::max(settings_.oceanRefractionFrameStride, 1);
+    frameStats.reflectionWeight = oceanReflectionWeight_;
+    frameStats.refractionWeight = oceanRefractionWeight_;
 
     passStart = Clock::now();
     drawTerrainPass(camera, viewMatrix, projectionMatrix);
@@ -531,6 +581,52 @@ bool PlanetRenderer::isNodeHiddenByHorizon(const FlyCamera& camera,
     return glm::dot(cameraDirection, nodeDirection) < horizonDot - safetyMargin;
 }
 
+bool PlanetRenderer::nodeHasShoreline(int faceIndex, const QuadtreeNode& node) const
+{
+    if (!hasProceduralOceanData_
+        || proceduralDataResolution_ <= 0
+        || proceduralWaterDepthCpu_.empty()
+        || proceduralShoreMaskCpu_.empty()
+        || faceIndex < 0
+        || faceIndex >= 6) {
+        return false;
+    }
+
+    const int resolution = proceduralDataResolution_;
+    const std::size_t faceOffset = static_cast<std::size_t>(faceIndex) * static_cast<std::size_t>(resolution * resolution);
+    const glm::vec2 uvMin = glm::clamp(node.uvMin, glm::vec2(0.0f), glm::vec2(1.0f));
+    const glm::vec2 uvMax = glm::clamp(node.uvMin + glm::vec2(node.uvSize), glm::vec2(0.0f), glm::vec2(1.0f));
+
+    int x0 = std::max(static_cast<int>(std::floor(uvMin.x * static_cast<float>(resolution))) - 1, 0);
+    int y0 = std::max(static_cast<int>(std::floor(uvMin.y * static_cast<float>(resolution))) - 1, 0);
+    int x1 = std::min(static_cast<int>(std::ceil(uvMax.x * static_cast<float>(resolution))) + 1, resolution);
+    int y1 = std::min(static_cast<int>(std::ceil(uvMax.y * static_cast<float>(resolution))) + 1, resolution);
+
+    bool hasWater = false;
+    bool hasLand = false;
+    constexpr float kShoreMaskEpsilon = 0.015f;
+    constexpr float kWaterDepthEpsilon = 0.0001f;
+    for (int y = y0; y < y1; ++y) {
+        const std::size_t rowOffset = faceOffset + static_cast<std::size_t>(y * resolution);
+        for (int x = x0; x < x1; ++x) {
+            const std::size_t sampleIndex = rowOffset + static_cast<std::size_t>(x);
+            if (proceduralShoreMaskCpu_[sampleIndex] > kShoreMaskEpsilon) {
+                return true;
+            }
+            if (proceduralWaterDepthCpu_[sampleIndex] > kWaterDepthEpsilon) {
+                hasWater = true;
+            } else {
+                hasLand = true;
+            }
+            if (hasWater && hasLand) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
 bool PlanetRenderer::shouldSplitNode(const FlyCamera& camera,
                                      const FaceBasis& face,
                                      const QuadtreeNode& node,
@@ -569,7 +665,8 @@ void PlanetRenderer::collectVisiblePatches(const FlyCamera& camera,
         return;
     }
 
-    if (shouldSplitNode(camera, face, node, framebufferHeight)) {
+    const bool forceShoreLod = node.depth < kShoreMinimumLodDepth && nodeHasShoreline(faceIndex, node);
+    if (forceShoreLod || shouldSplitNode(camera, face, node, framebufferHeight)) {
         ++stats.splitNodes;
         const float childSize = node.uvSize * 0.5f;
 
@@ -611,6 +708,58 @@ std::vector<PlanetRenderer::RenderPatch> PlanetRenderer::buildVisiblePatches(con
     return patches;
 }
 
+std::vector<PlanetRenderer::RenderPatch> PlanetRenderer::buildVisibleOceanPatches() const
+{
+    std::vector<RenderPatch> oceanPatches;
+    oceanPatches.reserve(visiblePatches_.size());
+    for (const RenderPatch& patch : visiblePatches_) {
+        if (patchHasOceanCoverage(patch)) {
+            oceanPatches.push_back(patch);
+        }
+    }
+    return oceanPatches;
+}
+
+bool PlanetRenderer::patchHasOceanCoverage(const RenderPatch& patch) const
+{
+    if (!hasProceduralOceanData_
+        || proceduralDataResolution_ <= 0
+        || proceduralWaterDepthCpu_.empty()
+        || proceduralShoreMaskCpu_.empty()
+        || patch.faceIndex < 0
+        || patch.faceIndex >= 6) {
+        return true;
+    }
+
+    const int resolution = proceduralDataResolution_;
+    const std::size_t faceOffset = static_cast<std::size_t>(patch.faceIndex) * static_cast<std::size_t>(resolution * resolution);
+    const glm::vec2 uvMin = glm::clamp(patch.uvMin, glm::vec2(0.0f), glm::vec2(1.0f));
+    const glm::vec2 uvMax = glm::clamp(patch.uvMin + patch.uvSize, glm::vec2(0.0f), glm::vec2(1.0f));
+
+    int x0 = std::max(static_cast<int>(std::floor(uvMin.x * static_cast<float>(resolution))) - 1, 0);
+    int y0 = std::max(static_cast<int>(std::floor(uvMin.y * static_cast<float>(resolution))) - 1, 0);
+    int x1 = std::min(static_cast<int>(std::ceil(uvMax.x * static_cast<float>(resolution))) + 1, resolution);
+    int y1 = std::min(static_cast<int>(std::ceil(uvMax.y * static_cast<float>(resolution))) + 1, resolution);
+    if (x0 >= x1 || y0 >= y1) {
+        return true;
+    }
+
+    constexpr float kWaterDepthEpsilon = 0.0001f;
+    constexpr float kShoreMaskEpsilon = 0.001f;
+    for (int y = y0; y < y1; ++y) {
+        const std::size_t rowOffset = faceOffset + static_cast<std::size_t>(y * resolution);
+        for (int x = x0; x < x1; ++x) {
+            const std::size_t sampleIndex = rowOffset + static_cast<std::size_t>(x);
+            if (proceduralWaterDepthCpu_[sampleIndex] > kWaterDepthEpsilon
+                || proceduralShoreMaskCpu_[sampleIndex] > kShoreMaskEpsilon) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
 void PlanetRenderer::applyCommonUniforms(const ShaderProgram& program,
                                          const FlyCamera& camera,
                                          const glm::mat4& viewMatrix,
@@ -637,12 +786,30 @@ void PlanetRenderer::applyCommonUniforms(const ShaderProgram& program,
     program.setFloat("seaLevelRadius", seaLevelRadius());
     program.setFloat("heightScale", settings_.terrainHeightScale);
     program.setFloat("noiseScale", settings_.terrainNoiseScale);
+    program.setFloat("mountainMaskStrength", settings_.mountainMaskStrength);
+    program.setFloat("mountainMaskScale", settings_.mountainMaskScale);
+    program.setFloat("mountainRidgeSharpness", settings_.mountainRidgeSharpness);
     program.setFloat("regionalDetailStrength", settings_.regionalDetailStrength);
     program.setFloat("microDetailStrength", settings_.microDetailStrength);
     program.setFloat("regionalDetailStartAltitude", settings_.regionalDetailStartAltitude);
     program.setFloat("regionalDetailEndAltitude", settings_.regionalDetailEndAltitude);
     program.setFloat("microDetailStartAltitude", settings_.microDetailStartAltitude);
     program.setFloat("microDetailEndAltitude", settings_.microDetailEndAltitude);
+    program.setFloat("seaLevelOffset", settings_.seaLevelOffset);
+    program.setVec3("terrainLowlandColor", settings_.terrainLowlandColor);
+    program.setVec3("terrainForestColor", settings_.terrainForestColor);
+    program.setVec3("terrainDesertColor", settings_.terrainDesertColor);
+    program.setVec3("terrainRockColor", settings_.terrainRockColor);
+    program.setVec3("terrainBeachColor", settings_.terrainBeachColor);
+    program.setVec3("terrainSnowColor", settings_.terrainSnowColor);
+    program.setFloat("terrainBeachWidth", settings_.terrainBeachWidth);
+    program.setFloat("terrainShoreLift", settings_.terrainShoreLift);
+    program.setFloat("terrainRockSlopeStart", settings_.terrainRockSlopeStart);
+    program.setFloat("terrainRockSlopeEnd", settings_.terrainRockSlopeEnd);
+    program.setFloat("terrainSnowStart", settings_.terrainSnowStart);
+    program.setFloat("terrainSnowEnd", settings_.terrainSnowEnd);
+    program.setFloat("terrainMaterialNoiseScale", settings_.terrainMaterialNoiseScale);
+    program.setFloat("terrainMaterialNoiseStrength", settings_.terrainMaterialNoiseStrength);
     program.setFloat("timeSeconds", currentTimeSeconds_);
     program.setFloat("gridCount", static_cast<float>(kNodeGridResolution));
     program.setFloat("coarseLineWidth", settings_.coarseGridLineWidth);
@@ -670,23 +837,11 @@ void PlanetRenderer::applyCommonUniforms(const ShaderProgram& program,
     program.setFloat("oceanSpecularStrength", settings_.oceanSpecularStrength);
     program.setFloat("oceanSpecularSharpness", settings_.oceanSpecularSharpness);
     program.setFloat("oceanRoughness", settings_.oceanRoughness);
-    program.setFloat("oceanFoamRoughness", settings_.oceanFoamRoughness);
     program.setFloat("oceanSSSStrength", settings_.oceanSSSStrength);
     program.setFloat("oceanSSSPower", settings_.oceanSSSPower);
-    program.setFloat("oceanFoamAmount", settings_.oceanFoamAmount);
-    program.setFloat("oceanFoamThreshold", settings_.oceanFoamThreshold);
-    program.setFloat("oceanFoamSoftness", settings_.oceanFoamSoftness);
-    program.setFloat("oceanFoamScale", settings_.oceanFoamScale);
-    program.setFloat("oceanFoamNoiseStrength", settings_.oceanFoamNoiseStrength);
-    program.setFloat("oceanFoamCrestPower", settings_.oceanFoamCrestPower);
-    program.setFloat("oceanFoamSlopeWeight", settings_.oceanFoamSlopeWeight);
-    program.setFloat("oceanFoamFoldWeight", settings_.oceanFoamFoldWeight);
-    program.setFloat("oceanFoamFadeDistance", settings_.oceanFoamFadeDistance);
-    program.setFloat("oceanFoamBrightness", settings_.oceanFoamBrightness);
-    program.setFloat("oceanShoreFoamStrength", settings_.oceanShoreFoamStrength);
-    program.setFloat("oceanShoreFoamWidth", settings_.oceanShoreFoamWidth);
     program.setFloat("oceanShoreBlendWidth", settings_.oceanShoreBlendWidth);
-    program.setVec2("oceanWindDirection", fftOcean_.settings().windDirection);
+    program.setFloat("oceanReflectionWeight", oceanReflectionWeight_);
+    program.setFloat("oceanRefractionWeight", oceanRefractionWeight_);
     program.setInt("renderMode", static_cast<int>(settings_.renderMode));
     program.setInt("faceIndex", patch.faceIndex);
     program.setInt("useProceduralOceanData", hasProceduralOceanData_ ? 1 : 0);
@@ -696,7 +851,6 @@ void PlanetRenderer::applyCommonUniforms(const ShaderProgram& program,
     program.setVec2("nodeUvSize", patch.uvSize);
     program.setVec3("oceanShallowColor", settings_.oceanShallowColor);
     program.setVec3("oceanDeepColor", settings_.oceanDeepColor);
-    program.setVec3("oceanFoamColor", settings_.oceanFoamColor);
     program.setVec3("oceanSSSColor", settings_.oceanSSSColor);
     program.setVec3("faceNormal", face.normal);
     program.setVec3("faceAxisU", face.axisU);
@@ -726,10 +880,22 @@ void PlanetRenderer::drawTerrainPass(const FlyCamera& camera,
 
     glActiveTexture(GL_TEXTURE12);
     glBindTexture(GL_TEXTURE_2D_ARRAY, proceduralHeightTexture_);
+    glActiveTexture(GL_TEXTURE13);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, proceduralTemperatureTexture_);
+    glActiveTexture(GL_TEXTURE14);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, proceduralMoistureTexture_);
+    glActiveTexture(GL_TEXTURE15);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, proceduralBiomeTexture_);
+    glActiveTexture(GL_TEXTURE16);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, proceduralShoreMaskTexture_);
 
     for (const RenderPatch& patch : visiblePatches_) {
         applyCommonUniforms(terrainProgram_, camera, viewMatrix, projectionMatrix, patch);
         terrainProgram_.setInt("proceduralHeightTexture", 12);
+        terrainProgram_.setInt("proceduralTemperatureTexture", 13);
+        terrainProgram_.setInt("proceduralMoistureTexture", 14);
+        terrainProgram_.setInt("proceduralBiomeTexture", 15);
+        terrainProgram_.setInt("proceduralShoreMaskTexture", 16);
         terrainProgram_.setVec4("clipPlane", useClipPlane ? glm::vec4(0.0f, keepAboveClipPlane ? 1.0f : -1.0f, 0.0f, -clipPlaneY)
                                                          : glm::vec4(0.0f, 0.0f, 0.0f, -1.0e9f));
         terrainMesh_.draw();
@@ -742,7 +908,10 @@ void PlanetRenderer::drawOceanPass(const FlyCamera& camera,
                                    const glm::mat4& viewMatrix,
                                    const glm::mat4& projectionMatrix)
 {
-    if (!settings_.renderOcean || !settings_.renderOceanReflectionRefraction) {
+    if (!settings_.renderOcean) {
+        return;
+    }
+    if (visibleOceanPatches_.empty()) {
         return;
     }
 
@@ -765,18 +934,12 @@ void PlanetRenderer::drawOceanPass(const FlyCamera& camera,
     glBindTexture(GL_TEXTURE_2D, fftOcean_.detailNormalTextureA());
     glActiveTexture(GL_TEXTURE6);
     glBindTexture(GL_TEXTURE_2D, fftOcean_.detailNormalTextureB());
-    glActiveTexture(GL_TEXTURE7);
-    glBindTexture(GL_TEXTURE_2D, fftOcean_.foamNoiseTexture());
     glActiveTexture(GL_TEXTURE8);
     glBindTexture(GL_TEXTURE_2D, fftOcean_.displacementTexture());
-    glActiveTexture(GL_TEXTURE9);
-    glBindTexture(GL_TEXTURE_2D, fftOcean_.foldingTexture());
     glActiveTexture(GL_TEXTURE10);
     glBindTexture(GL_TEXTURE_2D_ARRAY, proceduralWaterDepthTexture_);
-    glActiveTexture(GL_TEXTURE11);
-    glBindTexture(GL_TEXTURE_2D_ARRAY, proceduralShoreMaskTexture_);
 
-    for (const RenderPatch& patch : visiblePatches_) {
+    for (const RenderPatch& patch : visibleOceanPatches_) {
         applyCommonUniforms(oceanProgram_, camera, viewMatrix, projectionMatrix, patch);
         oceanProgram_.setFloat("tessMin", settings_.oceanTessellationMin);
         oceanProgram_.setFloat("tessMax", settings_.oceanTessellationMax);
@@ -789,11 +952,8 @@ void PlanetRenderer::drawOceanPass(const FlyCamera& camera,
         oceanProgram_.setInt("oceanNormalTexture", 4);
         oceanProgram_.setInt("waterDetailNormalTextureA", 5);
         oceanProgram_.setInt("waterDetailNormalTextureB", 6);
-        oceanProgram_.setInt("foamNoiseTexture", 7);
         oceanProgram_.setInt("oceanDisplacementTexture", 8);
-        oceanProgram_.setInt("oceanFoldingTexture", 9);
         oceanProgram_.setInt("proceduralWaterDepthTexture", 10);
-        oceanProgram_.setInt("proceduralShoreMaskTexture", 11);
         terrainMesh_.draw();
     }
 
@@ -862,60 +1022,147 @@ void PlanetRenderer::drawReflectionRefractionPasses(const FlyCamera& camera,
                                                     int framebufferWidth,
                                                     int framebufferHeight)
 {
-    if (!settings_.renderOcean) {
-        return;
-    }
+    lastReflectionUpdated_ = false;
+    lastRefractionUpdated_ = false;
+    lastReflectionEnabled_ = false;
+    lastRefractionEnabled_ = false;
 
-    const float targetScale = glm::clamp(settings_.oceanReflectionResolutionScale, 0.25f, 1.0f);
-    const int targetWidth = std::max(static_cast<int>(std::round(static_cast<float>(framebufferWidth) * targetScale)), 1);
-    const int targetHeight = std::max(static_cast<int>(std::round(static_cast<float>(framebufferHeight) * targetScale)), 1);
-
-    reflectionTarget_.create(targetWidth, targetHeight);
-    refractionTarget_.create(targetWidth, targetHeight);
-    if (reflectionTarget_.framebufferObject == 0 || refractionTarget_.framebufferObject == 0) {
+    if (!settings_.renderOcean || visibleOceanPatches_.empty()) {
+        oceanReflectionFrameCounter_ = 0;
+        oceanRefractionFrameCounter_ = 0;
+        oceanReflectionWeight_ = 0.0f;
+        oceanRefractionWeight_ = 0.0f;
         return;
     }
 
     const float seaLevelY = seaLevelRadius();
-    const glm::vec3 normal(0.0f, 1.0f, 0.0f);
+    const float cameraOceanAltitude = glm::abs(glm::length(camera.position) - seaLevelY);
+    auto distanceWeight = [cameraOceanAltitude](float maxAltitude, bool autoLod) {
+        if (!autoLod) {
+            return 1.0f;
+        }
+
+        const float stableMaxAltitude = glm::max(maxAltitude, 1.0f);
+        return 1.0f - glm::smoothstep(stableMaxAltitude * 0.75f, stableMaxAltitude, cameraOceanAltitude);
+    };
+
+    const bool reflectionUserEnabled = settings_.renderOceanReflectionRefraction && settings_.renderOceanReflection;
+    const bool refractionUserEnabled = settings_.renderOceanReflectionRefraction && settings_.renderOceanRefraction;
+    const float targetReflectionWeight = reflectionUserEnabled
+        ? distanceWeight(settings_.oceanReflectionMaxAltitude, settings_.oceanAutoDistanceLod)
+        : 0.0f;
+    const float targetRefractionWeight = refractionUserEnabled
+        ? distanceWeight(settings_.oceanRefractionMaxAltitude, settings_.oceanAutoDistanceLod)
+        : 0.0f;
+    const float blendSpeed = 1.0f - std::exp(-currentDeltaSeconds_ * 6.0f);
+    oceanReflectionWeight_ = glm::mix(oceanReflectionWeight_, targetReflectionWeight, blendSpeed);
+    oceanRefractionWeight_ = glm::mix(oceanRefractionWeight_, targetRefractionWeight, blendSpeed);
+
+    const float reflectionDistanceFade = settings_.oceanAutoDistanceLod
+        ? glm::smoothstep(0.0f, glm::max(settings_.oceanReflectionMaxAltitude, 1.0f), cameraOceanAltitude)
+        : 0.0f;
+    const float rawTargetScale = glm::clamp(
+        settings_.oceanReflectionResolutionScale * glm::mix(1.0f, 0.55f, reflectionDistanceFade),
+        0.25f,
+        1.0f
+    );
+    const float targetScale = glm::clamp(std::round(rawTargetScale * 8.0f) / 8.0f, 0.25f, 1.0f);
+    const int targetWidth = std::max(static_cast<int>(std::round(static_cast<float>(framebufferWidth) * targetScale)), 1);
+    const int targetHeight = std::max(static_cast<int>(std::round(static_cast<float>(framebufferHeight) * targetScale)), 1);
+    const bool reflectionEnabled = reflectionUserEnabled && oceanReflectionWeight_ > 0.02f;
+    const bool refractionEnabled = refractionUserEnabled && oceanRefractionWeight_ > 0.02f;
+    const int reflectionStride = std::max(settings_.oceanReflectionFrameStride, 1);
+    const int refractionStride = std::max(settings_.oceanRefractionFrameStride, 1);
+    const int reflectionWidth = targetWidth;
+    const int reflectionHeight = targetHeight;
+    const int refractionWidth = targetWidth;
+    const int refractionHeight = targetHeight;
+    const bool reflectionWasReady = reflectionTarget_.framebufferObject != 0
+                                 && reflectionTarget_.width == reflectionWidth
+                                 && reflectionTarget_.height == reflectionHeight;
+    const bool refractionWasReady = refractionTarget_.framebufferObject != 0
+                                  && refractionTarget_.width == refractionWidth
+                                  && refractionTarget_.height == refractionHeight;
+
+    reflectionTarget_.create(reflectionWidth, reflectionHeight);
+    refractionTarget_.create(refractionWidth, refractionHeight);
+    if (reflectionTarget_.framebufferObject == 0 || refractionTarget_.framebufferObject == 0) {
+        return;
+    }
+
+    lastReflectionEnabled_ = reflectionEnabled;
+    lastRefractionEnabled_ = refractionEnabled;
+
     const float reflectionPlaneY = seaLevelY;
     const float refractionPlaneY = seaLevelY;
 
-    glBindFramebuffer(GL_FRAMEBUFFER, reflectionTarget_.framebufferObject);
-    glViewport(0, 0, reflectionTarget_.width, reflectionTarget_.height);
-    glClearColor(settings_.skyColor.r, settings_.skyColor.g, settings_.skyColor.b, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    const bool shouldUpdateReflection = reflectionEnabled
+                                      && (!reflectionWasReady || (oceanReflectionFrameCounter_ % reflectionStride) == 0);
+    if (shouldUpdateReflection) {
+        glBindFramebuffer(GL_FRAMEBUFFER, reflectionTarget_.framebufferObject);
+        glViewport(0, 0, reflectionTarget_.width, reflectionTarget_.height);
+        glClearColor(settings_.skyColor.r, settings_.skyColor.g, settings_.skyColor.b, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    FlyCamera reflectedCamera = camera;
-    reflectedCamera.position = glm::vec3(
-        camera.position.x,
-        2.0f * seaLevelY - camera.position.y,
-        camera.position.z
-    );
-    reflectedCamera.front = glm::normalize(glm::vec3(
-        camera.front.x,
-        -camera.front.y,
-        camera.front.z
-    ));
-    reflectedCamera.up = glm::normalize(glm::vec3(
-        camera.up.x,
-        -camera.up.y,
-        camera.up.z
-    ));
-    reflectedCamera.right = glm::normalize(glm::cross(reflectedCamera.front, reflectedCamera.worldUp));
-    const glm::mat4 reflectionView = glm::lookAt(
-        reflectedCamera.position,
-        reflectedCamera.position + reflectedCamera.front,
-        reflectedCamera.up
-    );
-    drawTerrainPass(reflectedCamera, reflectionView, projectionMatrix, true, reflectionPlaneY, false);
+        FlyCamera reflectedCamera = camera;
+        reflectedCamera.position = glm::vec3(
+            camera.position.x,
+            2.0f * seaLevelY - camera.position.y,
+            camera.position.z
+        );
+        reflectedCamera.front = glm::normalize(glm::vec3(
+            camera.front.x,
+            -camera.front.y,
+            camera.front.z
+        ));
+        reflectedCamera.up = glm::normalize(glm::vec3(
+            camera.up.x,
+            -camera.up.y,
+            camera.up.z
+        ));
+        reflectedCamera.right = glm::normalize(glm::cross(reflectedCamera.front, reflectedCamera.worldUp));
+        const glm::mat4 reflectionView = glm::lookAt(
+            reflectedCamera.position,
+            reflectedCamera.position + reflectedCamera.front,
+            reflectedCamera.up
+        );
+        drawTerrainPass(reflectedCamera, reflectionView, projectionMatrix, true, reflectionPlaneY, false);
+        lastReflectionUpdated_ = true;
+    } else if (!reflectionEnabled && !reflectionWasReady) {
+        glBindFramebuffer(GL_FRAMEBUFFER, reflectionTarget_.framebufferObject);
+        glViewport(0, 0, reflectionTarget_.width, reflectionTarget_.height);
+        glClearColor(settings_.skyColor.r, settings_.skyColor.g, settings_.skyColor.b, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    }
 
-    glBindFramebuffer(GL_FRAMEBUFFER, refractionTarget_.framebufferObject);
-    glViewport(0, 0, refractionTarget_.width, refractionTarget_.height);
-    glClearColor(settings_.skyColor.r, settings_.skyColor.g, settings_.skyColor.b, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    const int refractionPhase = refractionStride > 1 ? refractionStride / 2 : 0;
+    const bool shouldUpdateRefraction = refractionEnabled
+                                      && (!refractionWasReady || (oceanRefractionFrameCounter_ % refractionStride) == refractionPhase);
+    if (shouldUpdateRefraction) {
+        glBindFramebuffer(GL_FRAMEBUFFER, refractionTarget_.framebufferObject);
+        glViewport(0, 0, refractionTarget_.width, refractionTarget_.height);
+        glClearColor(settings_.skyColor.r, settings_.skyColor.g, settings_.skyColor.b, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    drawTerrainPass(camera, viewMatrix, projectionMatrix, true, refractionPlaneY, true);
+        drawTerrainPass(camera, viewMatrix, projectionMatrix, true, refractionPlaneY, true);
+        lastRefractionUpdated_ = true;
+    } else if (!refractionEnabled && !refractionWasReady) {
+        glBindFramebuffer(GL_FRAMEBUFFER, refractionTarget_.framebufferObject);
+        glViewport(0, 0, refractionTarget_.width, refractionTarget_.height);
+        glClearColor(settings_.oceanDeepColor.r, settings_.oceanDeepColor.g, settings_.oceanDeepColor.b, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    }
+
+    if (reflectionEnabled) {
+        ++oceanReflectionFrameCounter_;
+    } else {
+        oceanReflectionFrameCounter_ = 0;
+    }
+    if (refractionEnabled) {
+        ++oceanRefractionFrameCounter_;
+    } else {
+        oceanRefractionFrameCounter_ = 0;
+    }
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(0, 0, framebufferWidth, framebufferHeight);

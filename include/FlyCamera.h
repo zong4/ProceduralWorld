@@ -58,6 +58,13 @@ public:
         updateOrientationVectors();
     }
 
+    void lookAt(const glm::vec3& target)
+    {
+        front = glm::normalize(target - position);
+        right = glm::normalize(glm::cross(front, worldUp));
+        up = glm::normalize(glm::cross(right, front));
+    }
+
     void zoom(float scrollDelta)
     {
         fieldOfView -= scrollDelta;

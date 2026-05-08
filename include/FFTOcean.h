@@ -32,6 +32,7 @@ public:
     void initialize(const Settings& settings = Settings{});
     void update(float timeSeconds);
     void release();
+    void setCascadeCount(int cascadeCount);
 
     GLuint heightTexture() const { return heightTexture_; }
     GLuint normalTexture() const { return normalTexture_; }
@@ -39,9 +40,9 @@ public:
     GLuint foldingTexture() const { return foldingTexture_; }
     GLuint detailNormalTextureA() const { return detailNormalTextureA_; }
     GLuint detailNormalTextureB() const { return detailNormalTextureB_; }
-    GLuint foamNoiseTexture() const { return foamNoiseTexture_; }
     float texelSize() const { return resolution_ > 0 ? 1.0f / static_cast<float>(resolution_) : 1.0f / 128.0f; }
     const Settings& settings() const { return settings_; }
+    int cascadeCount() const { return settings_.cascadeCount; }
 
 private:
     using Complex = std::complex<float>;
@@ -71,7 +72,6 @@ private:
     GLuint foldingTexture_ = 0;
     GLuint detailNormalTextureA_ = 0;
     GLuint detailNormalTextureB_ = 0;
-    GLuint foamNoiseTexture_ = 0;
     std::array<CascadeState, kMaxCascadeCount> cascades_;
     std::vector<float> heightPixels_;
     std::vector<glm::vec3> normalPixels_;

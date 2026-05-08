@@ -9,7 +9,7 @@ out vec3 teNormal;
 out vec3 teSphereDir;
 out vec2 teTexCoord;
 out vec2 teWaveUv;
-out vec2 teFoamCoord;
+out vec2 teWaterCoord;
 out vec3 teTangent;
 out vec3 teBitangent;
 out float teWaveHeight;
@@ -49,7 +49,7 @@ void main()
 
     vec3 sphereDir = normalize(cubeFacePoint(uv));
     teWaveUv = uv * oceanWaveTileScale;
-    teFoamCoord = (uv * 2.0 - 1.0) * seaLevelRadius;
+    teWaterCoord = (uv * 2.0 - 1.0) * seaLevelRadius;
     float normalizedWaveHeight = texture(oceanHeightTexture, teWaveUv).r;
     float heightRight = texture(oceanHeightTexture, teWaveUv + vec2(oceanHeightTexelSize, 0.0)).r;
     float heightUp = texture(oceanHeightTexture, teWaveUv + vec2(0.0, oceanHeightTexelSize)).r;

@@ -10,6 +10,7 @@ out vec4 FragColor;
 uniform vec3 lightDir;
 uniform vec3 cameraPos;
 uniform int renderMode;    // 0=shaded, 2=height map, 3=normals
+uniform int faceIndex;
 
 #include "terrain_types.glsl"
 #include "terrain_surface.glsl"
@@ -19,7 +20,7 @@ uniform int renderMode;    // 0=shaded, 2=height map, 3=normals
 void main()
 {
     vec3 shadingNormal = normalize(teNormal);
-    SurfaceData surface = sampleSurfaceData(teHeight, teWorldPos, shadingNormal);
+    SurfaceData surface = sampleSurfaceData(teHeight, teWorldPos, shadingNormal, teTexCoord, faceIndex);
 
     vec4 debugOutput = debugSurfaceOutput(renderMode, surface, shadingNormal);
     if (debugOutput.r >= 0.0) {
