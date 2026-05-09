@@ -36,6 +36,7 @@ target("ProceduralWorld")
 
     if is_plat("windows") then
         add_links("opengl32")
+        add_cxxflags("/utf-8", {tools = "cl"})
     elseif is_plat("macosx") then
         add_frameworks("OpenGL")
         add_ldflags("-framework CoreFoundation")

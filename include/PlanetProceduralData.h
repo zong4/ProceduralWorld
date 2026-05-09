@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstddef>
+#include <functional>
 #include <vector>
 
 #include <glm/glm.hpp>
@@ -11,6 +12,26 @@
 class PlanetProceduralData
 {
 public:
+    enum class GenerationModule : int {
+        TerrainHeight = 0,
+        Erosion = 1,
+        Climate = 2,
+        Biome = 3,
+        Finalize = 4,
+        Count = 5
+    };
+
+    struct GenerationProgress {
+        int completedSteps = 0;
+        int totalSteps = 1;
+        GenerationModule module = GenerationModule::TerrainHeight;
+        int moduleCompletedSteps = 0;
+        int moduleTotalSteps = 1;
+        const char* status = "";
+    };
+
+    using ProgressCallback = std::function<void(const GenerationProgress& progress)>;
+
     struct FaceData {
         int resolution = 0;
         std::vector<float> height;
@@ -28,6 +49,7 @@ public:
     };
 
     void generate(const PlanetRenderSettings& settings, int faceResolution);
+    void generate(const PlanetRenderSettings& settings, int faceResolution, const ProgressCallback& progressCallback);
     bool saveCache(const char* path) const;
     bool loadCache(const char* path, const PlanetRenderSettings& settings);
     void clear();
@@ -94,8 +116,8 @@ private:
     static float terrainHeight(const PlanetRenderSettings& settings, const glm::vec3& sphereDir);
     static PlanetSample samplePlanetBase(const PlanetRenderSettings& settings, const glm::vec3& sphereDir);
     static PlanetSample samplePlanetBase(const PlanetRenderSettings& settings, const glm::vec3& sphereDir, float height);
-    void applyErosion(const PlanetRenderSettings& settings);
-    void computeBiomeWeights(const PlanetRenderSettings& settings);
+    void applyErosion(const PlanetRenderSettings& settings, const std::function<void(const char*)>& advanceProgress);
+    void computeBiomeWeights(const PlanetRenderSettings& settings, const std::function<void(const char*)>& advanceProgress);
     void fixCubeFaceSeams();
     static float temperature(const PlanetRenderSettings& settings, const glm::vec3& sphereDir, float height);
     static float moisture(const glm::vec3& sphereDir, float shoreMask);

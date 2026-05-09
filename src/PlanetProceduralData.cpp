@@ -330,6 +330,13 @@ void PlanetProceduralData::clear()
 
 void PlanetProceduralData::generate(const PlanetRenderSettings& settings, int faceResolution)
 {
+    generate(settings, faceResolution, ProgressCallback{});
+}
+
+void PlanetProceduralData::generate(const PlanetRenderSettings& settings,
+                                    int faceResolution,
+                                    const ProgressCallback& progressCallback)
+{
     settings_ = settings;
     resolution_ = std::clamp(faceResolution, 16, 512);
     generated_ = false;
@@ -337,6 +344,57 @@ void PlanetProceduralData::generate(const PlanetRenderSettings& settings, int fa
     minHeight_ = std::numeric_limits<float>::max();
     maxHeight_ = std::numeric_limits<float>::lowest();
     maxWaterDepth_ = 0.0f;
+
+    const int erosionIterations = std::clamp(settings.erosionIterations, 0, 256);
+    const float erosionStrength = std::max(settings.erosionStrength, 0.0f);
+    const float thermalStrength = std::max(settings.erosionThermalStrength, 0.0f);
+    const bool erosionActive = erosionIterations > 0 && (erosionStrength > 0.0f || thermalStrength > 0.0f);
+    const int thermalIterations = erosionActive && thermalStrength > 0.0f
+        ? std::clamp(erosionIterations / 3, 1, 80)
+        : 0;
+    std::array<int, static_cast<std::size_t>(GenerationModule::Count)> moduleTotals{};
+    std::array<int, static_cast<std::size_t>(GenerationModule::Count)> moduleCompleted{};
+    moduleTotals[static_cast<std::size_t>(GenerationModule::TerrainHeight)] = resolution_ * 6;
+    moduleTotals[static_cast<std::size_t>(GenerationModule::Erosion)] =
+        erosionActive ? erosionIterations + thermalIterations + 6 : 0;
+    moduleTotals[static_cast<std::size_t>(GenerationModule::Climate)] = resolution_ * 6 + 1;
+    moduleTotals[static_cast<std::size_t>(GenerationModule::Biome)] = resolution_ * 6 + 1;
+    moduleTotals[static_cast<std::size_t>(GenerationModule::Finalize)] = 1 + 6;
+
+    int totalSteps = 0;
+    for (int moduleTotal : moduleTotals) {
+        totalSteps += moduleTotal;
+    }
+    int completedSteps = 0;
+    GenerationModule activeModule = GenerationModule::TerrainHeight;
+    const auto reportProgress = [&](const char* status) {
+        if (progressCallback) {
+            const std::size_t moduleIndex = static_cast<std::size_t>(activeModule);
+            progressCallback(GenerationProgress{
+                std::min(completedSteps, totalSteps),
+                std::max(totalSteps, 1),
+                activeModule,
+                moduleCompleted[moduleIndex],
+                std::max(moduleTotals[moduleIndex], 1),
+                status
+            });
+        }
+    };
+    const auto advanceModuleProgress = [&](GenerationModule module, const char* status) {
+        activeModule = module;
+        completedSteps = std::min(completedSteps + 1, totalSteps);
+        const std::size_t moduleIndex = static_cast<std::size_t>(module);
+        moduleCompleted[moduleIndex] = std::min(moduleCompleted[moduleIndex] + 1, moduleTotals[moduleIndex]);
+        reportProgress(status);
+    };
+    const auto advanceErosionProgress = [&](const char* status) {
+        advanceModuleProgress(GenerationModule::Erosion, status);
+    };
+    const auto advanceBiomeProgress = [&](const char* status) {
+        advanceModuleProgress(GenerationModule::Biome, status);
+    };
+
+    reportProgress(u8"\u51c6\u5907\u751f\u6210");
 
     for (std::size_t faceIndex = 0; faceIndex < faces_.size(); ++faceIndex) {
         FaceData& faceData = faces_[faceIndex];
@@ -366,11 +424,13 @@ void PlanetProceduralData::generate(const PlanetRenderSettings& settings, int fa
 
                 faceData.height[index] = normalizedHeight;
             }
+            advanceModuleProgress(GenerationModule::TerrainHeight, u8"\u751f\u6210\u57fa\u7840\u9ad8\u5ea6");
         }
     }
 
-    applyErosion(settings);
+    applyErosion(settings, advanceErosionProgress);
     fixCubeFaceSeams();
+    advanceModuleProgress(GenerationModule::Finalize, u8"\u4fee\u6b63\u5730\u5f62\u63a5\u7f1d");
 
     for (std::size_t faceIndex = 0; faceIndex < faces_.size(); ++faceIndex) {
         FaceData& faceData = faces_[faceIndex];
@@ -391,12 +451,15 @@ void PlanetProceduralData::generate(const PlanetRenderSettings& settings, int fa
                 faceData.temperature[index] = sample.temperature;
                 faceData.moisture[index] = sample.moisture;
             }
+            advanceModuleProgress(GenerationModule::Climate, u8"\u8ba1\u7b97\u6d77\u6d0b\u548c\u6c14\u5019");
         }
     }
 
     fixCubeFaceSeams();
-    computeBiomeWeights(settings);
+    advanceModuleProgress(GenerationModule::Climate, u8"\u878d\u5408\u6c14\u5019\u63a5\u7f1d");
+    computeBiomeWeights(settings, advanceBiomeProgress);
     fixCubeFaceSeams();
+    advanceModuleProgress(GenerationModule::Biome, u8"\u878d\u5408\u751f\u7269\u7fa4\u7cfb\u63a5\u7f1d");
 
     minHeight_ = std::numeric_limits<float>::max();
     maxHeight_ = std::numeric_limits<float>::lowest();
@@ -413,6 +476,7 @@ void PlanetProceduralData::generate(const PlanetRenderSettings& settings, int fa
             shoreSamples += faceData.shoreMask[i] > 0.05f ? 1 : 0;
             ++totalSamples;
         }
+        advanceModuleProgress(GenerationModule::Finalize, u8"\u7edf\u8ba1\u9ad8\u5ea6\u548c\u6c34\u57df\u8986\u76d6");
     }
 
     if (totalSamples > 0) {
@@ -424,6 +488,7 @@ void PlanetProceduralData::generate(const PlanetRenderSettings& settings, int fa
     }
 
     generated_ = true;
+    reportProgress(u8"\u5b8c\u6210");
 }
 
 void PlanetProceduralData::fixCubeFaceSeams()
@@ -522,7 +587,8 @@ void PlanetProceduralData::fixCubeFaceSeams()
     reconcileVec4Field(&FaceData::biomeWeightB, materialSeamRings);
 }
 
-void PlanetProceduralData::computeBiomeWeights(const PlanetRenderSettings& settings)
+void PlanetProceduralData::computeBiomeWeights(const PlanetRenderSettings& settings,
+                                               const std::function<void(const char*)>& advanceProgress)
 {
     const int n = resolution_;
     const std::size_t cellCount = static_cast<std::size_t>(n * n);
@@ -599,11 +665,15 @@ void PlanetProceduralData::computeBiomeWeights(const PlanetRenderSettings& setti
                     biome.shallowWater
                 );
             }
+            if (advanceProgress) {
+                advanceProgress(u8"\u8ba1\u7b97\u751f\u7269\u7fa4\u7cfb\u6743\u91cd");
+            }
         }
     }
 }
 
-void PlanetProceduralData::applyErosion(const PlanetRenderSettings& settings)
+void PlanetProceduralData::applyErosion(const PlanetRenderSettings& settings,
+                                        const std::function<void(const char*)>& advanceProgress)
 {
     const int iterations = std::clamp(settings.erosionIterations, 0, 256);
     const float erosionStrength = std::max(settings.erosionStrength, 0.0f);
@@ -785,6 +855,9 @@ void PlanetProceduralData::applyErosion(const PlanetRenderSettings& settings)
             water[static_cast<std::size_t>(faceIndex)].swap(nextWater[static_cast<std::size_t>(faceIndex)]);
             sediment[static_cast<std::size_t>(faceIndex)].swap(nextSediment[static_cast<std::size_t>(faceIndex)]);
         }
+        if (advanceProgress) {
+            advanceProgress(u8"\u8fd0\u884c\u6c34\u529b\u4fb5\u8680");
+        }
     }
 
     const int thermalIterations = thermalStrength > 0.0f ? std::clamp(iterations / 3, 1, 80) : 0;
@@ -837,6 +910,9 @@ void PlanetProceduralData::applyErosion(const PlanetRenderSettings& settings)
                 faceData.erosionMask[i] += std::abs(faceDelta[i]);
             }
         }
+        if (advanceProgress) {
+            advanceProgress(u8"\u8fd0\u884c\u70ed\u529b\u4fb5\u8680");
+        }
     }
 
     for (FaceData& faceData : faces_) {
@@ -883,6 +959,9 @@ void PlanetProceduralData::applyErosion(const PlanetRenderSettings& settings)
                 channel += wear * concavityGate * 0.18f;
                 channelRaw[static_cast<std::size_t>(faceIndex)][center] = std::pow(glm::clamp(channel, 0.0f, 1.0f), 1.8f);
             }
+        }
+        if (advanceProgress) {
+            advanceProgress(u8"\u68c0\u6d4b\u6cb3\u9053\u6d41\u5411");
         }
     }
     for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {

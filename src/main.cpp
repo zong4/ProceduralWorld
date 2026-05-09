@@ -1,9 +1,17 @@
+#include <algorithm>
+#include <array>
+#include <atomic>
+#include <chrono>
 #include <cstdio>
 #include <cmath>
+#include <exception>
 #include <filesystem>
 #include <fstream>
+#include <future>
 #include <iomanip>
 #include <iostream>
+#include <memory>
+#include <mutex>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -37,6 +45,7 @@ constexpr float kPlanetAutoSpinDegreesPerSecond = 3.0f;
 constexpr const char* kSessionFilePath = "config/last_session.ini";
 constexpr const char* kProceduralCacheFilePath = "config/last_procedural_cache.bin";
 constexpr float kReferencePlanetRadius = 200.0f;
+constexpr int kGenerationModuleCount = static_cast<int>(PlanetProceduralData::GenerationModule::Count);
 
 enum class WorkflowStage {
     ProceduralSetup,
@@ -54,6 +63,15 @@ struct ApplicationState {
     int generationFaceResolution = 128;
     float generationTimer = 0.0f;
     float generationDuration = 0.55f;
+    PlanetRenderSettings pendingGenerationSettings;
+    std::atomic<int> generationCompletedSteps{0};
+    std::atomic<int> generationTotalSteps{1};
+    std::atomic<int> generationActiveModule{0};
+    std::array<std::atomic<int>, kGenerationModuleCount> generationModuleCompletedSteps{};
+    std::array<std::atomic<int>, kGenerationModuleCount> generationModuleTotalSteps{};
+    std::mutex generationStatusMutex;
+    std::string generationStatusText = u8"\u51c6\u5907\u751f\u6210";
+    std::future<std::unique_ptr<PlanetProceduralData>> generationFuture;
     bool hasGeneratedPlanet = false;
     bool firstRightMouseSample = true;
     bool firstLeftMouseSample = true;
@@ -607,17 +625,124 @@ float planetDistanceScale(float planetRadius)
     return glm::max(planetRadius / kReferencePlanetRadius, 0.25f);
 }
 
-void startPlanetGeneration(ApplicationState& state)
+const char* generationModuleLabel(int moduleIndex)
 {
-    state.workflowStage = WorkflowStage::Generating;
-    state.generationTimer = 0.0f;
+    static const char* kLabels[kGenerationModuleCount] = {
+        u8"\u57fa\u7840\u9ad8\u5ea6",
+        u8"\u4fb5\u8680\u6a21\u62df",
+        u8"\u6c34\u6587\u6c14\u5019",
+        u8"\u751f\u7269\u7fa4\u7cfb",
+        u8"\u6536\u5c3e\u7edf\u8ba1"
+    };
+    if (moduleIndex < 0 || moduleIndex >= kGenerationModuleCount) {
+        return "";
+    }
+    return kLabels[moduleIndex];
 }
 
-void finishPlanetGeneration(ApplicationState& state)
+void startPlanetGeneration(ApplicationState& state)
 {
+    if (state.generationFuture.valid()
+        && state.generationFuture.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+        return;
+    }
+
+    state.workflowStage = WorkflowStage::Generating;
+    state.generationTimer = 0.0f;
+    state.generationCompletedSteps.store(0, std::memory_order_relaxed);
+    state.generationTotalSteps.store(1, std::memory_order_relaxed);
+    state.generationActiveModule.store(0, std::memory_order_relaxed);
+    for (int i = 0; i < kGenerationModuleCount; ++i) {
+        state.generationModuleCompletedSteps[static_cast<std::size_t>(i)].store(0, std::memory_order_relaxed);
+        state.generationModuleTotalSteps[static_cast<std::size_t>(i)].store(1, std::memory_order_relaxed);
+    }
+    {
+        std::lock_guard<std::mutex> lock(state.generationStatusMutex);
+        state.generationStatusText = u8"\u51c6\u5907\u751f\u6210";
+    }
+
     PlanetRenderSettings generatedSettings = state.renderSettings;
     copyProceduralSettings(generatedSettings, state.proceduralSettings);
-    state.generatedPlanet.generate(generatedSettings, state.generationFaceResolution);
+    state.pendingGenerationSettings = generatedSettings;
+    const int faceResolution = state.generationFaceResolution;
+    const int clampedResolution = glm::clamp(faceResolution, 16, 512);
+    const int erosionIterations = glm::clamp(generatedSettings.erosionIterations, 0, 256);
+    const float erosionStrength = glm::max(generatedSettings.erosionStrength, 0.0f);
+    const float thermalStrength = glm::max(generatedSettings.erosionThermalStrength, 0.0f);
+    const bool erosionActive = erosionIterations > 0 && (erosionStrength > 0.0f || thermalStrength > 0.0f);
+    const int thermalIterations = erosionActive && thermalStrength > 0.0f
+        ? glm::clamp(erosionIterations / 3, 1, 80)
+        : 0;
+    const int moduleTotals[kGenerationModuleCount] = {
+        clampedResolution * 6,
+        erosionActive ? erosionIterations + thermalIterations + 6 : 0,
+        clampedResolution * 6 + 1,
+        clampedResolution * 6 + 1,
+        1 + 6
+    };
+    for (int i = 0; i < kGenerationModuleCount; ++i) {
+        state.generationModuleTotalSteps[static_cast<std::size_t>(i)].store(
+            std::max(moduleTotals[i], 1),
+            std::memory_order_relaxed
+        );
+    }
+
+    std::atomic<int>* completedSteps = &state.generationCompletedSteps;
+    std::atomic<int>* totalSteps = &state.generationTotalSteps;
+    std::atomic<int>* activeModule = &state.generationActiveModule;
+    auto* moduleCompletedSteps = &state.generationModuleCompletedSteps;
+    auto* moduleTotalSteps = &state.generationModuleTotalSteps;
+    std::mutex* statusMutex = &state.generationStatusMutex;
+    std::string* statusText = &state.generationStatusText;
+    state.generationFuture = std::async(
+        std::launch::async,
+        [generatedSettings,
+         faceResolution,
+         completedSteps,
+         totalSteps,
+         activeModule,
+         moduleCompletedSteps,
+         moduleTotalSteps,
+         statusMutex,
+         statusText]() {
+            auto planet = std::make_unique<PlanetProceduralData>();
+            planet->generate(
+                generatedSettings,
+                faceResolution,
+                [completedSteps, totalSteps, activeModule, moduleCompletedSteps, moduleTotalSteps, statusMutex, statusText](
+                    const PlanetProceduralData::GenerationProgress& progress
+                ) {
+                    const int moduleIndex = glm::clamp(static_cast<int>(progress.module), 0, kGenerationModuleCount - 1);
+                    completedSteps->store(progress.completedSteps, std::memory_order_relaxed);
+                    totalSteps->store(std::max(progress.totalSteps, 1), std::memory_order_relaxed);
+                    activeModule->store(moduleIndex, std::memory_order_relaxed);
+                    (*moduleCompletedSteps)[static_cast<std::size_t>(moduleIndex)].store(
+                        progress.moduleCompletedSteps,
+                        std::memory_order_relaxed
+                    );
+                    (*moduleTotalSteps)[static_cast<std::size_t>(moduleIndex)].store(
+                        std::max(progress.moduleTotalSteps, 1),
+                        std::memory_order_relaxed
+                    );
+                    std::lock_guard<std::mutex> lock(*statusMutex);
+                    *statusText = progress.status != nullptr ? progress.status : u8"\u751f\u6210\u4e2d";
+                }
+            );
+            return planet;
+        }
+    );
+}
+
+void finishPlanetGeneration(ApplicationState& state, std::unique_ptr<PlanetProceduralData> generatedPlanet)
+{
+    if (!generatedPlanet || !generatedPlanet->isGenerated()) {
+        state.workflowStage = WorkflowStage::ProceduralSetup;
+        state.sessionMessage = "Planet generation failed.";
+        return;
+    }
+
+    const PlanetRenderSettings generatedSettings = state.pendingGenerationSettings;
+    state.generatedPlanet = std::move(*generatedPlanet);
     state.renderer.settings() = generatedSettings;
     state.renderer.setProceduralData(state.generatedPlanet);
     state.renderSettings = generatedSettings;
@@ -822,8 +947,72 @@ void drawProceduralPanel(ApplicationState& state)
     ImGui::Separator();
 
     if (state.workflowStage == WorkflowStage::Generating) {
-        const float progress = glm::clamp(state.generationTimer / glm::max(state.generationDuration, 0.001f), 0.0f, 1.0f);
+        const int completedSteps = state.generationCompletedSteps.load(std::memory_order_relaxed);
+        const int totalSteps = std::max(state.generationTotalSteps.load(std::memory_order_relaxed), 1);
+        const float progress = glm::clamp(
+            static_cast<float>(completedSteps) / static_cast<float>(totalSteps),
+            0.0f,
+            1.0f
+        );
+        std::string generationStatus;
+        {
+            std::lock_guard<std::mutex> lock(state.generationStatusMutex);
+            generationStatus = state.generationStatusText;
+        }
         ImGui::ProgressBar(progress, ImVec2(-1.0f, 0.0f), "Generating planet...");
+        const int activeModuleIndex = glm::clamp(
+            state.generationActiveModule.load(std::memory_order_relaxed),
+            0,
+            kGenerationModuleCount - 1
+        );
+        const int activeModuleCompleted = state.generationModuleCompletedSteps[static_cast<std::size_t>(activeModuleIndex)].load(std::memory_order_relaxed);
+        const int activeModuleTotal = std::max(
+            state.generationModuleTotalSteps[static_cast<std::size_t>(activeModuleIndex)].load(std::memory_order_relaxed),
+            1
+        );
+        ImGui::Text(
+            u8"\u6b63\u5728\u751f\u6210\uff1a%s - %s (%d/%d)",
+            generationModuleLabel(activeModuleIndex),
+            generationStatus.c_str(),
+            activeModuleCompleted,
+            activeModuleTotal
+        );
+        return;
+        ImGui::Text(u8"\u6b63\u5728\u751f\u6210\uff1a%s (%d/%d)", generationStatus.c_str(), completedSteps, totalSteps);
+        ImGui::Spacing();
+        ImGui::TextDisabled(u8"\u6a21\u5757\u8fdb\u5ea6");
+
+        const int activeModule = glm::clamp(
+            state.generationActiveModule.load(std::memory_order_relaxed),
+            0,
+            kGenerationModuleCount - 1
+        );
+        for (int moduleIndex = 0; moduleIndex < kGenerationModuleCount; ++moduleIndex) {
+            const int moduleCompleted = state.generationModuleCompletedSteps[static_cast<std::size_t>(moduleIndex)].load(std::memory_order_relaxed);
+            const int moduleTotal = std::max(
+                state.generationModuleTotalSteps[static_cast<std::size_t>(moduleIndex)].load(std::memory_order_relaxed),
+                1
+            );
+            const float moduleProgress = glm::clamp(
+                static_cast<float>(moduleCompleted) / static_cast<float>(moduleTotal),
+                0.0f,
+                1.0f
+            );
+
+            char overlay[32] = {};
+            std::snprintf(overlay, sizeof(overlay), "%d/%d", moduleCompleted, moduleTotal);
+            if (moduleIndex == activeModule) {
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.95f, 0.78f, 0.34f, 1.0f));
+            }
+            ImGui::Text("%s", generationModuleLabel(moduleIndex));
+            if (moduleIndex == activeModule) {
+                ImGui::PopStyleColor();
+            }
+            ImGui::ProgressBar(moduleProgress, ImVec2(-1.0f, 0.0f), overlay);
+        }
+        return;
+        ImGui::Text(u8"正在生成... (%d/%d)", completedSteps, totalSteps);
+        ImGui::TextDisabled("%s", generationStatus.c_str());
         return;
     }
 
@@ -1188,6 +1377,34 @@ void drawDebugPanel(ApplicationState& state)
     ImGui::PopStyleVar(3);
     ImGui::PopStyleColor(18);
 }
+
+void configureImGuiFonts()
+{
+    ImGuiIO& io = ImGui::GetIO();
+    const char* fontPaths[] = {
+        "C:/Windows/Fonts/msyh.ttc",
+        "C:/Windows/Fonts/msyh.ttf",
+        "C:/Windows/Fonts/simhei.ttf",
+        "C:/Windows/Fonts/simsun.ttc",
+        "C:/Windows/Fonts/NotoSansCJK-Regular.ttc"
+    };
+
+    for (const char* fontPath : fontPaths) {
+        if (!std::filesystem::exists(fontPath)) {
+            continue;
+        }
+
+        ImFontConfig config;
+        config.OversampleH = 2;
+        config.OversampleV = 2;
+        config.PixelSnapH = true;
+        if (io.Fonts->AddFontFromFileTTF(fontPath, 16.0f, &config, io.Fonts->GetGlyphRangesChineseFull()) != nullptr) {
+            return;
+        }
+    }
+
+    io.Fonts->AddFontDefault();
+}
 } // namespace
 
 int main()
@@ -1240,6 +1457,7 @@ int main()
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGui::StyleColorsDark();
+    configureImGuiFonts();
     ImGui_ImplGlfw_InitForOpenGL(window, false);
     ImGui_ImplOpenGL3_Init("#version 410");
 
@@ -1264,8 +1482,14 @@ int main()
 
         if (appState.workflowStage == WorkflowStage::Generating) {
             appState.generationTimer += appState.deltaSeconds;
-            if (appState.generationTimer >= appState.generationDuration) {
-                finishPlanetGeneration(appState);
+            if (appState.generationFuture.valid()
+                && appState.generationFuture.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+                try {
+                    finishPlanetGeneration(appState, appState.generationFuture.get());
+                } catch (const std::exception& exception) {
+                    appState.workflowStage = WorkflowStage::ProceduralSetup;
+                    appState.sessionMessage = std::string("Planet generation failed: ") + exception.what();
+                }
             }
         }
 
