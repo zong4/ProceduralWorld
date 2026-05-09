@@ -17,12 +17,20 @@ public:
         std::vector<float> waterDepth;
         std::vector<float> shoreMask;
         std::vector<float> erosionMask;
+        std::vector<float> channelMask;
+        std::vector<float> flowMask;
+        std::vector<float> wearMask;
+        std::vector<float> depositionMask;
         std::vector<float> temperature;
         std::vector<float> moisture;
-        std::vector<float> biomeId;
+        std::vector<glm::vec4> biomeWeightA;
+        std::vector<glm::vec4> biomeWeightB;
     };
 
     void generate(const PlanetRenderSettings& settings, int faceResolution);
+    bool saveCache(const char* path) const;
+    bool loadCache(const char* path, const PlanetRenderSettings& settings);
+    void clear();
 
     bool isGenerated() const { return generated_; }
     int resolution() const { return resolution_; }
@@ -42,6 +50,26 @@ private:
         glm::vec3 axisV;
     };
 
+    struct CellRef {
+        int face = 0;
+        std::size_t index = 0;
+    };
+
+    struct PlanetSample {
+        float height = 0.0f;
+        float waterDepth = 0.0f;
+        float shoreMask = 0.0f;
+        float temperature = 0.0f;
+        float moisture = 0.0f;
+        float slope = 0.0f;
+        float channel = 0.0f;
+        float flow = 0.0f;
+        float wear = 0.0f;
+        float deposition = 0.0f;
+        glm::vec4 biomeA = glm::vec4(0.0f);
+        glm::vec4 biomeB = glm::vec4(0.0f);
+    };
+
     static const std::array<FaceBasis, 6> kFaces;
 
     bool generated_ = false;
@@ -55,14 +83,20 @@ private:
     float shoreCoverage_ = 0.0f;
 
     static glm::vec3 cubeSphereDirection(const FaceBasis& face, const glm::vec2& uv);
+    static int faceIndexFromDirection(const glm::vec3& dir);
+    static CellRef cellFromDirection(const glm::vec3& dir, int resolution);
+    static CellRef neighborCell(int faceIndex, int x, int y, int resolution);
     static glm::vec3 hash3(const glm::vec3& p);
     static float gradientNoise(const glm::vec3& p);
     static float fbm(const glm::vec3& p, int octaves, float lacunarity, float gain);
 
     static float altitudeBandWeight(float startAltitude, float endAltitude);
     static float terrainHeight(const PlanetRenderSettings& settings, const glm::vec3& sphereDir);
+    static PlanetSample samplePlanetBase(const PlanetRenderSettings& settings, const glm::vec3& sphereDir);
+    static PlanetSample samplePlanetBase(const PlanetRenderSettings& settings, const glm::vec3& sphereDir, float height);
     void applyErosion(const PlanetRenderSettings& settings);
+    void computeBiomeWeights(const PlanetRenderSettings& settings);
+    void fixCubeFaceSeams();
     static float temperature(const PlanetRenderSettings& settings, const glm::vec3& sphereDir, float height);
     static float moisture(const glm::vec3& sphereDir, float shoreMask);
-    static float classifyBiome(float height, float waterDepth, float shoreMask, float temperature, float moisture);
 };

@@ -4,7 +4,9 @@
 layout(vertices = 4) out;
 
 in vec2 vTexCoord[];
+in float vSkirt[];
 out vec2 tcTexCoord[];
+out float tcSkirt[];
 
 uniform vec3 cameraPos;
 uniform mat4 model;
@@ -41,6 +43,7 @@ void main()
     // Pass-through control point data
     gl_out[gl_InvocationID].gl_Position = gl_in[gl_InvocationID].gl_Position;
     tcTexCoord[gl_InvocationID] = vTexCoord[gl_InvocationID];
+    tcSkirt[gl_InvocationID] = vSkirt[gl_InvocationID];
 
     // Only compute tessellation levels once (invocation 0)
     if (gl_InvocationID == 0)

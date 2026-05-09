@@ -3,9 +3,6 @@
 in vec3 teWorldPos;
 in vec3 teNormal;
 in vec3 teSphereDir;
-in vec2 teTexCoord;
-in vec2 teWaveUv;
-in vec2 teWaterCoord;
 in vec3 teTangent;
 in vec3 teBitangent;
 in float teWaveHeight;
@@ -22,7 +19,6 @@ uniform vec3 oceanShallowColor;
 uniform vec3 oceanDeepColor;
 uniform vec3 oceanSSSColor;
 uniform int renderMode;
-uniform int faceIndex;
 uniform float planetRadius;
 uniform float oceanAlpha;
 uniform float oceanShallowAlpha;
@@ -34,6 +30,7 @@ uniform float oceanShallowDepthRange;
 uniform float oceanDepthScale;
 uniform float oceanTintStrength;
 uniform float oceanWaveNormalStrength;
+uniform float oceanWaveTileScale;
 uniform float oceanDetailNormalStrength;
 uniform float oceanDetailNormalScale;
 uniform float oceanDetailFadeDistance;
@@ -55,6 +52,12 @@ uniform sampler2D oceanNormalTexture;
 uniform sampler2D waterDetailNormalTextureA;
 uniform sampler2D waterDetailNormalTextureB;
 uniform sampler2DArray proceduralWaterDepthTexture;
+uniform sampler2DArray proceduralHeightTexture;
+uniform float proceduralDataTexelSize;
+uniform float seaLevelOffset;
+uniform float heightScale;
+
+#include "planet_sampling.glsl"
 
 vec3 toneMapAndGamma(vec3 color)
 {
@@ -84,6 +87,47 @@ vec3 unpackStandardNormalToYUp(vec3 packedNormal)
 {
     vec3 normal = normalize(packedNormal * 2.0 - 1.0);
     return normalize(vec3(normal.x, normal.z, normal.y));
+}
+
+vec3 triplanarWeights(vec3 sphereDir)
+{
+    vec3 w = pow(abs(normalize(sphereDir)), vec3(4.0));
+    return w / max(w.x + w.y + w.z, 0.0001);
+}
+
+vec2 projectionUvX(vec3 sphereDir)
+{
+    return sphereDir.yz * 0.5 + 0.5;
+}
+
+vec2 projectionUvY(vec3 sphereDir)
+{
+    return sphereDir.xz * 0.5 + 0.5;
+}
+
+vec2 projectionUvZ(vec3 sphereDir)
+{
+    return sphereDir.xy * 0.5 + 0.5;
+}
+
+vec3 sampleRawNormalTriplanar(sampler2D tex, vec3 sphereDir, float scale, vec2 offset, float lod)
+{
+    vec3 d = normalize(sphereDir);
+    vec3 w = triplanarWeights(d);
+    vec3 normalX = normalize(textureLod(tex, projectionUvX(d) * scale + offset, lod).rgb);
+    vec3 normalY = normalize(textureLod(tex, projectionUvY(d) * scale + offset, lod).rgb);
+    vec3 normalZ = normalize(textureLod(tex, projectionUvZ(d) * scale + offset, lod).rgb);
+    return normalize(normalX * w.x + normalY * w.y + normalZ * w.z);
+}
+
+vec3 samplePackedNormalTriplanar(sampler2D tex, vec3 sphereDir, float scale, vec2 offset, float lod)
+{
+    vec3 d = normalize(sphereDir);
+    vec3 w = triplanarWeights(d);
+    vec3 normalX = unpackStandardNormalToYUp(textureLod(tex, projectionUvX(d) * scale + offset, lod).rgb);
+    vec3 normalY = unpackStandardNormalToYUp(textureLod(tex, projectionUvY(d) * scale + offset, lod).rgb);
+    vec3 normalZ = unpackStandardNormalToYUp(textureLod(tex, projectionUvZ(d) * scale + offset, lod).rgb);
+    return normalize(normalX * w.x + normalY * w.y + normalZ * w.z);
 }
 
 float saturate(float value)
@@ -116,13 +160,34 @@ vec3 fresnelSchlick(float cosTheta, vec3 f0)
     return f0 + (1.0 - f0) * pow(1.0 - saturate(cosTheta), 5.0);
 }
 
+struct OceanPlanetSample
+{
+    float terrainHeight;
+    float bakedWaterDepth;
+    float signedWaterDepth;
+    float waterDepth;
+    float shoreMask;
+};
+
+OceanPlanetSample samplePlanet(vec3 sphereDir)
+{
+    OceanPlanetSample planetSample;
+    planetSample.terrainHeight = sampleFloatArraySeamlessNarrow(proceduralHeightTexture, sphereDir);
+    planetSample.bakedWaterDepth = max(sampleFloatArraySeamless(proceduralWaterDepthTexture, sphereDir), 0.0);
+    planetSample.signedWaterDepth = (seaLevelOffset - planetSample.terrainHeight) * heightScale;
+    planetSample.waterDepth = max(max(planetSample.signedWaterDepth, 0.0), planetSample.bakedWaterDepth * 0.15);
+    planetSample.shoreMask = 1.0 - smoothstep(0.0, max(oceanShoreBlendWidth, 0.001), abs(planetSample.signedWaterDepth));
+    return planetSample;
+}
+
 void main()
 {
     vec2 screenUV = teClipSpacePos.xy / teClipSpacePos.w * 0.5 + 0.5;
     vec3 radialNormal = normalize(teNormal);
     vec3 tangent = normalize(teTangent);
     vec3 bitangent = normalize(teBitangent);
-    vec3 fftNormal = normalize(texture(oceanNormalTexture, teWaveUv).rgb);
+    vec3 sphereDir = normalize(teSphereDir);
+    vec3 fftNormal = sampleRawNormalTriplanar(oceanNormalTexture, sphereDir, oceanWaveTileScale, vec2(0.0), 0.0);
     fftNormal = normalize(vec3(
         fftNormal.x * oceanWaveNormalStrength,
         max(fftNormal.y, 0.001),
@@ -136,13 +201,10 @@ void main()
     detailFade *= detailFade;
     float detailLod = mix(1.0, 5.0, 1.0 - detailFade);
     mat2 detailRotation = mat2(0.8, -0.6, 0.6, 0.8);
-    vec2 detailCoord = teWaterCoord * (oceanDetailNormalScale * 0.015);
     vec2 detailFlow = vec2(0.22, 0.11) * timeSeconds;
     vec2 counterFlow = vec2(-0.17, 0.19) * timeSeconds;
-    vec2 detailUvA = detailCoord + detailFlow;
-    vec2 detailUvB = detailRotation * (detailCoord * 1.73) + counterFlow;
-    vec3 detailNormalA = unpackStandardNormalToYUp(textureLod(waterDetailNormalTextureA, detailUvA, detailLod).rgb);
-    vec3 detailNormalB = unpackStandardNormalToYUp(textureLod(waterDetailNormalTextureB, detailUvB, detailLod + 0.5).rgb);
+    vec3 detailNormalA = samplePackedNormalTriplanar(waterDetailNormalTextureA, sphereDir, oceanDetailNormalScale, detailFlow, detailLod);
+    vec3 detailNormalB = samplePackedNormalTriplanar(waterDetailNormalTextureB, sphereDir, oceanDetailNormalScale * 1.73, detailRotation * counterFlow, detailLod + 0.5);
     vec3 detailTangentNormal = normalize(vec3(
         detailNormalA.x + detailNormalB.x * 0.45,
         detailNormalA.y * detailNormalB.y,
@@ -165,14 +227,22 @@ void main()
     float sceneDepth = linearizeDepth(texture(refractionDepthTexture, screenUV).r, cameraNearPlane, cameraFarPlane);
     float waterSurfaceDepth = linearizeDepth(gl_FragCoord.z, cameraNearPlane, cameraFarPlane);
     float waterColumnDepth = max(sceneDepth - waterSurfaceDepth, 0.0);
-    vec3 proceduralUv = vec3(teTexCoord, float(faceIndex));
-    float proceduralWaterDepth = max(texture(proceduralWaterDepthTexture, proceduralUv).r, 0.0);
-    float depthPixelWidth = max(fwidth(proceduralWaterDepth) * 2.0, oceanShoreBlendWidth);
-    float nearWaterCoverage = smoothstep(depthPixelWidth * 0.25, depthPixelWidth, proceduralWaterDepth);
+    OceanPlanetSample planet = samplePlanet(sphereDir);
+    float signedHeightWaterDepth = planet.signedWaterDepth;
+    float heightWaterDepth = max(signedHeightWaterDepth, 0.0);
+    if (signedHeightWaterDepth <= 0.0) {
+        discard;
+    }
+    float proceduralWaterDepth = planet.waterDepth;
+    float runtimeShore = planet.shoreMask;
+    float depthPixelWidth = max(fwidth(heightWaterDepth) * 2.0, max(oceanShoreBlendWidth, heightScale * proceduralDataTexelSize * 0.75));
+    float nearWaterCoverage = smoothstep(0.0, depthPixelWidth, heightWaterDepth);
+    nearWaterCoverage = max(nearWaterCoverage, runtimeShore * smoothstep(0.0, depthPixelWidth, proceduralWaterDepth) * 0.22);
     float farOceanCoverage = smoothstep(planetRadius * 3.5, planetRadius * 8.0, distanceToCamera);
-    float waterCoverage = mix(nearWaterCoverage, 1.0, farOceanCoverage);
+    float farWaterCoverage = smoothstep(0.0, max(depthPixelWidth, oceanShoreBlendWidth * 1.5), proceduralWaterDepth);
+    float waterCoverage = mix(nearWaterCoverage, farWaterCoverage, farOceanCoverage);
 
-    if (farOceanCoverage < 0.20 && waterCoverage <= 0.01) {
+    if (waterCoverage <= 0.01) {
         discard;
     }
 

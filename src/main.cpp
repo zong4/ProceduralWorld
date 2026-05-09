@@ -1,5 +1,12 @@
 #include <cstdio>
+#include <cmath>
+#include <filesystem>
+#include <fstream>
+#include <iomanip>
 #include <iostream>
+#include <sstream>
+#include <string>
+#include <unordered_map>
 
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
@@ -27,6 +34,9 @@ constexpr int kWindowHeight = 720;
 constexpr float kLockedCameraFov = 50.0f;
 constexpr float kOrbitAngularSpeedDegrees = 42.0f;
 constexpr float kPlanetAutoSpinDegreesPerSecond = 3.0f;
+constexpr const char* kSessionFilePath = "config/last_session.ini";
+constexpr const char* kProceduralCacheFilePath = "config/last_procedural_cache.bin";
+constexpr float kReferencePlanetRadius = 200.0f;
 
 enum class WorkflowStage {
     ProceduralSetup,
@@ -60,6 +70,7 @@ struct ApplicationState {
     float cameraOrbitYawDegrees = 0.0f;
     float cameraOrbitPitchDegrees = 12.0f;
     float cameraOrbitDistance = 420.0f;
+    std::string sessionMessage;
 };
 
 ApplicationState* getState(GLFWwindow* window)
@@ -72,6 +83,7 @@ void copyProceduralSettings(PlanetRenderSettings& destination, const PlanetRende
     destination.planetRadius = source.planetRadius;
     destination.seaLevelOffset = source.seaLevelOffset;
     destination.terrainHeightScale = source.terrainHeightScale;
+    destination.terrainSkirtDepth = source.terrainSkirtDepth;
     destination.terrainNoiseScale = source.terrainNoiseScale;
     destination.mountainMaskStrength = source.mountainMaskStrength;
     destination.mountainMaskScale = source.mountainMaskScale;
@@ -113,25 +125,63 @@ float maxCameraOrbitDistance(const PlanetRenderSettings& settings)
     return glm::max(settings.planetRadius * 8.0f, minCameraOrbitDistance(settings) + 10.0f);
 }
 
+float wrapDegrees(float degrees)
+{
+    degrees = std::fmod(degrees, 360.0f);
+    if (degrees < 0.0f) {
+        degrees += 360.0f;
+    }
+    return degrees;
+}
+
+glm::vec3 rotateVectorAroundAxis(const glm::vec3& value, const glm::vec3& axis, float degrees)
+{
+    return glm::vec3(glm::rotate(glm::mat4(1.0f), glm::radians(degrees), glm::normalize(axis)) * glm::vec4(value, 0.0f));
+}
+
+void updateOrbitMetadata(ApplicationState& state)
+{
+    state.cameraOrbitDistance = glm::length(state.camera.position);
+    if (state.cameraOrbitDistance <= 0.001f) {
+        return;
+    }
+
+    const glm::vec3 direction = glm::normalize(state.camera.position);
+    state.cameraOrbitPitchDegrees = wrapDegrees(glm::degrees(std::asin(glm::clamp(direction.y, -1.0f, 1.0f))));
+    state.cameraOrbitYawDegrees = wrapDegrees(glm::degrees(std::atan2(direction.x, direction.z)));
+}
+
+void orientCameraToPlanet(ApplicationState& state, const glm::vec3& preferredUp)
+{
+    glm::vec3 radialDirection = glm::normalize(state.camera.position);
+    state.camera.front = -radialDirection;
+
+    glm::vec3 upCandidate = preferredUp - state.camera.front * glm::dot(preferredUp, state.camera.front);
+    if (glm::length(upCandidate) < 0.0001f) {
+        upCandidate = glm::abs(state.camera.front.y) < 0.95f ? glm::vec3(0.0f, 1.0f, 0.0f) : glm::vec3(1.0f, 0.0f, 0.0f);
+        upCandidate -= state.camera.front * glm::dot(upCandidate, state.camera.front);
+    }
+
+    const glm::vec3 orbitUp = glm::normalize(upCandidate);
+    state.camera.right = glm::normalize(glm::cross(state.camera.front, orbitUp));
+    state.camera.up = glm::normalize(glm::cross(state.camera.right, state.camera.front));
+}
+
 void updateOrbitCamera(ApplicationState& state, const PlanetRenderSettings& settings)
 {
     state.camera.fieldOfView = kLockedCameraFov;
-    state.cameraOrbitPitchDegrees = glm::clamp(state.cameraOrbitPitchDegrees, -82.0f, 82.0f);
     state.cameraOrbitDistance = glm::clamp(
         state.cameraOrbitDistance,
         minCameraOrbitDistance(settings),
         maxCameraOrbitDistance(settings)
     );
 
-    const float yaw = glm::radians(state.cameraOrbitYawDegrees);
-    const float pitch = glm::radians(state.cameraOrbitPitchDegrees);
-    const float cp = glm::cos(pitch);
-    state.camera.position = glm::vec3(
-        glm::sin(yaw) * cp,
-        glm::sin(pitch),
-        glm::cos(yaw) * cp
-    ) * state.cameraOrbitDistance;
-    state.camera.lookAt(glm::vec3(0.0f));
+    glm::vec3 radialDirection = glm::length(state.camera.position) > 0.001f
+        ? glm::normalize(state.camera.position)
+        : glm::vec3(0.0f, 0.0f, 1.0f);
+    state.camera.position = radialDirection * state.cameraOrbitDistance;
+    orientCameraToPlanet(state, state.camera.up);
+    updateOrbitMetadata(state);
 }
 
 void setOrbitFromCameraPosition(ApplicationState& state, const PlanetRenderSettings& settings)
@@ -141,12 +191,420 @@ void setOrbitFromCameraPosition(ApplicationState& state, const PlanetRenderSetti
         minCameraOrbitDistance(settings),
         maxCameraOrbitDistance(settings)
     );
-    if (state.cameraOrbitDistance > 0.001f) {
-        const glm::vec3 direction = glm::normalize(state.camera.position);
-        state.cameraOrbitPitchDegrees = glm::degrees(glm::asin(glm::clamp(direction.y, -1.0f, 1.0f)));
-        state.cameraOrbitYawDegrees = glm::degrees(glm::atan(direction.x, direction.z));
+    if (glm::length(state.camera.position) <= 0.001f) {
+        state.camera.position = glm::vec3(0.0f, 0.0f, state.cameraOrbitDistance);
+    } else {
+        state.camera.position = glm::normalize(state.camera.position) * state.cameraOrbitDistance;
     }
-    updateOrbitCamera(state, settings);
+    orientCameraToPlanet(state, glm::vec3(0.0f, 1.0f, 0.0f));
+    updateOrbitMetadata(state);
+}
+
+using SessionValues = std::unordered_map<std::string, std::string>;
+
+std::string trimString(const std::string& value)
+{
+    const std::size_t first = value.find_first_not_of(" \t\r\n");
+    if (first == std::string::npos) {
+        return {};
+    }
+
+    const std::size_t last = value.find_last_not_of(" \t\r\n");
+    return value.substr(first, last - first + 1);
+}
+
+std::string sessionKey(const std::string& prefix, const char* name)
+{
+    return prefix + "." + name;
+}
+
+void writeFloat(std::ostream& out, const std::string& key, float value)
+{
+    out << key << "=" << value << "\n";
+}
+
+void writeInt(std::ostream& out, const std::string& key, int value)
+{
+    out << key << "=" << value << "\n";
+}
+
+void writeBool(std::ostream& out, const std::string& key, bool value)
+{
+    out << key << "=" << (value ? 1 : 0) << "\n";
+}
+
+void writeVec3(std::ostream& out, const std::string& key, const glm::vec3& value)
+{
+    out << key << "=" << value.x << " " << value.y << " " << value.z << "\n";
+}
+
+bool readSessionFile(SessionValues& values, const char* path)
+{
+    std::ifstream file(path);
+    if (!file) {
+        return false;
+    }
+
+    std::string line;
+    while (std::getline(file, line)) {
+        const std::size_t comment = line.find('#');
+        if (comment != std::string::npos) {
+            line = line.substr(0, comment);
+        }
+
+        const std::size_t equals = line.find('=');
+        if (equals == std::string::npos) {
+            continue;
+        }
+
+        const std::string key = trimString(line.substr(0, equals));
+        const std::string value = trimString(line.substr(equals + 1));
+        if (!key.empty()) {
+            values[key] = value;
+        }
+    }
+
+    return true;
+}
+
+bool readFloat(const SessionValues& values, const std::string& key, float& outValue)
+{
+    const auto it = values.find(key);
+    if (it == values.end()) {
+        return false;
+    }
+
+    try {
+        outValue = std::stof(it->second);
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
+bool readInt(const SessionValues& values, const std::string& key, int& outValue)
+{
+    const auto it = values.find(key);
+    if (it == values.end()) {
+        return false;
+    }
+
+    try {
+        outValue = std::stoi(it->second);
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
+bool readBool(const SessionValues& values, const std::string& key, bool& outValue)
+{
+    int parsed = 0;
+    if (readInt(values, key, parsed)) {
+        outValue = parsed != 0;
+        return true;
+    }
+
+    const auto it = values.find(key);
+    if (it == values.end()) {
+        return false;
+    }
+
+    const std::string value = trimString(it->second);
+    if (value == "true" || value == "True") {
+        outValue = true;
+        return true;
+    }
+    if (value == "false" || value == "False") {
+        outValue = false;
+        return true;
+    }
+    return false;
+}
+
+bool readVec3(const SessionValues& values, const std::string& key, glm::vec3& outValue)
+{
+    const auto it = values.find(key);
+    if (it == values.end()) {
+        return false;
+    }
+
+    std::istringstream stream(it->second);
+    glm::vec3 parsed(0.0f);
+    if (stream >> parsed.x >> parsed.y >> parsed.z) {
+        outValue = parsed;
+        return true;
+    }
+    return false;
+}
+
+#define PLANET_SETTING_FLOAT_FIELDS(X) \
+    X(planetRadius) \
+    X(seaLevelOffset) \
+    X(tessellationMax) \
+    X(tessellationMin) \
+    X(tessellationNearDistance) \
+    X(tessellationFarDistance) \
+    X(oceanTessellationMax) \
+    X(oceanTessellationMin) \
+    X(oceanTessellationNearDistance) \
+    X(oceanTessellationFarDistance) \
+    X(terrainHeightScale) \
+    X(terrainSkirtDepth) \
+    X(terrainNoiseScale) \
+    X(mountainMaskStrength) \
+    X(mountainMaskScale) \
+    X(mountainRidgeSharpness) \
+    X(erosionStrength) \
+    X(erosionTalus) \
+    X(erosionSediment) \
+    X(erosionThermalStrength) \
+    X(regionalDetailStrength) \
+    X(microDetailStrength) \
+    X(regionalDetailStartAltitude) \
+    X(regionalDetailEndAltitude) \
+    X(microDetailStartAltitude) \
+    X(microDetailEndAltitude) \
+    X(terrainBeachWidth) \
+    X(terrainShoreLift) \
+    X(terrainRockSlopeStart) \
+    X(terrainRockSlopeEnd) \
+    X(terrainSnowStart) \
+    X(terrainSnowEnd) \
+    X(terrainMaterialNoiseScale) \
+    X(terrainMaterialNoiseStrength) \
+    X(coarseGridLineWidth) \
+    X(fogDensity) \
+    X(atmosphereHeight) \
+    X(atmosphereDensity) \
+    X(atmosphereRayleighStrength) \
+    X(atmosphereMieStrength) \
+    X(atmosphereMieAnisotropy) \
+    X(atmosphereExposure) \
+    X(cameraNearPlane) \
+    X(cameraFarPlane) \
+    X(oceanAlpha) \
+    X(oceanShallowAlpha) \
+    X(oceanDeepAlpha) \
+    X(oceanFresnelStrength) \
+    X(oceanDistortionStrength) \
+    X(oceanDepthRange) \
+    X(oceanShallowDepthRange) \
+    X(oceanDepthScale) \
+    X(oceanTintStrength) \
+    X(oceanWaveAmplitude) \
+    X(oceanChoppiness) \
+    X(oceanWaveTileScale) \
+    X(oceanWaveNormalStrength) \
+    X(oceanDetailNormalStrength) \
+    X(oceanDetailNormalScale) \
+    X(oceanDetailFadeDistance) \
+    X(oceanSpecularStrength) \
+    X(oceanSpecularSharpness) \
+    X(oceanRoughness) \
+    X(oceanSSSStrength) \
+    X(oceanSSSPower) \
+    X(oceanShoreBlendWidth) \
+    X(oceanReflectionResolutionScale) \
+    X(oceanReflectionMaxAltitude) \
+    X(oceanRefractionMaxAltitude)
+
+#define PLANET_SETTING_INT_FIELDS(X) \
+    X(erosionIterations) \
+    X(oceanReflectionFrameStride) \
+    X(oceanRefractionFrameStride) \
+    X(oceanFftCascadeCount) \
+    X(oceanFftFrameStride) \
+    X(terrainMaskDebugMode)
+
+#define PLANET_SETTING_BOOL_FIELDS(X) \
+    X(renderAtmosphere) \
+    X(renderOceanReflectionRefraction) \
+    X(renderOceanReflection) \
+    X(renderOceanRefraction) \
+    X(oceanAutoDistanceLod) \
+    X(renderTerrain) \
+    X(renderOcean)
+
+#define PLANET_SETTING_VEC3_FIELDS(X) \
+    X(terrainLowlandColor) \
+    X(terrainForestColor) \
+    X(terrainDesertColor) \
+    X(terrainRockColor) \
+    X(terrainBeachColor) \
+    X(terrainSnowColor) \
+    X(skyColor) \
+    X(atmosphereRayleighColor) \
+    X(atmosphereMieColor) \
+    X(oceanShallowColor) \
+    X(oceanDeepColor) \
+    X(oceanSSSColor)
+
+void writeSettings(std::ostream& out, const std::string& prefix, const PlanetRenderSettings& settings)
+{
+#define WRITE_FLOAT_FIELD(name) writeFloat(out, sessionKey(prefix, #name), settings.name);
+#define WRITE_INT_FIELD(name) writeInt(out, sessionKey(prefix, #name), settings.name);
+#define WRITE_BOOL_FIELD(name) writeBool(out, sessionKey(prefix, #name), settings.name);
+#define WRITE_VEC3_FIELD(name) writeVec3(out, sessionKey(prefix, #name), settings.name);
+    PLANET_SETTING_FLOAT_FIELDS(WRITE_FLOAT_FIELD)
+    PLANET_SETTING_INT_FIELDS(WRITE_INT_FIELD)
+    PLANET_SETTING_BOOL_FIELDS(WRITE_BOOL_FIELD)
+    PLANET_SETTING_VEC3_FIELDS(WRITE_VEC3_FIELD)
+#undef WRITE_FLOAT_FIELD
+#undef WRITE_INT_FIELD
+#undef WRITE_BOOL_FIELD
+#undef WRITE_VEC3_FIELD
+
+    writeInt(out, sessionKey(prefix, "renderMode"), static_cast<int>(settings.renderMode));
+    writeInt(out, sessionKey(prefix, "wireMode"), static_cast<int>(settings.wireMode));
+}
+
+void readSettings(const SessionValues& values, const std::string& prefix, PlanetRenderSettings& settings)
+{
+#define READ_FLOAT_FIELD(name) readFloat(values, sessionKey(prefix, #name), settings.name);
+#define READ_INT_FIELD(name) readInt(values, sessionKey(prefix, #name), settings.name);
+#define READ_BOOL_FIELD(name) readBool(values, sessionKey(prefix, #name), settings.name);
+#define READ_VEC3_FIELD(name) readVec3(values, sessionKey(prefix, #name), settings.name);
+    PLANET_SETTING_FLOAT_FIELDS(READ_FLOAT_FIELD)
+    PLANET_SETTING_INT_FIELDS(READ_INT_FIELD)
+    PLANET_SETTING_BOOL_FIELDS(READ_BOOL_FIELD)
+    PLANET_SETTING_VEC3_FIELDS(READ_VEC3_FIELD)
+#undef READ_FLOAT_FIELD
+#undef READ_INT_FIELD
+#undef READ_BOOL_FIELD
+#undef READ_VEC3_FIELD
+
+    int renderMode = static_cast<int>(settings.renderMode);
+    if (readInt(values, sessionKey(prefix, "renderMode"), renderMode)) {
+        settings.renderMode = static_cast<PlanetRenderMode>(glm::clamp(renderMode, 0, 3));
+    }
+
+    int wireMode = static_cast<int>(settings.wireMode);
+    if (readInt(values, sessionKey(prefix, "wireMode"), wireMode)) {
+        settings.wireMode = static_cast<PlanetWireMode>(glm::clamp(wireMode, 0, 2));
+    }
+
+    settings.erosionIterations = glm::clamp(settings.erosionIterations, 0, 512);
+    settings.terrainMaskDebugMode = glm::clamp(settings.terrainMaskDebugMode, 0, 11);
+    settings.oceanFftCascadeCount = glm::clamp(settings.oceanFftCascadeCount, 1, 3);
+    settings.oceanFftFrameStride = glm::max(settings.oceanFftFrameStride, 1);
+    settings.oceanReflectionFrameStride = glm::max(settings.oceanReflectionFrameStride, 1);
+    settings.oceanRefractionFrameStride = glm::max(settings.oceanRefractionFrameStride, 1);
+}
+
+bool saveSession(ApplicationState& state, const char* path = kSessionFilePath)
+{
+    if (state.workflowStage == WorkflowStage::Render) {
+        state.renderSettings = state.renderer.settings();
+    }
+
+    std::filesystem::path sessionPath(path);
+    if (!sessionPath.parent_path().empty()) {
+        std::filesystem::create_directories(sessionPath.parent_path());
+    }
+
+    std::ofstream file(path);
+    if (!file) {
+        state.sessionMessage = "Save failed: could not open session file.";
+        return false;
+    }
+
+    file << std::setprecision(9);
+    file << "# ProceduralWorld local session\n";
+    file << "version=1\n";
+    writeInt(file, "generationFaceResolution", state.generationFaceResolution);
+    writeFloat(file, "planetYawDegrees", state.planetYawDegrees);
+    writeFloat(file, "planetPitchDegrees", state.planetPitchDegrees);
+    writeVec3(file, "cameraPosition", state.camera.position);
+    writeVec3(file, "cameraUp", state.camera.up);
+    writeFloat(file, "cameraOrbitDistance", state.cameraOrbitDistance);
+    writeFloat(file, "cameraMouseSensitivity", state.camera.mouseSensitivity);
+    writeBool(file, "showPerformancePanel", state.showPerformancePanel);
+    writeSettings(file, "procedural", state.proceduralSettings);
+    writeSettings(file, "render", state.renderSettings);
+
+    bool savedCache = false;
+    if (state.generatedPlanet.isGenerated()) {
+        savedCache = state.generatedPlanet.saveCache(kProceduralCacheFilePath);
+    }
+
+    state.sessionMessage = savedCache
+        ? std::string("Saved session and cache: ") + path
+        : std::string("Saved session: ") + path;
+    return true;
+}
+
+bool loadSession(ApplicationState& state, const char* path = kSessionFilePath, bool reportMissing = true)
+{
+    SessionValues values;
+    if (!readSessionFile(values, path)) {
+        if (reportMissing) {
+            state.sessionMessage = std::string("No saved session: ") + path;
+        }
+        return false;
+    }
+
+    readSettings(values, "procedural", state.proceduralSettings);
+    readSettings(values, "render", state.renderSettings);
+    readInt(values, "generationFaceResolution", state.generationFaceResolution);
+    state.generationFaceResolution = glm::clamp(state.generationFaceResolution, 32, 512);
+    readFloat(values, "planetYawDegrees", state.planetYawDegrees);
+    readFloat(values, "planetPitchDegrees", state.planetPitchDegrees);
+    readVec3(values, "cameraPosition", state.camera.position);
+    readVec3(values, "cameraUp", state.camera.up);
+    readFloat(values, "cameraOrbitDistance", state.cameraOrbitDistance);
+    readFloat(values, "cameraMouseSensitivity", state.camera.mouseSensitivity);
+    readBool(values, "showPerformancePanel", state.showPerformancePanel);
+
+    state.renderer.settings() = state.renderSettings;
+    state.renderer.setPlanetRotation(state.planetYawDegrees, state.planetPitchDegrees);
+
+    const bool loadedCache = state.generatedPlanet.loadCache(kProceduralCacheFilePath, state.renderSettings);
+    if (loadedCache) {
+        state.renderer.setProceduralData(state.generatedPlanet);
+        state.hasGeneratedPlanet = true;
+        state.workflowStage = WorkflowStage::Render;
+    } else {
+        state.generatedPlanet.clear();
+        state.hasGeneratedPlanet = false;
+        state.workflowStage = WorkflowStage::ProceduralSetup;
+    }
+
+    const PlanetRenderSettings& activeSettings = state.workflowStage == WorkflowStage::Render
+        ? state.renderer.settings()
+        : state.renderSettings;
+    if (glm::length(state.camera.position) <= 0.001f) {
+        state.camera.position = glm::vec3(0.0f, 0.0f, activeSettings.planetRadius * 2.1f);
+    }
+    state.cameraOrbitDistance = glm::length(state.camera.position);
+    updateOrbitCamera(state, activeSettings);
+
+    state.sessionMessage = loadedCache
+        ? std::string("Loaded session and cached planet: ") + path
+        : std::string("Loaded session: ") + path;
+    return true;
+}
+
+void drawSessionControls(ApplicationState& state)
+{
+    if (ImGui::Button("Save Local", ImVec2(0.0f, 24.0f))) {
+        saveSession(state);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Load Local", ImVec2(0.0f, 24.0f))) {
+        loadSession(state, kSessionFilePath, true);
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("%s", kSessionFilePath);
+
+    if (!state.sessionMessage.empty()) {
+        ImGui::TextWrapped("%s", state.sessionMessage.c_str());
+    }
+}
+
+float planetDistanceScale(float planetRadius)
+{
+    return glm::max(planetRadius / kReferencePlanetRadius, 0.25f);
 }
 
 void startPlanetGeneration(ApplicationState& state)
@@ -168,6 +626,7 @@ void finishPlanetGeneration(ApplicationState& state)
 
     state.camera.position = glm::vec3(0.0f, generatedSettings.planetRadius * 0.45f, generatedSettings.planetRadius * 2.10f);
     setOrbitFromCameraPosition(state, generatedSettings);
+    saveSession(state);
 }
 
 void returnToProceduralSetup(ApplicationState& state)
@@ -281,6 +740,20 @@ void onKeyPressed(GLFWwindow* window, int key, int, int action, int modifiers)
         const int nextWireMode = (static_cast<int>(settings.wireMode) + 1) % 3;
         settings.wireMode = static_cast<PlanetWireMode>(nextWireMode);
     }
+    if (key == GLFW_KEY_3) {
+        settings.terrainMaskDebugMode = (settings.terrainMaskDebugMode + 1) % 12;
+    }
+    if (key == GLFW_KEY_4) {
+        if (settings.renderTerrain && settings.renderOcean) {
+            settings.renderOcean = false;
+        } else if (settings.renderTerrain && !settings.renderOcean) {
+            settings.renderTerrain = false;
+            settings.renderOcean = true;
+        } else {
+            settings.renderTerrain = true;
+            settings.renderOcean = true;
+        }
+    }
     if (key == GLFW_KEY_TAB) {
         state->showDebugPanel = !state->showDebugPanel;
     }
@@ -293,28 +766,47 @@ void handleKeyboardMovement(GLFWwindow* window, ApplicationState& state)
 
     const PlanetRenderSettings& settings = state.renderer.settings();
     const float orbitStep = kOrbitAngularSpeedDegrees * state.deltaSeconds;
-    const float distanceStep = glm::max(state.cameraOrbitDistance * 0.90f, settings.planetRadius * 0.40f) * state.deltaSeconds;
+    glm::vec3 newPosition = state.camera.position;
+    glm::vec3 newUp = state.camera.up;
 
-    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) state.cameraOrbitYawDegrees -= orbitStep;
-    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) state.cameraOrbitYawDegrees += orbitStep;
-    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) state.cameraOrbitDistance -= distanceStep;
-    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) state.cameraOrbitDistance += distanceStep;
-    if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) state.cameraOrbitPitchDegrees -= orbitStep;
-    if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) state.cameraOrbitPitchDegrees += orbitStep;
+    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
+        newPosition = rotateVectorAroundAxis(newPosition, state.camera.up, -orbitStep);
+    }
+    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
+        newPosition = rotateVectorAroundAxis(newPosition, state.camera.up, orbitStep);
+    }
+    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
+        newPosition = rotateVectorAroundAxis(newPosition, state.camera.right, -orbitStep);
+        newUp = rotateVectorAroundAxis(newUp, state.camera.right, -orbitStep);
+    }
+    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
+        newPosition = rotateVectorAroundAxis(newPosition, state.camera.right, orbitStep);
+        newUp = rotateVectorAroundAxis(newUp, state.camera.right, orbitStep);
+    }
+    if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) {
+        newUp = rotateVectorAroundAxis(newUp, state.camera.front, -orbitStep);
+    }
+    if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) {
+        newUp = rotateVectorAroundAxis(newUp, state.camera.front, orbitStep);
+    }
 
-    updateOrbitCamera(state, settings);
+    state.camera.position = glm::normalize(newPosition) * state.cameraOrbitDistance;
+    orientCameraToPlanet(state, newUp);
+    updateOrbitMetadata(state);
 }
 
 void printControls()
 {
     std::cout << "\n=== Procedural Planet Controls ===\n";
-    std::cout << "  W/S       : dolly camera toward/away from planet\n";
-    std::cout << "  A/D       : orbit camera around planet\n";
-    std::cout << "  Q/E       : orbit camera latitude\n";
+    std::cout << "  W/S       : orbit camera along screen up/down\n";
+    std::cout << "  A/D       : orbit camera along screen left/right\n";
+    std::cout << "  Q/E       : roll camera around view axis\n";
     std::cout << "  LMB+drag  : rotate planet\n";
     std::cout << "  Scroll    : dolly camera toward/away from planet\n";
     std::cout << "  1         : cycle render mode\n";
     std::cout << "  2         : cycle wire overlay\n";
+    std::cout << "  3         : cycle terrain mask debug\n";
+    std::cout << "  4         : cycle land/ocean visibility\n";
     std::cout << "  Ctrl+1    : toggle performance monitor\n";
     std::cout << "  Tab       : toggle ImGui panel\n";
     std::cout << "  ESC       : quit\n\n";
@@ -326,6 +818,8 @@ void drawProceduralPanel(ApplicationState& state)
 
     ImGui::Text("Procedural Generation");
     ImGui::Separator();
+    drawSessionControls(state);
+    ImGui::Separator();
 
     if (state.workflowStage == WorkflowStage::Generating) {
         const float progress = glm::clamp(state.generationTimer / glm::max(state.generationDuration, 0.001f), 0.0f, 1.0f);
@@ -333,29 +827,32 @@ void drawProceduralPanel(ApplicationState& state)
         return;
     }
 
-    ImGui::SliderFloat("Planet Radius", &settings.planetRadius, 50.0f, 800.0f, "%.1f");
+    const float proceduralDistanceScale = planetDistanceScale(settings.planetRadius);
+    ImGui::SliderFloat("Planet Radius", &settings.planetRadius, 50.0f, 5000.0f, "%.1f");
     ImGui::SliderFloat("Sea Level", &settings.seaLevelOffset, -1.5f, 1.5f, "%.2f");
-    ImGui::SliderFloat("Height Scale", &settings.terrainHeightScale, 0.0f, 80.0f, "%.2f");
+    ImGui::SliderFloat("Height Scale", &settings.terrainHeightScale, 0.0f, 80.0f * proceduralDistanceScale, "%.2f");
     ImGui::SliderFloat("Noise Scale", &settings.terrainNoiseScale, 0.2f, 10.0f, "%.2f");
-    ImGui::SliderFloat("Mountain Mask", &settings.mountainMaskStrength, 0.0f, 1.5f, "%.2f");
+    ImGui::SliderFloat("Mountain Mask", &settings.mountainMaskStrength, 0.0f, 2.4f, "%.2f");
     ImGui::SliderFloat("Mountain Scale", &settings.mountainMaskScale, 0.5f, 8.0f, "%.2f");
     ImGui::SliderFloat("Ridge Sharpness", &settings.mountainRidgeSharpness, 1.0f, 6.0f, "%.2f");
+    ImGui::SliderFloat("Skirt Depth", &settings.terrainSkirtDepth, 0.0f, 3.0f, "%.2f");
     if (ImGui::CollapsingHeader("Erosion Bake", ImGuiTreeNodeFlags_DefaultOpen)) {
-        ImGui::SliderInt("Iterations", &settings.erosionIterations, 0, 80);
-        ImGui::SliderFloat("Strength", &settings.erosionStrength, 0.0f, 0.20f, "%.3f");
+        ImGui::SliderInt("Iterations", &settings.erosionIterations, 0, 160);
+        ImGui::SliderFloat("Strength", &settings.erosionStrength, 0.0f, 0.14f, "%.3f");
         ImGui::SliderFloat("Talus", &settings.erosionTalus, 0.005f, 0.12f, "%.3f");
         ImGui::SliderFloat("Sediment", &settings.erosionSediment, 0.0f, 1.0f, "%.2f");
         ImGui::SliderFloat("Thermal", &settings.erosionThermalStrength, 0.0f, 0.08f, "%.3f");
     }
     ImGui::SliderFloat("Regional Detail", &settings.regionalDetailStrength, 0.0f, 1.2f, "%.2f");
     ImGui::SliderFloat("Micro Detail", &settings.microDetailStrength, 0.0f, 0.8f, "%.2f");
-    ImGui::SliderInt("Face Resolution", &state.generationFaceResolution, 32, 256);
+    ImGui::SliderInt("Face Resolution", &state.generationFaceResolution, 32, 512);
 
     if (ImGui::CollapsingHeader("Altitude Detail Bands")) {
-        ImGui::SliderFloat("Regional Start", &settings.regionalDetailStartAltitude, 0.0f, 1800.0f, "%.1f");
-        ImGui::SliderFloat("Regional End", &settings.regionalDetailEndAltitude, settings.regionalDetailStartAltitude + 10.0f, 5000.0f, "%.1f");
-        ImGui::SliderFloat("Micro Start", &settings.microDetailStartAltitude, 0.0f, 800.0f, "%.1f");
-        ImGui::SliderFloat("Micro End", &settings.microDetailEndAltitude, settings.microDetailStartAltitude + 10.0f, 2000.0f, "%.1f");
+        ImGui::TextDisabled("Distance scale: %.2fx from radius %.0f", proceduralDistanceScale, kReferencePlanetRadius);
+        ImGui::SliderFloat("Regional Start", &settings.regionalDetailStartAltitude, 0.0f, 1800.0f * proceduralDistanceScale, "%.1f");
+        ImGui::SliderFloat("Regional End", &settings.regionalDetailEndAltitude, settings.regionalDetailStartAltitude + 10.0f, 5000.0f * proceduralDistanceScale, "%.1f");
+        ImGui::SliderFloat("Micro Start", &settings.microDetailStartAltitude, 0.0f, 800.0f * proceduralDistanceScale, "%.1f");
+        ImGui::SliderFloat("Micro End", &settings.microDetailEndAltitude, settings.microDetailStartAltitude + 10.0f, 2000.0f * proceduralDistanceScale, "%.1f");
     }
 
     if (ImGui::CollapsingHeader("Terrain Materials")) {
@@ -392,6 +889,21 @@ void drawProceduralPanel(ApplicationState& state)
 
 void drawRenderModeControls(PlanetRenderSettings& settings)
 {
+    static const char* kTerrainMaskDebugLabels[] = {
+        "Off",
+        "Channel",
+        "Flow",
+        "Wear",
+        "Deposition",
+        "Shore",
+        "Water Depth",
+        "Temperature",
+        "Moisture",
+        "Land",
+        "Biome",
+        "Hydrology RGB"
+    };
+
     ImGui::Text("Render Mode");
     int renderModeIndex = 1;
     if (settings.renderMode == PlanetRenderMode::Unshaded) renderModeIndex = 0;
@@ -412,17 +924,35 @@ void drawRenderModeControls(PlanetRenderSettings& settings)
     if (ImGui::RadioButton("Land Wire", wireModeIndex == 1)) settings.wireMode = PlanetWireMode::Terrain;
     ImGui::SameLine();
     if (ImGui::RadioButton("Ocean Wire", wireModeIndex == 2)) settings.wireMode = PlanetWireMode::Ocean;
+
+    ImGui::Separator();
+    ImGui::Text("Terrain Mask Debug");
+    settings.terrainMaskDebugMode = glm::clamp(settings.terrainMaskDebugMode, 0, 11);
+    if (ImGui::BeginCombo("Mask", kTerrainMaskDebugLabels[settings.terrainMaskDebugMode])) {
+        for (int i = 0; i < 12; ++i) {
+            const bool selected = settings.terrainMaskDebugMode == i;
+            if (ImGui::Selectable(kTerrainMaskDebugLabels[i], selected)) {
+                settings.terrainMaskDebugMode = i;
+            }
+            if (selected) {
+                ImGui::SetItemDefaultFocus();
+            }
+        }
+        ImGui::EndCombo();
+    }
 }
 
 void drawRenderPanel(ApplicationState& state)
 {
     PlanetRenderSettings& settings = state.renderer.settings();
+    const float renderDistanceScale = planetDistanceScale(settings.planetRadius);
 
     if (ImGui::Button("Back To Procedural", ImVec2(-1.0f, 28.0f))) {
         returnToProceduralSetup(state);
         return;
     }
 
+    drawSessionControls(state);
     ImGui::Separator();
     if (state.generatedPlanet.isGenerated()) {
         ImGui::Text("Generated data: %d face resolution", state.generatedPlanet.resolution());
@@ -435,6 +965,15 @@ void drawRenderPanel(ApplicationState& state)
     ImGui::Separator();
     drawRenderModeControls(settings);
 
+    if (ImGui::CollapsingHeader("Visibility", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::Checkbox("Render Terrain", &settings.renderTerrain);
+        ImGui::SameLine();
+        ImGui::Checkbox("Render Ocean", &settings.renderOcean);
+        if (!settings.renderTerrain && !settings.renderOcean) {
+            ImGui::TextDisabled("Both hidden");
+        }
+    }
+
     if (ImGui::CollapsingHeader("Scene Lighting", ImGuiTreeNodeFlags_DefaultOpen)) {
         ImGui::ColorEdit3("Sky Color", &settings.skyColor.x);
         ImGui::SliderFloat("Fog Density", &settings.fogDensity, 0.0f, 0.00003f, "%.6f");
@@ -442,7 +981,7 @@ void drawRenderPanel(ApplicationState& state)
 
     if (ImGui::CollapsingHeader("Atmosphere", ImGuiTreeNodeFlags_DefaultOpen)) {
         ImGui::Checkbox("Render Atmosphere", &settings.renderAtmosphere);
-        ImGui::SliderFloat("Atmosphere Height", &settings.atmosphereHeight, 1.0f, 120.0f, "%.1f");
+        ImGui::SliderFloat("Atmosphere Height", &settings.atmosphereHeight, 1.0f, 120.0f * renderDistanceScale, "%.1f");
         ImGui::SliderFloat("Atmosphere Density", &settings.atmosphereDensity, 0.0f, 3.0f, "%.2f");
         ImGui::SliderFloat("Rayleigh", &settings.atmosphereRayleighStrength, 0.0f, 4.0f, "%.2f");
         ImGui::SliderFloat("Mie", &settings.atmosphereMieStrength, 0.0f, 2.0f, "%.2f");
@@ -453,7 +992,6 @@ void drawRenderPanel(ApplicationState& state)
     }
 
     if (ImGui::CollapsingHeader("Ocean", ImGuiTreeNodeFlags_DefaultOpen)) {
-        ImGui::Checkbox("Render Ocean", &settings.renderOcean);
         ImGui::SliderFloat("Opacity Limit", &settings.oceanAlpha, 0.05f, 1.0f, "%.2f");
         ImGui::ColorEdit3("Shallow Color", &settings.oceanShallowColor.x);
         ImGui::ColorEdit3("Deep Color", &settings.oceanDeepColor.x);
@@ -480,7 +1018,7 @@ void drawRenderPanel(ApplicationState& state)
         ImGui::SliderFloat("Tint Strength", &settings.oceanTintStrength, 0.0f, 1.0f, "%.2f");
         ImGui::SliderFloat("Detail Normal", &settings.oceanDetailNormalStrength, 0.0f, 0.8f, "%.2f");
         ImGui::SliderFloat("Detail Scale", &settings.oceanDetailNormalScale, 4.0f, 96.0f, "%.1f");
-        ImGui::SliderFloat("Detail Fade", &settings.oceanDetailFadeDistance, 40.0f, 1200.0f, "%.1f");
+        ImGui::SliderFloat("Detail Fade", &settings.oceanDetailFadeDistance, 40.0f, 1200.0f * renderDistanceScale, "%.1f");
         ImGui::SliderFloat("Specular Strength", &settings.oceanSpecularStrength, 0.0f, 1.5f, "%.2f");
         ImGui::SliderFloat("Specular Sharpness", &settings.oceanSpecularSharpness, 0.5f, 4.0f, "%.2f");
         ImGui::SliderFloat("Water Roughness", &settings.oceanRoughness, 0.02f, 0.35f, "%.3f");
@@ -497,27 +1035,28 @@ void drawRenderPanel(ApplicationState& state)
         ImGui::SliderInt("Reflection Stride", &settings.oceanReflectionFrameStride, 1, 8);
         ImGui::SliderInt("Refraction Stride", &settings.oceanRefractionFrameStride, 1, 8);
         ImGui::Checkbox("Auto Distance LOD", &settings.oceanAutoDistanceLod);
-        ImGui::SliderFloat("Reflection Max Alt", &settings.oceanReflectionMaxAltitude, 40.0f, 2000.0f, "%.1f");
-        ImGui::SliderFloat("Refraction Max Alt", &settings.oceanRefractionMaxAltitude, 10.0f, 800.0f, "%.1f");
+        ImGui::SliderFloat("Reflection Max Alt", &settings.oceanReflectionMaxAltitude, 40.0f, 2000.0f * renderDistanceScale, "%.1f");
+        ImGui::SliderFloat("Refraction Max Alt", &settings.oceanRefractionMaxAltitude, 10.0f, 800.0f * renderDistanceScale, "%.1f");
     }
 
     if (ImGui::CollapsingHeader("Rendering Advanced")) {
+        ImGui::TextDisabled("Distance scale: %.2fx from radius %.0f", renderDistanceScale, kReferencePlanetRadius);
         ImGui::SliderFloat("Land Tess Max", &settings.tessellationMax, 1.0f, 4.0f, "%.1f");
         ImGui::SliderFloat("Land Tess Min", &settings.tessellationMin, 1.0f, settings.tessellationMax, "%.1f");
-        ImGui::SliderFloat("Land Tess Near", &settings.tessellationNearDistance, 10.0f, 600.0f, "%.1f");
-        ImGui::SliderFloat("Land Tess Far", &settings.tessellationFarDistance, settings.tessellationNearDistance + 10.0f, 2000.0f, "%.1f");
+        ImGui::SliderFloat("Land Tess Near", &settings.tessellationNearDistance, 10.0f, 600.0f * renderDistanceScale, "%.1f");
+        ImGui::SliderFloat("Land Tess Far", &settings.tessellationFarDistance, settings.tessellationNearDistance + 10.0f, 2000.0f * renderDistanceScale, "%.1f");
         ImGui::SliderFloat("Ocean Tess Max", &settings.oceanTessellationMax, 1.0f, 4.0f, "%.1f");
         ImGui::SliderFloat("Ocean Tess Min", &settings.oceanTessellationMin, 1.0f, settings.oceanTessellationMax, "%.1f");
-        ImGui::SliderFloat("Ocean Tess Near", &settings.oceanTessellationNearDistance, 10.0f, 400.0f, "%.1f");
-        ImGui::SliderFloat("Ocean Tess Far", &settings.oceanTessellationFarDistance, settings.oceanTessellationNearDistance + 10.0f, 1400.0f, "%.1f");
-        ImGui::SliderFloat("Near Plane", &settings.cameraNearPlane, 0.20f, 2.0f, "%.2f");
-        ImGui::SliderFloat("Far Plane", &settings.cameraFarPlane, 1000.0f, 12000.0f, "%.0f");
+        ImGui::SliderFloat("Ocean Tess Near", &settings.oceanTessellationNearDistance, 10.0f, 400.0f * renderDistanceScale, "%.1f");
+        ImGui::SliderFloat("Ocean Tess Far", &settings.oceanTessellationFarDistance, settings.oceanTessellationNearDistance + 10.0f, 1400.0f * renderDistanceScale, "%.1f");
+        ImGui::SliderFloat("Near Plane", &settings.cameraNearPlane, 0.20f, 5.0f, "%.2f");
+        ImGui::SliderFloat("Far Plane", &settings.cameraFarPlane, 1000.0f, 12000.0f * renderDistanceScale, "%.0f");
     }
 
     ImGui::Separator();
     ImGui::Text("Camera");
     ImGui::SliderFloat("Orbit Distance", &state.cameraOrbitDistance, minCameraOrbitDistance(settings), maxCameraOrbitDistance(settings), "%.1f");
-    ImGui::SliderFloat("Orbit Pitch", &state.cameraOrbitPitchDegrees, -82.0f, 82.0f, "%.1f");
+    ImGui::Text("Yaw %.1f | Pitch %.1f", state.cameraOrbitYawDegrees, state.cameraOrbitPitchDegrees);
     ImGui::SliderFloat("Mouse Sensitivity", &state.camera.mouseSensitivity, 0.02f, 0.5f, "%.2f");
     ImGui::Text("Position: %.1f %.1f %.1f", state.camera.position.x, state.camera.position.y, state.camera.position.z);
     ImGui::Text("Altitude: %.1f", glm::max(glm::length(state.camera.position) - settings.planetRadius, 0.0f));
@@ -707,6 +1246,7 @@ int main()
     appState.renderer.initialize();
     appState.renderSettings = appState.renderer.settings();
     appState.proceduralSettings = appState.renderer.settings();
+    loadSession(appState, kSessionFilePath, false);
     appState.renderer.setPlanetRotation(appState.planetYawDegrees, appState.planetPitchDegrees);
 
     glEnable(GL_DEPTH_TEST);

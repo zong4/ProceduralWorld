@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstddef>
+#include <cstdint>
 #include <vector>
 
 #include <glad/glad.h>
@@ -38,17 +39,18 @@ struct PlanetRenderSettings {
     float oceanTessellationNearDistance = 40.0f;
     float oceanTessellationFarDistance = 550.0f;
     float terrainHeightScale = 18.0f;
+    float terrainSkirtDepth = 0.40f;
     float terrainNoiseScale = 0.5f;
     float mountainMaskStrength = 1.25f;
     float mountainMaskScale = 2.4f;
-    float mountainRidgeSharpness = 2.8f;
-    int erosionIterations = 18;
-    float erosionStrength = 0.065f;
-    float erosionTalus = 0.030f;
+    float mountainRidgeSharpness = 2.6f;
+    int erosionIterations = 48;
+    float erosionStrength = 0.045f;
+    float erosionTalus = 0.028f;
     float erosionSediment = 0.58f;
-    float erosionThermalStrength = 0.018f;
+    float erosionThermalStrength = 0.014f;
     float regionalDetailStrength = 0.95f;
-    float microDetailStrength = 0.22f;
+    float microDetailStrength = 0.10f;
     float regionalDetailStartAltitude = 900.0f;
     float regionalDetailEndAltitude = 2200.0f;
     float microDetailStartAltitude = 90.0f;
@@ -120,6 +122,7 @@ struct PlanetRenderSettings {
     PlanetRenderMode renderMode = PlanetRenderMode::Shaded;
     PlanetWireMode wireMode = PlanetWireMode::None;
     int terrainMaskDebugMode = 0;
+    bool renderTerrain = true;
     bool renderOcean = true;
 };
 
@@ -186,15 +189,28 @@ private:
         int depth = 0;
     };
 
+    struct PatchWaterCoverage {
+        bool hasData = false;
+        bool hasWater = false;
+        bool hasLand = false;
+        float maxShoreMask = 0.0f;
+    };
+
     struct RenderPatch {
         int faceIndex = 0;
         glm::vec2 uvMin{0.0f, 0.0f};
         glm::vec2 uvSize{1.0f, 1.0f};
         int depth = 0;
+        PatchWaterCoverage waterCoverage;
     };
 
     struct Frustum {
         std::array<glm::vec4, 6> planes{};
+    };
+
+    struct NodeBounds {
+        glm::vec3 worldDirection{0.0f, 1.0f, 0.0f};
+        float radius = 0.001f;
     };
 
     struct TerrainMesh {
@@ -232,7 +248,7 @@ private:
     static constexpr int kMinimumLodDepth = 1;
     static constexpr int kMaximumLodDepth = 6;
     static constexpr int kShoreMinimumLodDepth = 4;
-    static constexpr float kLodSplitPixels = 140.0f;
+    static constexpr float kLodSplitPixels = 190.0f;
 
     static const std::array<FaceBasis, 6> kPlanetFaces;
 
@@ -244,13 +260,14 @@ private:
     FFTOcean fftOcean_;
     GLuint proceduralHeightTexture_ = 0;
     GLuint proceduralWaterDepthTexture_ = 0;
-    GLuint proceduralShoreMaskTexture_ = 0;
     GLuint proceduralErosionMaskTexture_ = 0;
     GLuint proceduralTemperatureTexture_ = 0;
     GLuint proceduralMoistureTexture_ = 0;
-    GLuint proceduralBiomeTexture_ = 0;
-    std::vector<float> proceduralWaterDepthCpu_;
-    std::vector<float> proceduralShoreMaskCpu_;
+    GLuint proceduralBiomeWeightATexture_ = 0;
+    GLuint proceduralBiomeWeightBTexture_ = 0;
+    std::vector<std::uint32_t> proceduralWaterCoveragePrefixCpu_;
+    std::vector<std::uint32_t> proceduralShoreCoverageLoosePrefixCpu_;
+    std::vector<std::uint32_t> proceduralShoreCoverageStrictPrefixCpu_;
     int proceduralDataResolution_ = 0;
     bool hasProceduralOceanData_ = false;
     ShaderProgram terrainProgram_;
@@ -284,17 +301,17 @@ private:
     bool initialized_ = false;
 
     static glm::vec3 cubeSphereDirection(const FaceBasis& face, const glm::vec2& uv);
+    static int faceIndexFromDirection(const glm::vec3& direction);
+    static glm::vec2 faceUvFromDirection(int faceIndex, const glm::vec3& direction);
     static glm::vec3 nodeCenterDirection(const FaceBasis& face, const QuadtreeNode& node);
     static Frustum extractFrustum(const glm::mat4& viewProjectionMatrix);
     static glm::vec4 normalizePlane(const glm::vec4& plane);
     glm::vec3 worldDirection(const glm::vec3& localDirection) const;
-    glm::vec3 nodeCenterWorldPosition(const FaceBasis& face, const QuadtreeNode& node, float radius) const;
-
-    float nodeWorldRadius(const FaceBasis& face, const QuadtreeNode& node) const;
-    bool isNodeOutsideFrustum(const Frustum& frustum, const FaceBasis& face, const QuadtreeNode& node) const;
-    bool isNodeHiddenByHorizon(const FlyCamera& camera, const FaceBasis& face, const QuadtreeNode& node) const;
-    bool nodeHasShoreline(int faceIndex, const QuadtreeNode& node) const;
-    bool shouldSplitNode(const FlyCamera& camera, const FaceBasis& face, const QuadtreeNode& node, int framebufferHeight) const;
+    NodeBounds computeNodeBounds(const FaceBasis& face, const QuadtreeNode& node) const;
+    bool isNodeOutsideFrustum(const Frustum& frustum, const NodeBounds& bounds) const;
+    bool isNodeHiddenByHorizon(const FlyCamera& camera, const NodeBounds& bounds) const;
+    PatchWaterCoverage analyzePatchWaterCoverage(int faceIndex, const glm::vec2& uvMin, const glm::vec2& uvSize) const;
+    bool shouldSplitNode(const FlyCamera& camera, const NodeBounds& bounds, int nodeDepth, int framebufferHeight) const;
 
     void collectVisiblePatches(const FlyCamera& camera,
                                const Frustum& frustum,
