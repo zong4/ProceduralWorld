@@ -106,22 +106,22 @@ void PlanetRenderer::initialize()
     wireOverlayProgram_ = ShaderProgram("shaders/terrain.vert",
                                         "shaders/terrain.tesc",
                                         "shaders/terrain.tese",
-                                        "shaders/wire_fine.frag");
+                                        "shaders/terrain_wire_fine.frag");
 
     coarseGridProgram_ = ShaderProgram("shaders/terrain.vert",
                                        "shaders/terrain.tesc",
                                        "shaders/terrain.tese",
-                                       "shaders/wire_coarse.frag");
+                                       "shaders/terrain_wire_coarse.frag");
 
     oceanWireOverlayProgram_ = ShaderProgram("shaders/ocean.vert",
                                              "shaders/ocean.tesc",
                                              "shaders/ocean.tese",
-                                             "shaders/wire_fine.frag");
+                                             "shaders/ocean_wire_fine.frag");
 
     oceanCoarseGridProgram_ = ShaderProgram("shaders/ocean.vert",
                                             "shaders/ocean.tesc",
                                             "shaders/ocean.tese",
-                                            "shaders/wire_coarse.frag");
+                                            "shaders/ocean_wire_coarse.frag");
 
     atmosphereProgram_ = ShaderProgram("shaders/atmosphere.vert",
                                        "shaders/atmosphere.frag");
@@ -338,11 +338,21 @@ void PlanetRenderer::render(const FlyCamera& camera,
     const int framebufferHeight = std::max(viewport[3], 1);
 
     auto passStart = Clock::now();
+    updateAdaptiveLodBeforeCulling();
     const Frustum frustum = extractFrustum(projectionMatrix * viewMatrix);
     visiblePatches_ = buildVisiblePatches(camera, frustum, framebufferHeight);
     visibleOceanPatches_ = buildVisibleOceanPatches();
+    updateEffectiveTessellationBudget(visiblePatches_.size(), visibleOceanPatches_.size());
     frameStats.cullingMs = elapsedMs(passStart, Clock::now());
     frameStats.oceanPatchCount = visibleOceanPatches_.size();
+    frameStats.lodSplitPixelScale = lodSplitPixelScale_;
+    frameStats.effectiveLandTessMax = effectiveTessellationMax_;
+    frameStats.effectiveOceanTessMax = effectiveOceanTessellationMax_;
+    frameStats.lodBudgetPressure = settings_.terrainPatchBudget > 0
+        ? static_cast<float>(visiblePatches_.size()) / static_cast<float>(settings_.terrainPatchBudget)
+        : 0.0f;
+    frameStats.estimatedTerrainTriangles = estimatePatchTriangles(visiblePatches_.size(), effectiveTessellationMax_);
+    frameStats.estimatedOceanTriangles = estimatePatchTriangles(visibleOceanPatches_.size(), effectiveOceanTessellationMax_);
 
     passStart = Clock::now();
     const int fftCascadeCount = std::clamp(settings_.oceanFftCascadeCount, 1, 3);
@@ -396,21 +406,21 @@ const char* PlanetRenderer::currentModeLabel() const
 {
     const char* wireLabel = "";
     if (settings_.wireMode == PlanetWireMode::Terrain) {
-        wireLabel = "+TerrainWire";
+        wireLabel = "+LandMesh";
     } else if (settings_.wireMode == PlanetWireMode::Ocean) {
-        wireLabel = "+OceanWire";
+        wireLabel = "+WaterMesh";
     }
 
     switch (settings_.renderMode) {
     case PlanetRenderMode::Unshaded:
-        return settings_.wireMode == PlanetWireMode::None ? "Unshaded" : wireLabel[1] == 'T' ? "Unshaded+TerrainWire" : "Unshaded+OceanWire";
+        return settings_.wireMode == PlanetWireMode::None ? "Unshaded" : wireLabel[1] == 'L' ? "Unshaded+LandMesh" : "Unshaded+WaterMesh";
     case PlanetRenderMode::HeightMap:
-        return settings_.wireMode == PlanetWireMode::None ? "HeightMap" : wireLabel[1] == 'T' ? "Height+TerrainWire" : "Height+OceanWire";
+        return settings_.wireMode == PlanetWireMode::None ? "HeightMap" : wireLabel[1] == 'L' ? "Height+LandMesh" : "Height+WaterMesh";
     case PlanetRenderMode::Normals:
-        return settings_.wireMode == PlanetWireMode::None ? "Normals" : wireLabel[1] == 'T' ? "Normals+TerrainWire" : "Normals+OceanWire";
+        return settings_.wireMode == PlanetWireMode::None ? "Normals" : wireLabel[1] == 'L' ? "Normals+LandMesh" : "Normals+WaterMesh";
     case PlanetRenderMode::Shaded:
     default:
-        return settings_.wireMode == PlanetWireMode::None ? "Shaded" : wireLabel[1] == 'T' ? "Shaded+TerrainWire" : "Shaded+OceanWire";
+        return settings_.wireMode == PlanetWireMode::None ? "Shaded" : wireLabel[1] == 'L' ? "Shaded+LandMesh" : "Shaded+WaterMesh";
     }
 }
 
@@ -427,6 +437,66 @@ const PlanetRenderer::CullingStats& PlanetRenderer::cullingStats() const
 const PlanetRenderer::PerformanceStats& PlanetRenderer::performanceStats() const
 {
     return lastPerformanceStats_;
+}
+
+void PlanetRenderer::updateAdaptiveLodBeforeCulling()
+{
+    if (!settings_.adaptiveTerrainLod) {
+        lodSplitPixelScale_ = 1.0f;
+        return;
+    }
+
+    const float budget = static_cast<float>(std::max(settings_.terrainPatchBudget, 64));
+    const float previousPatchCount = static_cast<float>(visiblePatches_.size());
+    if (previousPatchCount <= 0.0f) {
+        lodSplitPixelScale_ = glm::clamp(lodSplitPixelScale_, 0.85f, 2.35f);
+        return;
+    }
+
+    const float pressure = previousPatchCount / budget;
+    if (pressure > 1.12f) {
+        lodSplitPixelScale_ *= glm::mix(1.0f, 1.12f, glm::clamp((pressure - 1.0f) * 0.75f, 0.0f, 1.0f));
+    } else if (pressure < 0.72f) {
+        lodSplitPixelScale_ *= 0.96f;
+    } else {
+        lodSplitPixelScale_ = glm::mix(lodSplitPixelScale_, 1.0f, 0.025f);
+    }
+    lodSplitPixelScale_ = glm::clamp(lodSplitPixelScale_, 0.85f, 2.35f);
+}
+
+void PlanetRenderer::updateEffectiveTessellationBudget(std::size_t visiblePatchCount, std::size_t oceanPatchCount)
+{
+    const float landMin = glm::max(settings_.tessellationMin, 1.0f);
+    const float oceanMin = glm::max(settings_.oceanTessellationMin, 1.0f);
+    effectiveTessellationMax_ = glm::max(settings_.tessellationMax, landMin);
+    effectiveOceanTessellationMax_ = glm::max(settings_.oceanTessellationMax, oceanMin);
+
+    if (!settings_.adaptiveTerrainLod) {
+        return;
+    }
+
+    const float budget = static_cast<float>(std::max(settings_.terrainPatchBudget, 64));
+    const float patchPressure = static_cast<float>(visiblePatchCount) / budget;
+    if (patchPressure <= 1.0f) {
+        return;
+    }
+
+    const float tessScale = glm::clamp(1.0f / std::sqrt(patchPressure), 0.58f, 1.0f);
+    effectiveTessellationMax_ = glm::max(landMin, settings_.tessellationMax * tessScale);
+
+    const float oceanShare = visiblePatchCount > 0
+        ? static_cast<float>(oceanPatchCount) / static_cast<float>(visiblePatchCount)
+        : 0.0f;
+    const float oceanTessScale = glm::mix(1.0f, tessScale, glm::clamp(oceanShare, 0.0f, 1.0f));
+    effectiveOceanTessellationMax_ = glm::max(oceanMin, settings_.oceanTessellationMax * oceanTessScale);
+}
+
+std::size_t PlanetRenderer::estimatePatchTriangles(std::size_t patchCount, float tessLevel) const
+{
+    const float tess = glm::max(tessLevel, 1.0f);
+    const float baseQuads = static_cast<float>(kNodeGridResolution * kNodeGridResolution + kNodeGridResolution * 4);
+    const float trianglesPerPatch = baseQuads * 2.0f * tess * tess;
+    return static_cast<std::size_t>(trianglesPerPatch * static_cast<float>(patchCount));
 }
 
 float PlanetRenderer::seaLevelRadius() const
@@ -681,20 +751,27 @@ PlanetRenderer::NodeBounds PlanetRenderer::computeNodeBounds(const FaceBasis& fa
     const glm::vec3 centerDirection = nodeCenterDirection(face, node);
     const glm::vec3 center = centerDirection * sampleRadius;
 
-    const glm::vec2 uv00 = node.uvMin;
-    const glm::vec2 uv10 = node.uvMin + glm::vec2(node.uvSize, 0.0f);
-    const glm::vec2 uv01 = node.uvMin + glm::vec2(0.0f, node.uvSize);
-    const glm::vec2 uv11 = node.uvMin + glm::vec2(node.uvSize, node.uvSize);
-
     float patchRadius = 0.0f;
-    patchRadius = glm::max(patchRadius, glm::length(cubeSphereDirection(face, uv00) * sampleRadius - center));
-    patchRadius = glm::max(patchRadius, glm::length(cubeSphereDirection(face, uv10) * sampleRadius - center));
-    patchRadius = glm::max(patchRadius, glm::length(cubeSphereDirection(face, uv01) * sampleRadius - center));
-    patchRadius = glm::max(patchRadius, glm::length(cubeSphereDirection(face, uv11) * sampleRadius - center));
+    float lodScale = 1.0f;
+    for (int y = 0; y <= 2; ++y) {
+        for (int x = 0; x <= 2; ++x) {
+            const glm::vec2 uv = node.uvMin + glm::vec2(
+                node.uvSize * static_cast<float>(x) * 0.5f,
+                node.uvSize * static_cast<float>(y) * 0.5f
+            );
+            const glm::vec3 dir = cubeSphereDirection(face, uv);
+            const glm::vec3 absDir = glm::abs(dir);
+            const float maxAxis = glm::max(glm::max(absDir.x, absDir.y), absDir.z);
+            const float cubeSphereScale = 1.0f / glm::max(maxAxis, 0.0001f);
+            patchRadius = glm::max(patchRadius, glm::length(dir * sampleRadius - center));
+            lodScale = glm::max(lodScale, cubeSphereScale);
+        }
+    }
 
     NodeBounds bounds;
     bounds.worldDirection = worldDirection(centerDirection);
     bounds.radius = glm::max(patchRadius, 0.001f);
+    bounds.lodScale = glm::clamp(lodScale, 1.0f, 1.75f);
     return bounds;
 }
 
@@ -795,11 +872,12 @@ bool PlanetRenderer::shouldSplitNode(const FlyCamera& camera,
     if (nodeDepth >= kMaximumLodDepth) return false;
 
     const glm::vec3 patchCenter = bounds.worldDirection * settings_.planetRadius;
-    const float distanceToCamera = glm::length(camera.position - patchCenter);
+    const float centerDistanceToCamera = glm::length(camera.position - patchCenter);
+    const float distanceToCamera = glm::max(centerDistanceToCamera - bounds.radius, 0.001f);
     const float projectionScale = (0.5f * static_cast<float>(framebufferHeight))
                                 / glm::tan(glm::radians(camera.fieldOfView) * 0.5f);
-    const float projectedRadius = bounds.radius * projectionScale / glm::max(distanceToCamera, 0.001f);
-    return projectedRadius > kLodSplitPixels;
+    const float projectedRadius = bounds.radius * bounds.lodScale * projectionScale / distanceToCamera;
+    return projectedRadius > kLodSplitPixels * lodSplitPixelScale_;
 }
 
 void PlanetRenderer::collectVisiblePatches(const FlyCamera& camera,
@@ -918,7 +996,7 @@ void PlanetRenderer::applyCommonUniforms(const ShaderProgram& program,
     program.setVec3("lightDir", lightDirection_);
     program.setFloat("cameraAltitude", cameraAltitude);
     program.setFloat("tessMin", settings_.tessellationMin);
-    program.setFloat("tessMax", settings_.tessellationMax);
+    program.setFloat("tessMax", effectiveTessellationMax_);
     program.setFloat("tessMinDist", settings_.tessellationNearDistance);
     program.setFloat("tessMaxDist", settings_.tessellationFarDistance);
     program.setFloat("planetRadius", settings_.planetRadius);
@@ -1094,7 +1172,7 @@ void PlanetRenderer::drawOceanPass(const FlyCamera& camera,
     for (const RenderPatch& patch : visibleOceanPatches_) {
         applyCommonUniforms(oceanProgram_, camera, viewMatrix, projectionMatrix, patch);
         oceanProgram_.setFloat("tessMin", settings_.oceanTessellationMin);
-        oceanProgram_.setFloat("tessMax", settings_.oceanTessellationMax);
+        oceanProgram_.setFloat("tessMax", effectiveOceanTessellationMax_);
         oceanProgram_.setFloat("tessMinDist", settings_.oceanTessellationNearDistance);
         oceanProgram_.setFloat("tessMaxDist", settings_.oceanTessellationFarDistance);
         oceanProgram_.setInt("reflectionTexture", 0);
@@ -1360,6 +1438,10 @@ void PlanetRenderer::drawWireOverlayPass(const FlyCamera& camera,
 
     ShaderProgram& fineProgram = drawOceanWire ? oceanWireOverlayProgram_ : wireOverlayProgram_;
     ShaderProgram& coarseProgram = drawOceanWire ? oceanCoarseGridProgram_ : coarseGridProgram_;
+    const std::vector<RenderPatch>& wirePatches = drawOceanWire ? visibleOceanPatches_ : visiblePatches_;
+    if (wirePatches.empty()) {
+        return;
+    }
 
     if (drawOceanWire) {
         glActiveTexture(GL_TEXTURE3);
@@ -1368,7 +1450,19 @@ void PlanetRenderer::drawWireOverlayPass(const FlyCamera& camera,
         glBindTexture(GL_TEXTURE_2D, fftOcean_.normalTexture());
         glActiveTexture(GL_TEXTURE8);
         glBindTexture(GL_TEXTURE_2D, fftOcean_.displacementTexture());
+        glActiveTexture(GL_TEXTURE9);
+        glBindTexture(GL_TEXTURE_2D_ARRAY, proceduralHeightTexture_);
+        glActiveTexture(GL_TEXTURE10);
+        glBindTexture(GL_TEXTURE_2D_ARRAY, proceduralWaterDepthTexture_);
     } else {
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D_ARRAY, proceduralWaterDepthTexture_);
+        glActiveTexture(GL_TEXTURE5);
+        glBindTexture(GL_TEXTURE_2D_ARRAY, proceduralErosionMaskTexture_);
+        glActiveTexture(GL_TEXTURE6);
+        glBindTexture(GL_TEXTURE_2D_ARRAY, proceduralBiomeWeightATexture_);
+        glActiveTexture(GL_TEXTURE7);
+        glBindTexture(GL_TEXTURE_2D_ARRAY, proceduralBiomeWeightBTexture_);
         glActiveTexture(GL_TEXTURE12);
         glBindTexture(GL_TEXTURE_2D_ARRAY, proceduralHeightTexture_);
     }
@@ -1377,17 +1471,23 @@ void PlanetRenderer::drawWireOverlayPass(const FlyCamera& camera,
     glPolygonOffset(-1.0f, -1.0f);
     glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
-    for (const RenderPatch& patch : visiblePatches_) {
+    for (const RenderPatch& patch : wirePatches) {
         applyCommonUniforms(fineProgram, camera, viewMatrix, projectionMatrix, patch);
         if (drawOceanWire) {
             fineProgram.setFloat("tessMin", settings_.oceanTessellationMin);
-            fineProgram.setFloat("tessMax", settings_.oceanTessellationMax);
+            fineProgram.setFloat("tessMax", effectiveOceanTessellationMax_);
             fineProgram.setFloat("tessMinDist", settings_.oceanTessellationNearDistance);
             fineProgram.setFloat("tessMaxDist", settings_.oceanTessellationFarDistance);
             fineProgram.setInt("oceanHeightTexture", 3);
             fineProgram.setInt("oceanNormalTexture", 4);
             fineProgram.setInt("oceanDisplacementTexture", 8);
+            fineProgram.setInt("proceduralHeightTexture", 9);
+            fineProgram.setInt("proceduralWaterDepthTexture", 10);
         } else {
+            fineProgram.setInt("proceduralWaterDepthTexture", 0);
+            fineProgram.setInt("proceduralErosionMaskTexture", 5);
+            fineProgram.setInt("proceduralBiomeWeightATexture", 6);
+            fineProgram.setInt("proceduralBiomeWeightBTexture", 7);
             fineProgram.setInt("proceduralHeightTexture", 12);
         }
         terrainMesh_.draw();
@@ -1399,17 +1499,23 @@ void PlanetRenderer::drawWireOverlayPass(const FlyCamera& camera,
     glDepthFunc(GL_LEQUAL);
     glDepthMask(GL_FALSE);
 
-    for (const RenderPatch& patch : visiblePatches_) {
+    for (const RenderPatch& patch : wirePatches) {
         applyCommonUniforms(coarseProgram, camera, viewMatrix, projectionMatrix, patch);
         if (drawOceanWire) {
             coarseProgram.setFloat("tessMin", settings_.oceanTessellationMin);
-            coarseProgram.setFloat("tessMax", settings_.oceanTessellationMax);
+            coarseProgram.setFloat("tessMax", effectiveOceanTessellationMax_);
             coarseProgram.setFloat("tessMinDist", settings_.oceanTessellationNearDistance);
             coarseProgram.setFloat("tessMaxDist", settings_.oceanTessellationFarDistance);
             coarseProgram.setInt("oceanHeightTexture", 3);
             coarseProgram.setInt("oceanNormalTexture", 4);
             coarseProgram.setInt("oceanDisplacementTexture", 8);
+            coarseProgram.setInt("proceduralHeightTexture", 9);
+            coarseProgram.setInt("proceduralWaterDepthTexture", 10);
         } else {
+            coarseProgram.setInt("proceduralWaterDepthTexture", 0);
+            coarseProgram.setInt("proceduralErosionMaskTexture", 5);
+            coarseProgram.setInt("proceduralBiomeWeightATexture", 6);
+            coarseProgram.setInt("proceduralBiomeWeightBTexture", 7);
             coarseProgram.setInt("proceduralHeightTexture", 12);
         }
         terrainMesh_.draw();

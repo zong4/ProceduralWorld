@@ -70,7 +70,7 @@ struct ApplicationState {
     std::array<std::atomic<int>, kGenerationModuleCount> generationModuleCompletedSteps{};
     std::array<std::atomic<int>, kGenerationModuleCount> generationModuleTotalSteps{};
     std::mutex generationStatusMutex;
-    std::string generationStatusText = u8"\u51c6\u5907\u751f\u6210";
+    std::string generationStatusText = "Preparing generation";
     std::future<std::unique_ptr<PlanetProceduralData>> generationFuture;
     bool hasGeneratedPlanet = false;
     bool firstRightMouseSample = true;
@@ -429,6 +429,7 @@ bool readVec3(const SessionValues& values, const std::string& key, glm::vec3& ou
 
 #define PLANET_SETTING_INT_FIELDS(X) \
     X(erosionIterations) \
+    X(terrainPatchBudget) \
     X(oceanReflectionFrameStride) \
     X(oceanRefractionFrameStride) \
     X(oceanFftCascadeCount) \
@@ -436,6 +437,7 @@ bool readVec3(const SessionValues& values, const std::string& key, glm::vec3& ou
     X(terrainMaskDebugMode)
 
 #define PLANET_SETTING_BOOL_FIELDS(X) \
+    X(adaptiveTerrainLod) \
     X(renderAtmosphere) \
     X(renderOceanReflectionRefraction) \
     X(renderOceanReflection) \
@@ -503,6 +505,7 @@ void readSettings(const SessionValues& values, const std::string& prefix, Planet
     }
 
     settings.erosionIterations = glm::clamp(settings.erosionIterations, 0, 512);
+    settings.terrainPatchBudget = glm::clamp(settings.terrainPatchBudget, 64, 4000);
     settings.terrainMaskDebugMode = glm::clamp(settings.terrainMaskDebugMode, 0, 11);
     settings.oceanFftCascadeCount = glm::clamp(settings.oceanFftCascadeCount, 1, 3);
     settings.oceanFftFrameStride = glm::max(settings.oceanFftFrameStride, 1);
@@ -628,11 +631,14 @@ float planetDistanceScale(float planetRadius)
 const char* generationModuleLabel(int moduleIndex)
 {
     static const char* kLabels[kGenerationModuleCount] = {
-        u8"\u57fa\u7840\u9ad8\u5ea6",
-        u8"\u4fb5\u8680\u6a21\u62df",
-        u8"\u6c34\u6587\u6c14\u5019",
-        u8"\u751f\u7269\u7fa4\u7cfb",
-        u8"\u6536\u5c3e\u7edf\u8ba1"
+        "Base Terrain",
+        "Initial Climate",
+        "Initial Biomes",
+        "Biome Terrain",
+        "Erosion",
+        "Final Climate",
+        "Final Biomes",
+        "Finalize"
     };
     if (moduleIndex < 0 || moduleIndex >= kGenerationModuleCount) {
         return "";
@@ -658,7 +664,7 @@ void startPlanetGeneration(ApplicationState& state)
     }
     {
         std::lock_guard<std::mutex> lock(state.generationStatusMutex);
-        state.generationStatusText = u8"\u51c6\u5907\u751f\u6210";
+        state.generationStatusText = "Preparing generation";
     }
 
     PlanetRenderSettings generatedSettings = state.renderSettings;
@@ -675,9 +681,12 @@ void startPlanetGeneration(ApplicationState& state)
         : 0;
     const int moduleTotals[kGenerationModuleCount] = {
         clampedResolution * 6,
+        clampedResolution * 6 + 1,
+        clampedResolution * 6 + 2,
+        clampedResolution * 6 + 1,
         erosionActive ? erosionIterations + thermalIterations + 6 : 0,
-        clampedResolution * 6 + 1,
-        clampedResolution * 6 + 1,
+        clampedResolution * 6 + 3,
+        clampedResolution * 6 + 2,
         1 + 6
     };
     for (int i = 0; i < kGenerationModuleCount; ++i) {
@@ -725,7 +734,7 @@ void startPlanetGeneration(ApplicationState& state)
                         std::memory_order_relaxed
                     );
                     std::lock_guard<std::mutex> lock(*statusMutex);
-                    *statusText = progress.status != nullptr ? progress.status : u8"\u751f\u6210\u4e2d";
+                    *statusText = progress.status != nullptr ? progress.status : "Generating";
                 }
             );
             return planet;
@@ -959,7 +968,7 @@ void drawProceduralPanel(ApplicationState& state)
             std::lock_guard<std::mutex> lock(state.generationStatusMutex);
             generationStatus = state.generationStatusText;
         }
-        ImGui::ProgressBar(progress, ImVec2(-1.0f, 0.0f), "Generating planet...");
+        ImGui::ProgressBar(progress, ImVec2(-1.0f, 0.0f), "Generating planet");
         const int activeModuleIndex = glm::clamp(
             state.generationActiveModule.load(std::memory_order_relaxed),
             0,
@@ -971,48 +980,15 @@ void drawProceduralPanel(ApplicationState& state)
             1
         );
         ImGui::Text(
-            u8"\u6b63\u5728\u751f\u6210\uff1a%s - %s (%d/%d)",
-            generationModuleLabel(activeModuleIndex),
-            generationStatus.c_str(),
+            "Generating... (%d/%d)",
             activeModuleCompleted,
             activeModuleTotal
         );
-        return;
-        ImGui::Text(u8"\u6b63\u5728\u751f\u6210\uff1a%s (%d/%d)", generationStatus.c_str(), completedSteps, totalSteps);
-        ImGui::Spacing();
-        ImGui::TextDisabled(u8"\u6a21\u5757\u8fdb\u5ea6");
-
-        const int activeModule = glm::clamp(
-            state.generationActiveModule.load(std::memory_order_relaxed),
-            0,
-            kGenerationModuleCount - 1
+        ImGui::TextDisabled(
+            "%s / %s",
+            generationModuleLabel(activeModuleIndex),
+            generationStatus.c_str()
         );
-        for (int moduleIndex = 0; moduleIndex < kGenerationModuleCount; ++moduleIndex) {
-            const int moduleCompleted = state.generationModuleCompletedSteps[static_cast<std::size_t>(moduleIndex)].load(std::memory_order_relaxed);
-            const int moduleTotal = std::max(
-                state.generationModuleTotalSteps[static_cast<std::size_t>(moduleIndex)].load(std::memory_order_relaxed),
-                1
-            );
-            const float moduleProgress = glm::clamp(
-                static_cast<float>(moduleCompleted) / static_cast<float>(moduleTotal),
-                0.0f,
-                1.0f
-            );
-
-            char overlay[32] = {};
-            std::snprintf(overlay, sizeof(overlay), "%d/%d", moduleCompleted, moduleTotal);
-            if (moduleIndex == activeModule) {
-                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.95f, 0.78f, 0.34f, 1.0f));
-            }
-            ImGui::Text("%s", generationModuleLabel(moduleIndex));
-            if (moduleIndex == activeModule) {
-                ImGui::PopStyleColor();
-            }
-            ImGui::ProgressBar(moduleProgress, ImVec2(-1.0f, 0.0f), overlay);
-        }
-        return;
-        ImGui::Text(u8"正在生成... (%d/%d)", completedSteps, totalSteps);
-        ImGui::TextDisabled("%s", generationStatus.c_str());
         return;
     }
 
@@ -1110,9 +1086,9 @@ void drawRenderModeControls(PlanetRenderSettings& settings)
     int wireModeIndex = static_cast<int>(settings.wireMode);
     if (ImGui::RadioButton("No Wire", wireModeIndex == 0)) settings.wireMode = PlanetWireMode::None;
     ImGui::SameLine();
-    if (ImGui::RadioButton("Land Wire", wireModeIndex == 1)) settings.wireMode = PlanetWireMode::Terrain;
+    if (ImGui::RadioButton("Land Mesh", wireModeIndex == 1)) settings.wireMode = PlanetWireMode::Terrain;
     ImGui::SameLine();
-    if (ImGui::RadioButton("Ocean Wire", wireModeIndex == 2)) settings.wireMode = PlanetWireMode::Ocean;
+    if (ImGui::RadioButton("Water Mesh", wireModeIndex == 2)) settings.wireMode = PlanetWireMode::Ocean;
 
     ImGui::Separator();
     ImGui::Text("Terrain Mask Debug");
@@ -1230,7 +1206,9 @@ void drawRenderPanel(ApplicationState& state)
 
     if (ImGui::CollapsingHeader("Rendering Advanced")) {
         ImGui::TextDisabled("Distance scale: %.2fx from radius %.0f", renderDistanceScale, kReferencePlanetRadius);
-        ImGui::SliderFloat("Land Tess Max", &settings.tessellationMax, 1.0f, 4.0f, "%.1f");
+        ImGui::Checkbox("Adaptive Terrain LOD", &settings.adaptiveTerrainLod);
+        ImGui::SliderInt("Patch Budget", &settings.terrainPatchBudget, 160, 1200);
+        ImGui::SliderFloat("Land Tess Max", &settings.tessellationMax, 1.0f, 8.0f, "%.1f");
         ImGui::SliderFloat("Land Tess Min", &settings.tessellationMin, 1.0f, settings.tessellationMax, "%.1f");
         ImGui::SliderFloat("Land Tess Near", &settings.tessellationNearDistance, 10.0f, 600.0f * renderDistanceScale, "%.1f");
         ImGui::SliderFloat("Land Tess Far", &settings.tessellationFarDistance, settings.tessellationNearDistance + 10.0f, 2000.0f * renderDistanceScale, "%.1f");
@@ -1305,6 +1283,9 @@ void drawPerformancePanel(ApplicationState& state)
         ImGui::Text("Ocean patches: %zu / %zu", perf.oceanPatchCount, state.renderer.visiblePatchCount());
         ImGui::Text("LOD nodes: %zu | Split: %zu", cullingStats.visitedNodes, cullingStats.splitNodes);
         ImGui::Text("Culled: %zu frustum | %zu horizon", cullingStats.frustumCulledNodes, cullingStats.horizonCulledNodes);
+        ImGui::Text("LOD budget: %.2fx | split scale: %.2f", perf.lodBudgetPressure, perf.lodSplitPixelScale);
+        ImGui::Text("Effective tess: land %.2f | water %.2f", perf.effectiveLandTessMax, perf.effectiveOceanTessMax);
+        ImGui::Text("Est triangles: land %zu | water %zu", perf.estimatedTerrainTriangles, perf.estimatedOceanTriangles);
 
         ImGui::Separator();
         ImGui::Text("FFT cascades: %d | stride: %d", perf.fftCascadeCount, perf.fftFrameStride);

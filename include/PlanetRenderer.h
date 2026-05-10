@@ -30,10 +30,12 @@ enum class PlanetWireMode : int {
 struct PlanetRenderSettings {
     float planetRadius = 200.0f;
     float seaLevelOffset = 0.0f;
-    float tessellationMax = 1.0f;
+    float tessellationMax = 3.0f;
     float tessellationMin = 1.0f;
     float tessellationNearDistance = 80.0f;
     float tessellationFarDistance = 900.0f;
+    bool adaptiveTerrainLod = true;
+    int terrainPatchBudget = 420;
     float oceanTessellationMax = 1.0f;
     float oceanTessellationMin = 1.0f;
     float oceanTessellationNearDistance = 40.0f;
@@ -158,6 +160,12 @@ public:
         float reflectionWeight = 0.0f;
         float refractionWeight = 0.0f;
         std::size_t oceanPatchCount = 0;
+        float lodSplitPixelScale = 1.0f;
+        float effectiveLandTessMax = 1.0f;
+        float effectiveOceanTessMax = 1.0f;
+        float lodBudgetPressure = 0.0f;
+        std::size_t estimatedTerrainTriangles = 0;
+        std::size_t estimatedOceanTriangles = 0;
     };
 
     PlanetRenderer();
@@ -211,6 +219,7 @@ private:
     struct NodeBounds {
         glm::vec3 worldDirection{0.0f, 1.0f, 0.0f};
         float radius = 0.001f;
+        float lodScale = 1.0f;
     };
 
     struct TerrainMesh {
@@ -297,6 +306,9 @@ private:
     bool lastRefractionEnabled_ = false;
     float oceanReflectionWeight_ = 1.0f;
     float oceanRefractionWeight_ = 1.0f;
+    float lodSplitPixelScale_ = 1.0f;
+    float effectiveTessellationMax_ = 3.0f;
+    float effectiveOceanTessellationMax_ = 1.0f;
     bool hasLastRenderTimeSeconds_ = false;
     bool initialized_ = false;
 
@@ -312,6 +324,9 @@ private:
     bool isNodeHiddenByHorizon(const FlyCamera& camera, const NodeBounds& bounds) const;
     PatchWaterCoverage analyzePatchWaterCoverage(int faceIndex, const glm::vec2& uvMin, const glm::vec2& uvSize) const;
     bool shouldSplitNode(const FlyCamera& camera, const NodeBounds& bounds, int nodeDepth, int framebufferHeight) const;
+    void updateAdaptiveLodBeforeCulling();
+    void updateEffectiveTessellationBudget(std::size_t visiblePatchCount, std::size_t oceanPatchCount);
+    std::size_t estimatePatchTriangles(std::size_t patchCount, float tessLevel) const;
 
     void collectVisiblePatches(const FlyCamera& camera,
                                const Frustum& frustum,

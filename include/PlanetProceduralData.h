@@ -7,24 +7,28 @@
 
 #include <glm/glm.hpp>
 
+#include "PlanetHeightField.h"
 #include "PlanetRenderer.h"
 
 class PlanetProceduralData
 {
 public:
     enum class GenerationModule : int {
-        TerrainHeight = 0,
-        Erosion = 1,
-        Climate = 2,
-        Biome = 3,
-        Finalize = 4,
-        Count = 5
+        BaseTerrain = 0,
+        InitialClimate = 1,
+        InitialBiomes = 2,
+        BiomeTerrain = 3,
+        Erosion = 4,
+        FinalClimate = 5,
+        FinalBiomes = 6,
+        Finalize = 7,
+        Count = 8
     };
 
     struct GenerationProgress {
         int completedSteps = 0;
         int totalSteps = 1;
-        GenerationModule module = GenerationModule::TerrainHeight;
+        GenerationModule module = GenerationModule::BaseTerrain;
         int moduleCompletedSteps = 0;
         int moduleTotalSteps = 1;
         const char* status = "";
@@ -58,6 +62,7 @@ public:
     int resolution() const { return resolution_; }
     const PlanetRenderSettings& settings() const { return settings_; }
     const std::array<FaceData, 6>& faces() const { return faces_; }
+    PlanetGlobalHeightField globalHeightField() const;
 
     float minHeight() const { return minHeight_; }
     float maxHeight() const { return maxHeight_; }
@@ -116,8 +121,12 @@ private:
     static float terrainHeight(const PlanetRenderSettings& settings, const glm::vec3& sphereDir);
     static PlanetSample samplePlanetBase(const PlanetRenderSettings& settings, const glm::vec3& sphereDir);
     static PlanetSample samplePlanetBase(const PlanetRenderSettings& settings, const glm::vec3& sphereDir, float height);
+    void computeWaterClimateFields(const PlanetRenderSettings& settings, const std::function<void(const char*)>& advanceProgress);
+    void refineTerrainFromBiomeWeights(const PlanetRenderSettings& settings, const std::function<void(const char*)>& advanceProgress);
     void applyErosion(const PlanetRenderSettings& settings, const std::function<void(const char*)>& advanceProgress);
+    void updateHydrologyMoisture(const PlanetRenderSettings& settings);
     void computeBiomeWeights(const PlanetRenderSettings& settings, const std::function<void(const char*)>& advanceProgress);
+    void smoothBiomeWeights(int radius, float blend);
     void fixCubeFaceSeams();
     static float temperature(const PlanetRenderSettings& settings, const glm::vec3& sphereDir, float height);
     static float moisture(const glm::vec3& sphereDir, float shoreMask);
