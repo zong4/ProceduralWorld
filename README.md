@@ -6,7 +6,7 @@ An OpenGL 4.1 procedural planet renderer built with GLFW, GLAD, GLM, and xmake.
 
 - Cube-sphere planet rendering with tessellation shaders
 - Per-face quadtree LOD on the CPU
-- Erosion-driven primary meandering river rendering from channel/flow masks
+- Erosion-driven fractal tributary river rendering from channel/flow masks
 - Shaded, wireframe, height-map, and normal visualization modes
 - Fly camera controls for inspecting the planet at multiple scales
 
@@ -74,7 +74,7 @@ xmake run -y
 
 ### Current Score Estimate
 
-The old 5.5p estimate is outdated. The current code now includes CPU procedural planet data, climate/biome fields, hydraulic and thermal erosion, primary meandering river extraction from channel/flow masks, FFT ocean waves, planar reflection/refraction, depth-based water color, Fresnel mixing, and atmospheric scattering.
+The old 5.5p estimate is outdated. The current code now includes CPU procedural planet data, climate/biome fields, hydraulic and thermal erosion, fractal tributary river extraction from channel/flow masks, FFT ocean waves, planar reflection/refraction, depth-based water color, Fresnel mixing, and atmospheric scattering.
 
 | Module | Current implementation | Conservative | Defensible |
 | --- | --- | ---: | ---: |
@@ -84,7 +84,7 @@ The old 5.5p estimate is outdated. The current code now includes CPU procedural 
 | **Height-, slope-, biome-based shading** | Height/slope/biome/erosion-aware procedural material blending with debug masks | 1p | 1p |
 | **Basic water + FFT waves** | Spherical ocean pass, FFT height/normal/displacement textures, choppy displacement, detail normals | 2p | 2p |
 | **Texture splatting / material blending** | Procedural biome-weight material blending exists, but not full real-texture splatting | 0.5p | 0.5p |
-| **Hydraulic + thermal erosion + rivers** | CPU grid hydraulic erosion, flow, sediment capacity, erode/deposit, thermal talus smoothing, erosion masks, primary river extraction, visible river tint/highlight pass | 1p | 1p |
+| **Hydraulic + thermal erosion + rivers** | CPU grid hydraulic erosion, flow, sediment capacity, erode/deposit, thermal talus smoothing, erosion masks, fractal tributary extraction, river tint/highlight/refraction-style pass | 1p | 1p |
 | **Water reflection & refraction** | Planar reflection/refraction FBOs, depth-based color blend, Fresnel mixing, performance controls | 1p | 2p |
 | **Procedural sky / atmosphere** | Atmosphere shell with Rayleigh/Mie-style scattering approximation and tunable density/exposure/colors | 2p | 2p |
 | **Procedural vegetation** | Not implemented | 0p | 0p |

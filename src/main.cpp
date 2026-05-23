@@ -62,7 +62,7 @@ struct ApplicationState {
     PlanetRenderSettings renderSettings;
     PlanetProceduralData generatedPlanet;
     WorkflowStage workflowStage = WorkflowStage::ProceduralSetup;
-    int generationFaceResolution = 128;
+    int generationFaceResolution = 256;
     float generationTimer = 0.0f;
     float generationDuration = 0.55f;
     PlanetRenderSettings pendingGenerationSettings;
@@ -182,6 +182,7 @@ void copyProceduralSettings(PlanetRenderSettings& destination, const PlanetRende
     destination.riverVisibility = source.riverVisibility;
     destination.riverWidth = source.riverWidth;
     destination.riverShine = source.riverShine;
+    destination.riverRefractionStrength = source.riverRefractionStrength;
     destination.riverColor = source.riverColor;
 }
 
@@ -452,6 +453,7 @@ bool readVec3(const SessionValues& values, const std::string& key, glm::vec3& ou
     X(riverVisibility) \
     X(riverWidth) \
     X(riverShine) \
+    X(riverRefractionStrength) \
     X(coarseGridLineWidth) \
     X(fogDensity) \
     X(atmosphereHeight) \
@@ -572,6 +574,7 @@ void readSettings(const SessionValues& values, const std::string& prefix, Planet
 
     settings.erosionIterations = glm::clamp(settings.erosionIterations, 0, 512);
     settings.terrainPatchBudget = glm::clamp(settings.terrainPatchBudget, 64, 4000);
+    settings.tessellationMax = glm::clamp(settings.tessellationMax, 1.0f, 12.0f);
     settings.terrainMaskDebugMode = glm::clamp(settings.terrainMaskDebugMode, 0, 11);
     settings.oceanFftCascadeCount = glm::clamp(settings.oceanFftCascadeCount, 1, 3);
     settings.oceanFftFrameStride = glm::max(settings.oceanFftFrameStride, 1);
@@ -653,7 +656,7 @@ bool loadSession(ApplicationState& state, const char* path = kSessionFilePath, b
     readSettings(values, "procedural", state.proceduralSettings);
     readSettings(values, "render", state.renderSettings);
     readInt(values, "generationFaceResolution", state.generationFaceResolution);
-    state.generationFaceResolution = glm::clamp(state.generationFaceResolution, 32, 512);
+    state.generationFaceResolution = glm::clamp(state.generationFaceResolution, 256, 512);
     readFloat(values, "planetYawDegrees", state.planetYawDegrees);
     readFloat(values, "planetPitchDegrees", state.planetPitchDegrees);
     readVec3(values, "cameraPosition", state.camera.position);
@@ -1186,16 +1189,20 @@ void drawProceduralPanel(ApplicationState& state)
         settings.mountainMaskStrength = 1.90f;
         settings.mountainMaskScale = 3.35f;
         settings.mountainRidgeSharpness = 3.80f;
+        settings.tessellationMax = 6.0f;
+        settings.terrainPatchBudget = 960;
         settings.erosionIterations = 128;
         settings.erosionStrength = 0.090f;
         settings.erosionSediment = 0.72f;
         settings.erosionThermalStrength = 0.020f;
         settings.regionalDetailStrength = 1.18f;
-        settings.microDetailStrength = 0.26f;
+        settings.microDetailStrength = 0.38f;
+        settings.terrainMaterialNoiseStrength = 0.24f;
         settings.renderRivers = true;
         settings.riverVisibility = 1.70f;
-        settings.riverWidth = 1.25f;
+        settings.riverWidth = 0.72f;
         settings.riverShine = 1.05f;
+        settings.riverRefractionStrength = 0.55f;
     }
     ImGui::Separator();
     // 下面是会影响 CPU 烘焙的参数：地形高度、山脉、侵蚀、材质权重等。
@@ -1210,7 +1217,7 @@ void drawProceduralPanel(ApplicationState& state)
         ImGui::SliderFloat("Mountain Scale", &settings.mountainMaskScale, 0.5f, 8.0f, "%.2f");
         ImGui::SliderFloat("Ridge Sharpness", &settings.mountainRidgeSharpness, 1.0f, 6.0f, "%.2f");
         ImGui::SliderFloat("Skirt Depth", &settings.terrainSkirtDepth, 0.0f, 3.0f, "%.2f");
-        ImGui::SliderInt("Face Resolution", &state.generationFaceResolution, 32, 512);
+        ImGui::SliderInt("Face Resolution", &state.generationFaceResolution, 256, 512);
         drawFeatureBodyEnd();
     }
     if (state.showProceduralErosionFeature) {
@@ -1414,8 +1421,9 @@ void drawRenderPanel(ApplicationState& state)
             settings.microDetailStrength = 0.38f;
             settings.terrainShoreLift = 0.055f;
             settings.riverVisibility = 1.85f;
-            settings.riverWidth = 1.35f;
+            settings.riverWidth = 0.78f;
             settings.riverShine = 1.15f;
+            settings.riverRefractionStrength = 0.60f;
             settings.renderRivers = true;
         }
         drawFeatureBodyEnd();
@@ -1451,8 +1459,9 @@ void drawRenderPanel(ApplicationState& state)
         ImGui::Checkbox("Rivers Enabled", &settings.renderRivers);
         ImGui::ColorEdit3("River Color", &settings.riverColor.x);
         ImGui::SliderFloat("Visibility", &settings.riverVisibility, 0.0f, 2.0f, "%.2f");
-        ImGui::SliderFloat("Width", &settings.riverWidth, 0.1f, 2.0f, "%.2f");
+        ImGui::SliderFloat("Width", &settings.riverWidth, 0.08f, 1.20f, "%.2f");
         ImGui::SliderFloat("Shine", &settings.riverShine, 0.0f, 1.5f, "%.2f");
+        ImGui::SliderFloat("Refraction", &settings.riverRefractionStrength, 0.0f, 1.0f, "%.2f");
         drawFeatureBodyEnd();
     }
 
@@ -1529,7 +1538,7 @@ void drawRenderPanel(ApplicationState& state)
         ImGui::TextDisabled("Distance scale: %.2fx from radius %.0f", renderDistanceScale, kReferencePlanetRadius);
         ImGui::Checkbox("Adaptive Terrain LOD", &settings.adaptiveTerrainLod);
         ImGui::SliderInt("Patch Budget", &settings.terrainPatchBudget, 160, 1200);
-        ImGui::SliderFloat("Land Tess Max", &settings.tessellationMax, 1.0f, 8.0f, "%.1f");
+        ImGui::SliderFloat("Land Tess Max", &settings.tessellationMax, 1.0f, 12.0f, "%.1f");
         ImGui::SliderFloat("Land Tess Min", &settings.tessellationMin, 1.0f, settings.tessellationMax, "%.1f");
         ImGui::SliderFloat("Land Tess Near", &settings.tessellationNearDistance, 10.0f, 600.0f * renderDistanceScale, "%.1f");
         ImGui::SliderFloat("Land Tess Far", &settings.tessellationFarDistance, settings.tessellationNearDistance + 10.0f, 2000.0f * renderDistanceScale, "%.1f");

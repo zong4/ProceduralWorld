@@ -1058,6 +1058,7 @@ void PlanetRenderer::applyCommonUniforms(const ShaderProgram& program,
     program.setFloat("riverVisibility", settings_.riverVisibility);
     program.setFloat("riverWidth", settings_.riverWidth);
     program.setFloat("riverShine", settings_.riverShine);
+    program.setFloat("riverRefractionStrength", settings_.riverRefractionStrength);
     program.setVec3("riverColor", settings_.riverColor);
     program.setFloat("timeSeconds", currentTimeSeconds_);
     program.setFloat("gridCount", static_cast<float>(kNodeGridResolution));

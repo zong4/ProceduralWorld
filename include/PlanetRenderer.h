@@ -35,12 +35,12 @@ struct PlanetRenderSettings {
     // 星球几何尺度与 tessellation LOD。
     float planetRadius = 200.0f;
     float seaLevelOffset = 0.0f;
-    float tessellationMax = 3.0f;
+    float tessellationMax = 5.0f;
     float tessellationMin = 1.0f;
     float tessellationNearDistance = 80.0f;
     float tessellationFarDistance = 900.0f;
     bool adaptiveTerrainLod = true;
-    int terrainPatchBudget = 420;
+    int terrainPatchBudget = 760;
     float oceanTessellationMax = 1.0f;
     float oceanTessellationMin = 1.0f;
     float oceanTessellationNearDistance = 40.0f;
@@ -58,7 +58,7 @@ struct PlanetRenderSettings {
     float erosionSediment = 0.58f;
     float erosionThermalStrength = 0.014f;
     float regionalDetailStrength = 1.12f;
-    float microDetailStrength = 0.20f;
+    float microDetailStrength = 0.30f;
     float regionalDetailStartAltitude = 900.0f;
     float regionalDetailEndAltitude = 2200.0f;
     float microDetailStartAltitude = 90.0f;
@@ -77,11 +77,12 @@ struct PlanetRenderSettings {
     float terrainSnowStart = 0.72f;
     float terrainSnowEnd = 0.95f;
     float terrainMaterialNoiseScale = 0.030f;
-    float terrainMaterialNoiseStrength = 0.14f;
+    float terrainMaterialNoiseStrength = 0.20f;
     bool renderRivers = true;
     float riverVisibility = 1.45f;
-    float riverWidth = 1.05f;
-    float riverShine = 0.95f;
+    float riverWidth = 0.58f;
+    float riverShine = 1.05f;
+    float riverRefractionStrength = 0.48f;
     glm::vec3 riverColor = glm::vec3(0.02f, 0.36f, 0.42f);
     float coarseGridLineWidth = 1.6f;
     // 天空、大气和相机裁剪面。
@@ -284,11 +285,11 @@ private:
         void create(int targetWidth, int targetHeight);
     };
 
-    static constexpr int kNodeGridResolution = 8;
+    static constexpr int kNodeGridResolution = 10;
     static constexpr int kMinimumLodDepth = 1;
-    static constexpr int kMaximumLodDepth = 6;
+    static constexpr int kMaximumLodDepth = 7;
     static constexpr int kShoreMinimumLodDepth = 4;
-    static constexpr float kLodSplitPixels = 190.0f;
+    static constexpr float kLodSplitPixels = 130.0f;
 
     static const std::array<FaceBasis, 6> kPlanetFaces;
 
