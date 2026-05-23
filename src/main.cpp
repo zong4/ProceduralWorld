@@ -85,22 +85,22 @@ struct ApplicationState {
     float previousFrameTime = 0.0f;
     bool showDebugPanel = true;
     bool showPerformancePanel = false;
-    bool showProceduralTerrainFeature = true;
-    bool showProceduralErosionFeature = true;
+    bool showProceduralTerrainFeature = false;
+    bool showProceduralErosionFeature = false;
     bool showProceduralDetailFeature = false;
     bool showProceduralMaterialFeature = false;
-    bool showRenderModeFeature = true;
-    bool showVisibilityFeature = true;
-    bool showTerrainRuntimeFeature = true;
+    bool showRenderModeFeature = false;
+    bool showVisibilityFeature = false;
+    bool showTerrainRuntimeFeature = false;
     bool showLightingFeature = false;
-    bool showRiverFeature = true;
+    bool showRiverFeature = false;
     bool showAtmosphereFeature = false;
     bool showOceanColorFeature = false;
     bool showOceanWaveFeature = false;
     bool showOceanMaterialFeature = false;
     bool showOceanReflectionFeature = false;
     bool showAdvancedRenderFeature = false;
-    bool showCameraFeature = true;
+    bool showCameraFeature = false;
     float planetYawDegrees = 0.0f;
     float planetPitchDegrees = 0.0f;
     float cameraOrbitYawDegrees = 0.0f;
@@ -112,6 +112,33 @@ struct ApplicationState {
 ApplicationState* getState(GLFWwindow* window)
 {
     return static_cast<ApplicationState*>(glfwGetWindowUserPointer(window));
+}
+
+void collapseFeaturePanels(ApplicationState& state)
+{
+    state.showProceduralTerrainFeature = false;
+    state.showProceduralErosionFeature = false;
+    state.showProceduralDetailFeature = false;
+    state.showProceduralMaterialFeature = false;
+    state.showRenderModeFeature = false;
+    state.showVisibilityFeature = false;
+    state.showTerrainRuntimeFeature = false;
+    state.showLightingFeature = false;
+    state.showRiverFeature = false;
+    state.showAtmosphereFeature = false;
+    state.showOceanColorFeature = false;
+    state.showOceanWaveFeature = false;
+    state.showOceanMaterialFeature = false;
+    state.showOceanReflectionFeature = false;
+    state.showAdvancedRenderFeature = false;
+    state.showCameraFeature = false;
+}
+
+void selectFeaturePanel(ApplicationState& state, bool& panelOpen)
+{
+    const bool openTarget = !panelOpen;
+    collapseFeaturePanels(state);
+    panelOpen = openTarget;
 }
 
 // 复制会影响“重新生成星球”或生成后地表显示的参数。
@@ -650,6 +677,7 @@ bool loadSession(ApplicationState& state, const char* path = kSessionFilePath, b
     readBool(values, "showOceanReflectionFeature", state.showOceanReflectionFeature);
     readBool(values, "showAdvancedRenderFeature", state.showAdvancedRenderFeature);
     readBool(values, "showCameraFeature", state.showCameraFeature);
+    collapseFeaturePanels(state);
 
     state.renderer.settings() = state.renderSettings;
     state.renderer.setPlanetRotation(state.planetYawDegrees, state.planetPitchDegrees);
@@ -698,7 +726,7 @@ void drawSessionControls(ApplicationState& state)
     }
 }
 
-void drawFeatureToggle(const char* label, bool& open)
+void drawFeatureToggle(ApplicationState& state, const char* label, bool& open)
 {
     const ImVec4 activeColor(0.105f, 0.300f, 0.540f, 1.0f);
     const ImVec4 inactiveColor(0.050f, 0.090f, 0.130f, 1.0f);
@@ -709,25 +737,30 @@ void drawFeatureToggle(const char* label, bool& open)
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, hoveredColor);
     ImGui::PushStyleColor(ImGuiCol_ButtonActive, activeColor);
     if (ImGui::Button(label, ImVec2(-1.0f, 26.0f))) {
-        open = !open;
+        selectFeaturePanel(state, open);
     }
     ImGui::PopStyleColor(3);
     ImGui::PopID();
 }
 
-void drawFeatureToggleRow(const char* firstLabel, bool& firstOpen, const char* secondLabel, bool& secondOpen)
+void drawFeatureToggleRow(ApplicationState& state,
+                          const char* firstLabel,
+                          bool& firstOpen,
+                          const char* secondLabel,
+                          bool& secondOpen)
 {
     const float spacing = ImGui::GetStyle().ItemSpacing.x;
     const float width = (ImGui::GetContentRegionAvail().x - spacing) * 0.5f;
-    ImGui::PushID(firstLabel);
     const ImVec4 activeColor(0.105f, 0.300f, 0.540f, 1.0f);
     const ImVec4 inactiveColor(0.050f, 0.090f, 0.130f, 1.0f);
     const ImVec4 hoveredColor(0.120f, 0.355f, 0.620f, 1.0f);
+
+    ImGui::PushID(firstLabel);
     ImGui::PushStyleColor(ImGuiCol_Button, firstOpen ? activeColor : inactiveColor);
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, hoveredColor);
     ImGui::PushStyleColor(ImGuiCol_ButtonActive, activeColor);
     if (ImGui::Button(firstLabel, ImVec2(width, 26.0f))) {
-        firstOpen = !firstOpen;
+        selectFeaturePanel(state, firstOpen);
     }
     ImGui::PopStyleColor(3);
     ImGui::PopID();
@@ -738,62 +771,7 @@ void drawFeatureToggleRow(const char* firstLabel, bool& firstOpen, const char* s
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, hoveredColor);
     ImGui::PushStyleColor(ImGuiCol_ButtonActive, activeColor);
     if (ImGui::Button(secondLabel, ImVec2(-1.0f, 26.0f))) {
-        secondOpen = !secondOpen;
-    }
-    ImGui::PopStyleColor(3);
-    ImGui::PopID();
-}
-
-void drawRenderFeatureToggleRow(const char* firstLabel,
-                                bool& firstEnabled,
-                                bool& firstPanelOpen,
-                                const char* secondLabel,
-                                bool& secondEnabled,
-                                bool& secondPanelOpen)
-{
-    const float spacing = ImGui::GetStyle().ItemSpacing.x;
-    const float width = (ImGui::GetContentRegionAvail().x - spacing) * 0.5f;
-    const ImVec4 enabledColor(0.100f, 0.360f, 0.180f, 1.0f);
-    const ImVec4 disabledColor(0.150f, 0.060f, 0.060f, 1.0f);
-    const ImVec4 hoveredColor(0.160f, 0.480f, 0.260f, 1.0f);
-
-    ImGui::PushID(firstLabel);
-    ImGui::PushStyleColor(ImGuiCol_Button, firstEnabled ? enabledColor : disabledColor);
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, hoveredColor);
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive, enabledColor);
-    if (ImGui::Button(firstLabel, ImVec2(width, 26.0f))) {
-        firstEnabled = !firstEnabled;
-        firstPanelOpen = firstEnabled;
-    }
-    ImGui::PopStyleColor(3);
-    ImGui::PopID();
-
-    ImGui::SameLine();
-    ImGui::PushID(secondLabel);
-    ImGui::PushStyleColor(ImGuiCol_Button, secondEnabled ? enabledColor : disabledColor);
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, hoveredColor);
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive, enabledColor);
-    if (ImGui::Button(secondLabel, ImVec2(-1.0f, 26.0f))) {
-        secondEnabled = !secondEnabled;
-        secondPanelOpen = secondEnabled;
-    }
-    ImGui::PopStyleColor(3);
-    ImGui::PopID();
-}
-
-void drawRenderFeatureToggle(const char* label, bool& enabled, bool& panelOpen)
-{
-    const ImVec4 enabledColor(0.100f, 0.360f, 0.180f, 1.0f);
-    const ImVec4 disabledColor(0.150f, 0.060f, 0.060f, 1.0f);
-    const ImVec4 hoveredColor(0.160f, 0.480f, 0.260f, 1.0f);
-
-    ImGui::PushID(label);
-    ImGui::PushStyleColor(ImGuiCol_Button, enabled ? enabledColor : disabledColor);
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, hoveredColor);
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive, enabledColor);
-    if (ImGui::Button(label, ImVec2(-1.0f, 26.0f))) {
-        enabled = !enabled;
-        panelOpen = enabled;
+        selectFeaturePanel(state, secondOpen);
     }
     ImGui::PopStyleColor(3);
     ImGui::PopID();
@@ -1017,8 +995,8 @@ void onMouseMoved(GLFWwindow* window, double xPosition, double yPosition)
         state->lastLeftMouseX = static_cast<float>(xPosition);
         state->lastLeftMouseY = static_cast<float>(yPosition);
 
-        state->planetYawDegrees += deltaX * 0.20f;
-        state->planetPitchDegrees = glm::clamp(state->planetPitchDegrees + deltaY * 0.20f, -89.0f, 89.0f);
+        state->planetYawDegrees = wrapDegrees(state->planetYawDegrees + deltaX * 0.20f);
+        state->planetPitchDegrees = wrapDegrees(state->planetPitchDegrees + deltaY * 0.20f);
         state->renderer.setPlanetRotation(state->planetYawDegrees, state->planetPitchDegrees);
     } else {
         state->firstLeftMouseSample = true;
@@ -1030,6 +1008,14 @@ void onMouseMoved(GLFWwindow* window, double xPosition, double yPosition)
 void onMouseButtonChanged(GLFWwindow* window, int button, int action, int modifiers)
 {
     ImGui_ImplGlfw_MouseButtonCallback(window, button, action, modifiers);
+
+    ApplicationState* state = getState(window);
+    if (button == GLFW_MOUSE_BUTTON_LEFT) {
+        state->firstLeftMouseSample = true;
+    }
+    if (button == GLFW_MOUSE_BUTTON_RIGHT) {
+        state->firstRightMouseSample = true;
+    }
 }
 
 void onCharacterTyped(GLFWwindow* window, unsigned int codepoint)
@@ -1192,8 +1178,8 @@ void drawProceduralPanel(ApplicationState& state)
 
     const float proceduralDistanceScale = planetDistanceScale(settings.planetRadius);
     ImGui::Text("Feature Panels");
-    drawFeatureToggleRow("Terrain Bake", state.showProceduralTerrainFeature, "Erosion Bake", state.showProceduralErosionFeature);
-    drawFeatureToggleRow("Detail Bands", state.showProceduralDetailFeature, "Terrain Materials", state.showProceduralMaterialFeature);
+    drawFeatureToggleRow(state, "Terrain Bake", state.showProceduralTerrainFeature, "Erosion Bake", state.showProceduralErosionFeature);
+    drawFeatureToggleRow(state, "Detail Bands", state.showProceduralDetailFeature, "Terrain Materials", state.showProceduralMaterialFeature);
     if (ImGui::Button("Preset: Rugged Rivers", ImVec2(-1.0f, 28.0f))) {
         settings.terrainHeightScale = 34.0f * proceduralDistanceScale;
         settings.terrainNoiseScale = 0.78f;
@@ -1210,10 +1196,6 @@ void drawProceduralPanel(ApplicationState& state)
         settings.riverVisibility = 1.70f;
         settings.riverWidth = 1.25f;
         settings.riverShine = 1.05f;
-        state.showProceduralTerrainFeature = true;
-        state.showProceduralErosionFeature = true;
-        state.showProceduralDetailFeature = true;
-        state.showRiverFeature = true;
     }
     ImGui::Separator();
     // 下面是会影响 CPU 烘焙的参数：地形高度、山脉、侵蚀、材质权重等。
@@ -1368,27 +1350,19 @@ void drawRenderPanel(ApplicationState& state)
 
     ImGui::Separator();
     ImGui::Text("Render Features");
-    drawRenderFeatureToggleRow("Terrain", settings.renderTerrain, state.showVisibilityFeature, "Ocean", settings.renderOcean, state.showOceanColorFeature);
-    drawRenderFeatureToggleRow("Rivers", settings.renderRivers, state.showRiverFeature, "Atmosphere", settings.renderAtmosphere, state.showAtmosphereFeature);
-    drawRenderFeatureToggleRow("Ocean Waves", settings.renderOceanWaves, state.showOceanWaveFeature, "Ocean Material", settings.renderOceanMaterial, state.showOceanMaterialFeature);
-    drawRenderFeatureToggle("Planar Targets", settings.renderOceanReflectionRefraction, state.showOceanReflectionFeature);
+    drawFeatureToggleRow(state, "Visibility", state.showVisibilityFeature, "Terrain Runtime", state.showTerrainRuntimeFeature);
+    drawFeatureToggleRow(state, "Rivers", state.showRiverFeature, "Atmosphere", state.showAtmosphereFeature);
+    drawFeatureToggleRow(state, "Ocean Color", state.showOceanColorFeature, "Ocean Waves", state.showOceanWaveFeature);
+    drawFeatureToggleRow(state, "Ocean Material", state.showOceanMaterialFeature, "Planar Targets", state.showOceanReflectionFeature);
     if (!settings.renderOcean) {
         ImGui::TextDisabled("Ocean-dependent effects are hidden while Ocean is off.");
     }
 
-    state.showVisibilityFeature = settings.renderTerrain || settings.renderOcean;
-    state.showRiverFeature = settings.renderTerrain && settings.renderRivers;
-    state.showAtmosphereFeature = settings.renderAtmosphere;
-    state.showOceanColorFeature = settings.renderOcean;
-    state.showOceanWaveFeature = settings.renderOcean && settings.renderOceanWaves;
-    state.showOceanMaterialFeature = settings.renderOcean && settings.renderOceanMaterial;
-    state.showOceanReflectionFeature = settings.renderOcean && settings.renderOceanReflectionRefraction;
-
     ImGui::Separator();
     ImGui::Text("Utility Panels");
-    drawFeatureToggleRow("Render Debug", state.showRenderModeFeature, "Terrain Runtime", state.showTerrainRuntimeFeature);
-    drawFeatureToggleRow("Lighting", state.showLightingFeature, "Advanced Render", state.showAdvancedRenderFeature);
-    drawFeatureToggle("Camera", state.showCameraFeature);
+    drawFeatureToggle(state, "Render Debug", state.showRenderModeFeature);
+    drawFeatureToggleRow(state, "Lighting", state.showLightingFeature, "Advanced Render", state.showAdvancedRenderFeature);
+    drawFeatureToggle(state, "Camera", state.showCameraFeature);
     ImGui::Separator();
 
     if (state.showRenderModeFeature) {
@@ -1400,15 +1374,15 @@ void drawRenderPanel(ApplicationState& state)
     if (state.showVisibilityFeature) {
         drawFeatureBodyBegin();
         ImGui::Text("Visibility");
-        ImGui::Text("Terrain: %s", settings.renderTerrain ? "On" : "Off");
-        ImGui::SameLine();
-        ImGui::Text("Ocean: %s", settings.renderOcean ? "On" : "Off");
+        ImGui::Checkbox("Terrain", &settings.renderTerrain);
+        ImGui::Checkbox("Ocean", &settings.renderOcean);
         drawFeatureBodyEnd();
     }
 
-    if (settings.renderTerrain && state.showTerrainRuntimeFeature) {
+    if (state.showTerrainRuntimeFeature) {
         drawFeatureBodyBegin();
         ImGui::Text("Terrain Runtime");
+        ImGui::Checkbox("Terrain Enabled", &settings.renderTerrain);
         ImGui::TextDisabled("Immediate shader controls; bake-only terrain, biome, erosion need Generate Planet.");
         ImGui::SliderFloat("Height Scale", &settings.terrainHeightScale, 0.0f, 120.0f * renderDistanceScale, "%.2f");
         ImGui::SliderFloat("Sea Level", &settings.seaLevelOffset, -1.5f, 1.5f, "%.2f");
@@ -1443,7 +1417,6 @@ void drawRenderPanel(ApplicationState& state)
             settings.riverWidth = 1.35f;
             settings.riverShine = 1.15f;
             settings.renderRivers = true;
-            state.showRiverFeature = true;
         }
         drawFeatureBodyEnd();
     }
@@ -1456,9 +1429,10 @@ void drawRenderPanel(ApplicationState& state)
         drawFeatureBodyEnd();
     }
 
-    if (settings.renderAtmosphere && state.showAtmosphereFeature) {
+    if (state.showAtmosphereFeature) {
         drawFeatureBodyBegin();
         ImGui::Text("Atmosphere");
+        ImGui::Checkbox("Atmosphere Enabled", &settings.renderAtmosphere);
         ImGui::SliderFloat("Atmosphere Height", &settings.atmosphereHeight, 1.0f, 120.0f * renderDistanceScale, "%.1f");
         ImGui::SliderFloat("Atmosphere Density", &settings.atmosphereDensity, 0.0f, 3.0f, "%.2f");
         ImGui::SliderFloat("Rayleigh", &settings.atmosphereRayleighStrength, 0.0f, 4.0f, "%.2f");
@@ -1470,9 +1444,11 @@ void drawRenderPanel(ApplicationState& state)
         drawFeatureBodyEnd();
     }
 
-    if (settings.renderTerrain && settings.renderRivers && state.showRiverFeature) {
+    if (state.showRiverFeature) {
         drawFeatureBodyBegin();
         ImGui::Text("Rivers");
+        ImGui::Checkbox("Terrain Enabled", &settings.renderTerrain);
+        ImGui::Checkbox("Rivers Enabled", &settings.renderRivers);
         ImGui::ColorEdit3("River Color", &settings.riverColor.x);
         ImGui::SliderFloat("Visibility", &settings.riverVisibility, 0.0f, 2.0f, "%.2f");
         ImGui::SliderFloat("Width", &settings.riverWidth, 0.1f, 2.0f, "%.2f");
@@ -1480,9 +1456,10 @@ void drawRenderPanel(ApplicationState& state)
         drawFeatureBodyEnd();
     }
 
-    if (settings.renderOcean && state.showOceanColorFeature) {
+    if (state.showOceanColorFeature) {
         drawFeatureBodyBegin();
         ImGui::Text("Ocean Color");
+        ImGui::Checkbox("Ocean Enabled", &settings.renderOcean);
         ImGui::SliderFloat("Opacity Limit", &settings.oceanAlpha, 0.05f, 1.0f, "%.2f");
         ImGui::ColorEdit3("Shallow Color", &settings.oceanShallowColor.x);
         ImGui::ColorEdit3("Deep Color", &settings.oceanDeepColor.x);
@@ -1490,9 +1467,11 @@ void drawRenderPanel(ApplicationState& state)
         drawFeatureBodyEnd();
     }
 
-    if (settings.renderOcean && settings.renderOceanWaves && state.showOceanWaveFeature) {
+    if (state.showOceanWaveFeature) {
         drawFeatureBodyBegin();
         ImGui::Text("Ocean Waves");
+        ImGui::Checkbox("Ocean Enabled", &settings.renderOcean);
+        ImGui::Checkbox("Ocean Waves Enabled", &settings.renderOceanWaves);
         ImGui::SliderFloat("Wave Height", &settings.oceanWaveAmplitude, 0.0f, 0.80f, "%.3f");
         ImGui::SliderFloat("Choppiness", &settings.oceanChoppiness, 0.0f, 0.80f, "%.3f");
         ImGui::SliderFloat("Wave Tile Scale", &settings.oceanWaveTileScale, 4.0f, 28.0f, "%.1f");
@@ -1502,9 +1481,11 @@ void drawRenderPanel(ApplicationState& state)
         drawFeatureBodyEnd();
     }
 
-    if (settings.renderOcean && settings.renderOceanMaterial && state.showOceanMaterialFeature) {
+    if (state.showOceanMaterialFeature) {
         drawFeatureBodyBegin();
         ImGui::Text("Ocean Material");
+        ImGui::Checkbox("Ocean Enabled", &settings.renderOcean);
+        ImGui::Checkbox("Ocean Material Enabled", &settings.renderOceanMaterial);
         ImGui::SliderFloat("Fresnel", &settings.oceanFresnelStrength, 0.1f, 3.0f, "%.2f");
         ImGui::SliderFloat("Refraction Distortion", &settings.oceanDistortionStrength, 0.0f, 0.08f, "%.3f");
         ImGui::SliderFloat("Depth Blend", &settings.oceanDepthRange, 0.5f, 40.0f, "%.2f");
@@ -1525,9 +1506,11 @@ void drawRenderPanel(ApplicationState& state)
         drawFeatureBodyEnd();
     }
 
-    if (settings.renderOcean && settings.renderOceanReflectionRefraction && state.showOceanReflectionFeature) {
+    if (state.showOceanReflectionFeature) {
         drawFeatureBodyBegin();
         ImGui::Text("Ocean Reflection");
+        ImGui::Checkbox("Ocean Enabled", &settings.renderOcean);
+        ImGui::Checkbox("Planar Targets Enabled", &settings.renderOceanReflectionRefraction);
         // 反射/折射 target 支持降采样和隔帧更新，减少水面效果的额外 draw cost。
         ImGui::Checkbox("Reflection", &settings.renderOceanReflection);
         ImGui::Checkbox("Refraction", &settings.renderOceanRefraction);
@@ -1585,7 +1568,7 @@ void drawPerformancePanel(ApplicationState& state)
     const ImVec4 text(0.98f, 0.90f, 0.72f, 1.0f);
 
     ImGui::SetNextWindowPos(ImVec2(420.0f, 16.0f), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(360.0f, 280.0f), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSizeConstraints(ImVec2(340.0f, 0.0f), ImVec2(440.0f, 680.0f));
 
     ImGui::PushStyleColor(ImGuiCol_WindowBg, black);
     ImGui::PushStyleColor(ImGuiCol_TitleBg, panel);
@@ -1599,7 +1582,7 @@ void drawPerformancePanel(ApplicationState& state)
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.4f);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 3.0f);
 
-    if (ImGui::Begin("Performance Monitor  Ctrl+1", &state.showPerformancePanel)) {
+    if (ImGui::Begin("Performance Monitor  Ctrl+1", &state.showPerformancePanel, ImGuiWindowFlags_AlwaysAutoResize)) {
         const float fps = 1.0f / glm::max(state.deltaSeconds, 0.0001f);
         const PlanetRenderer::PerformanceStats& perf = state.renderer.performanceStats();
         const PlanetRenderer::CullingStats& cullingStats = state.renderer.cullingStats();
@@ -1648,7 +1631,7 @@ void drawDebugPanel(ApplicationState& state)
     if (!state.showDebugPanel) return;
 
     ImGui::SetNextWindowPos(ImVec2(16.0f, 16.0f), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(380.0f, 520.0f), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSizeConstraints(ImVec2(360.0f, 0.0f), ImVec2(460.0f, 700.0f));
 
     const char* title = state.workflowStage == WorkflowStage::Render
         ? "Render Controls"
@@ -1685,7 +1668,7 @@ void drawDebugPanel(ApplicationState& state)
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 3.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 2.0f);
 
-    if (!ImGui::Begin(title, &state.showDebugPanel)) {
+    if (!ImGui::Begin(title, &state.showDebugPanel, ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::End();
         ImGui::PopStyleVar(3);
         ImGui::PopStyleColor(18);
