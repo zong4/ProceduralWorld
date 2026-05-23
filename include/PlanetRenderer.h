@@ -103,8 +103,10 @@ struct PlanetRenderSettings {
     float oceanShallowDepthRange = 0.45f;
     float oceanDepthScale = 6.0f;
     float oceanTintStrength = 0.02f;
-    float oceanWaveAmplitude = 0.0f;
-    float oceanChoppiness = 0.0f;
+    bool renderOceanWaves = true;
+    bool renderOceanMaterial = true;
+    float oceanWaveAmplitude = 0.18f;
+    float oceanChoppiness = 0.10f;
     float oceanWaveTileScale = 4.0f;
     float oceanWaveNormalStrength = 1.0f;
     float oceanDetailNormalStrength = 0.22f;
