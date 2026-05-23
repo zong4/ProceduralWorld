@@ -1,5 +1,7 @@
 #version 410 core
 
+// 旧版通用粗网格片元着色器，按 teTexCoord 生成网格线。
+
 in vec2 teTexCoord;
 
 out vec4 FragColor;
@@ -9,6 +11,7 @@ uniform float coarseLineWidth;
 
 float gridLineMask(float coord, float segments, float width)
 {
+    // 抗锯齿网格线 mask，fwidth 根据屏幕导数自动调节线宽。
     float scaled = coord * max(segments, 1.0);
     float distToLine = min(fract(scaled), 1.0 - fract(scaled));
     float aa = max(fwidth(scaled) * width, 1e-4);

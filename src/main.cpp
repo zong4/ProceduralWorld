@@ -47,12 +47,15 @@ constexpr const char* kProceduralCacheFilePath = "config/last_procedural_cache.b
 constexpr float kReferencePlanetRadius = 200.0f;
 constexpr int kGenerationModuleCount = static_cast<int>(PlanetProceduralData::GenerationModule::Count);
 
+// 应用级工作流：
+// ProceduralSetup 负责调生成参数；Generating 后台烘焙数据；Render 实时渲染。
 enum class WorkflowStage {
     ProceduralSetup,
     Generating,
     Render
 };
 
+// 主程序的所有可变状态集中在这里，避免 GLFW/ImGui 回调之间传递大量全局变量。
 struct ApplicationState {
     FlyCamera camera{glm::vec3(0.0f, 90.0f, 420.0f)};
     PlanetRenderer renderer;
@@ -96,6 +99,8 @@ ApplicationState* getState(GLFWwindow* window)
     return static_cast<ApplicationState*>(glfwGetWindowUserPointer(window));
 }
 
+// 只复制会影响“重新生成星球”的参数。
+// 渲染质量、海水反射、大气等运行时参数不需要触发 CPU 地形重烘焙。
 void copyProceduralSettings(PlanetRenderSettings& destination, const PlanetRenderSettings& source)
 {
     destination.planetRadius = source.planetRadius;
@@ -138,6 +143,7 @@ float minCameraOrbitDistance(const PlanetRenderSettings& settings)
     return settings.planetRadius + glm::max(settings.terrainHeightScale, 1.0f) + 4.0f;
 }
 
+// 相机轨道半径随星球半径缩放，保证小星球/大星球都能被观察。
 float maxCameraOrbitDistance(const PlanetRenderSettings& settings)
 {
     return glm::max(settings.planetRadius * 8.0f, minCameraOrbitDistance(settings) + 10.0f);
@@ -169,6 +175,7 @@ void updateOrbitMetadata(ApplicationState& state)
     state.cameraOrbitYawDegrees = wrapDegrees(glm::degrees(std::atan2(direction.x, direction.z)));
 }
 
+// 将相机朝向锁定到星球中心，同时尽量保留用户期望的上方向。
 void orientCameraToPlanet(ApplicationState& state, const glm::vec3& preferredUp)
 {
     glm::vec3 radialDirection = glm::normalize(state.camera.position);
@@ -185,6 +192,7 @@ void orientCameraToPlanet(ApplicationState& state, const glm::vec3& preferredUp)
     state.camera.up = glm::normalize(glm::cross(state.camera.right, state.camera.front));
 }
 
+// 统一维护轨道相机约束：FOV 固定、距离裁剪、朝向星球中心。
 void updateOrbitCamera(ApplicationState& state, const PlanetRenderSettings& settings)
 {
     state.camera.fieldOfView = kLockedCameraFov;
@@ -202,6 +210,7 @@ void updateOrbitCamera(ApplicationState& state, const PlanetRenderSettings& sett
     updateOrbitMetadata(state);
 }
 
+// 从已有相机位置恢复轨道相机元数据，常用于加载 session 或生成完成后重定位。
 void setOrbitFromCameraPosition(ApplicationState& state, const PlanetRenderSettings& settings)
 {
     state.cameraOrbitDistance = glm::clamp(
@@ -220,6 +229,7 @@ void setOrbitFromCameraPosition(ApplicationState& state, const PlanetRenderSetti
 
 using SessionValues = std::unordered_map<std::string, std::string>;
 
+// session 文件使用简单 key=value 格式，下面这些 helper 负责读写和类型转换。
 std::string trimString(const std::string& value)
 {
     const std::size_t first = value.find_first_not_of(" \t\r\n");
@@ -356,6 +366,7 @@ bool readVec3(const SessionValues& values, const std::string& key, glm::vec3& ou
     return false;
 }
 
+// 用宏列出所有需要保存/加载的设置字段，避免 writeSettings/readSettings 漏字段。
 #define PLANET_SETTING_FLOAT_FIELDS(X) \
     X(planetRadius) \
     X(seaLevelOffset) \
@@ -479,6 +490,7 @@ void writeSettings(std::ostream& out, const std::string& prefix, const PlanetRen
     writeInt(out, sessionKey(prefix, "wireMode"), static_cast<int>(settings.wireMode));
 }
 
+// 读取 session 后会对部分字段做 clamp，防止旧配置或手改文件产生非法范围。
 void readSettings(const SessionValues& values, const std::string& prefix, PlanetRenderSettings& settings)
 {
 #define READ_FLOAT_FIELD(name) readFloat(values, sessionKey(prefix, #name), settings.name);
@@ -513,6 +525,7 @@ void readSettings(const SessionValues& values, const std::string& prefix, Planet
     settings.oceanRefractionFrameStride = glm::max(settings.oceanRefractionFrameStride, 1);
 }
 
+// 保存 UI/session 参数；如果当前已有生成数据，同时保存一份二进制缓存。
 bool saveSession(ApplicationState& state, const char* path = kSessionFilePath)
 {
     if (state.workflowStage == WorkflowStage::Render) {
@@ -555,6 +568,8 @@ bool saveSession(ApplicationState& state, const char* path = kSessionFilePath)
     return true;
 }
 
+// 读取 session，并尝试恢复上次生成的星球缓存。
+// 缓存加载成功后会立即上传到 renderer，用户可以直接进入 Render 阶段。
 bool loadSession(ApplicationState& state, const char* path = kSessionFilePath, bool reportMissing = true)
 {
     SessionValues values;
@@ -628,6 +643,7 @@ float planetDistanceScale(float planetRadius)
     return glm::max(planetRadius / kReferencePlanetRadius, 0.25f);
 }
 
+// 生成模块名只用于 UI 进度显示，顺序必须与 GenerationModule 枚举一致。
 const char* generationModuleLabel(int moduleIndex)
 {
     static const char* kLabels[kGenerationModuleCount] = {
@@ -648,6 +664,7 @@ const char* generationModuleLabel(int moduleIndex)
 
 void startPlanetGeneration(ApplicationState& state)
 {
+    // 如果已有后台生成任务还没完成，忽略重复点击。
     if (state.generationFuture.valid()
         && state.generationFuture.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
         return;
@@ -672,6 +689,7 @@ void startPlanetGeneration(ApplicationState& state)
     state.pendingGenerationSettings = generatedSettings;
     const int faceResolution = state.generationFaceResolution;
     const int clampedResolution = glm::clamp(faceResolution, 16, 512);
+    // 主线程先估算各模块总步数，UI 可以在后台任务第一次回调前显示合理进度。
     const int erosionIterations = glm::clamp(generatedSettings.erosionIterations, 0, 256);
     const float erosionStrength = glm::max(generatedSettings.erosionStrength, 0.0f);
     const float thermalStrength = glm::max(generatedSettings.erosionThermalStrength, 0.0f);
@@ -703,6 +721,7 @@ void startPlanetGeneration(ApplicationState& state)
     auto* moduleTotalSteps = &state.generationModuleTotalSteps;
     std::mutex* statusMutex = &state.generationStatusMutex;
     std::string* statusText = &state.generationStatusText;
+    // 后台线程只负责 CPU 数据生成，不碰 OpenGL 资源；GPU 上传留给主线程完成。
     state.generationFuture = std::async(
         std::launch::async,
         [generatedSettings,
@@ -721,6 +740,7 @@ void startPlanetGeneration(ApplicationState& state)
                 [completedSteps, totalSteps, activeModule, moduleCompletedSteps, moduleTotalSteps, statusMutex, statusText](
                     const PlanetProceduralData::GenerationProgress& progress
                 ) {
+                    // 进度字段用 atomic 写入，状态文本用 mutex 保护。
                     const int moduleIndex = glm::clamp(static_cast<int>(progress.module), 0, kGenerationModuleCount - 1);
                     completedSteps->store(progress.completedSteps, std::memory_order_relaxed);
                     totalSteps->store(std::max(progress.totalSteps, 1), std::memory_order_relaxed);
@@ -753,6 +773,7 @@ void finishPlanetGeneration(ApplicationState& state, std::unique_ptr<PlanetProce
     const PlanetRenderSettings generatedSettings = state.pendingGenerationSettings;
     state.generatedPlanet = std::move(*generatedPlanet);
     state.renderer.settings() = generatedSettings;
+    // OpenGL 纹理上传必须发生在拥有 context 的主线程。
     state.renderer.setProceduralData(state.generatedPlanet);
     state.renderSettings = generatedSettings;
     state.hasGeneratedPlanet = true;
@@ -763,6 +784,7 @@ void finishPlanetGeneration(ApplicationState& state, std::unique_ptr<PlanetProce
     saveSession(state);
 }
 
+// 从渲染阶段回到生成参数界面时，把当前 renderer 设置同步回 UI。
 void returnToProceduralSetup(ApplicationState& state)
 {
     if (state.hasGeneratedPlanet) {
@@ -787,6 +809,7 @@ void onMouseScrolled(GLFWwindow* window, double, double yOffset)
     }
 
     const PlanetRenderSettings& settings = state->renderer.settings();
+    // 滚轮不是改 FOV，而是沿轨道半径推近/拉远，保持星球观察视角稳定。
     const float scrollStep = glm::max(state->cameraOrbitDistance * 0.09f, settings.planetRadius * 0.035f);
     state->cameraOrbitDistance -= static_cast<float>(yOffset) * scrollStep;
     updateOrbitCamera(*state, settings);
@@ -865,6 +888,7 @@ void onKeyPressed(GLFWwindow* window, int key, int, int action, int modifiers)
 
     PlanetRenderSettings& settings = state->renderer.settings();
 
+    // 快捷键主要循环 debug/render mode，具体连续参数仍由 ImGui 控件调整。
     if (key == GLFW_KEY_ESCAPE) glfwSetWindowShouldClose(window, true);
     if (key == GLFW_KEY_1) {
         const int nextMode = (static_cast<int>(settings.renderMode) + 1) % 4;
@@ -956,6 +980,7 @@ void drawProceduralPanel(ApplicationState& state)
     ImGui::Separator();
 
     if (state.workflowStage == WorkflowStage::Generating) {
+        // 生成期间只显示进度，不允许同时修改输入参数。
         const int completedSteps = state.generationCompletedSteps.load(std::memory_order_relaxed);
         const int totalSteps = std::max(state.generationTotalSteps.load(std::memory_order_relaxed), 1);
         const float progress = glm::clamp(
@@ -993,6 +1018,7 @@ void drawProceduralPanel(ApplicationState& state)
     }
 
     const float proceduralDistanceScale = planetDistanceScale(settings.planetRadius);
+    // 下面是会影响 CPU 烘焙的参数：地形高度、山脉、侵蚀、材质权重等。
     ImGui::SliderFloat("Planet Radius", &settings.planetRadius, 50.0f, 5000.0f, "%.1f");
     ImGui::SliderFloat("Sea Level", &settings.seaLevelOffset, -1.5f, 1.5f, "%.2f");
     ImGui::SliderFloat("Height Scale", &settings.terrainHeightScale, 0.0f, 80.0f * proceduralDistanceScale, "%.2f");
@@ -1092,6 +1118,7 @@ void drawRenderModeControls(PlanetRenderSettings& settings)
 
     ImGui::Separator();
     ImGui::Text("Terrain Mask Debug");
+    // terrainMaskDebugMode 直接驱动 terrain.frag 中的调试输出分支。
     settings.terrainMaskDebugMode = glm::clamp(settings.terrainMaskDebugMode, 0, 11);
     if (ImGui::BeginCombo("Mask", kTerrainMaskDebugLabels[settings.terrainMaskDebugMode])) {
         for (int i = 0; i < 12; ++i) {
@@ -1193,6 +1220,7 @@ void drawRenderPanel(ApplicationState& state)
     }
 
     if (ImGui::CollapsingHeader("Ocean Reflection", ImGuiTreeNodeFlags_DefaultOpen)) {
+        // 反射/折射 target 支持降采样和隔帧更新，减少水面效果的额外 draw cost。
         ImGui::Checkbox("Planar Targets", &settings.renderOceanReflectionRefraction);
         ImGui::Checkbox("Reflection", &settings.renderOceanReflection);
         ImGui::Checkbox("Refraction", &settings.renderOceanRefraction);
@@ -1262,6 +1290,7 @@ void drawPerformancePanel(ApplicationState& state)
         const PlanetRenderer::PerformanceStats& perf = state.renderer.performanceStats();
         const PlanetRenderer::CullingStats& cullingStats = state.renderer.cullingStats();
 
+        // 这些时间是 CPU 提交侧统计，不包含 glFinish 等 GPU 阻塞等待。
         ImGui::PushStyleColor(ImGuiCol_Text, gold);
         ImGui::Text("CPU Submit Timings");
         ImGui::PopStyleColor();
@@ -1311,6 +1340,7 @@ void drawDebugPanel(ApplicationState& state)
         ? "Render Controls"
         : "Procedural Generation";
 
+    // 调试面板使用单独配色，不影响 ImGui 全局主题。
     const ImVec4 deepNavy(0.018f, 0.035f, 0.070f, 0.96f);
     const ImVec4 panelBlue(0.045f, 0.105f, 0.180f, 0.98f);
     const ImVec4 activeBlue(0.070f, 0.210f, 0.360f, 1.0f);
@@ -1384,12 +1414,14 @@ void configureImGuiFonts()
         }
     }
 
+    // 找不到中文字体时退回默认字体；UI 文本仍以英文为主。
     io.Fonts->AddFontDefault();
 }
 } // namespace
 
 int main()
 {
+    // 1. 创建窗口和 OpenGL context。
     if (!glfwInit()) {
         std::cerr << "Failed to initialize GLFW\n";
         return -1;
@@ -1413,6 +1445,7 @@ int main()
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1);
 
+    // 2. 注册输入回调。ApplicationState 挂到 GLFW user pointer 供回调访问。
     ApplicationState appState;
     glfwSetWindowUserPointer(window, &appState);
     glfwSetFramebufferSizeCallback(window, onFramebufferSizeChanged);
@@ -1435,6 +1468,7 @@ int main()
     std::cout << "OpenGL vendor: " << glGetString(GL_VENDOR) << "\n";
     std::cout << "OpenGL renderer: " << glGetString(GL_RENDERER) << "\n";
 
+    // 3. 初始化 ImGui 和渲染器资源。
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGui::StyleColorsDark();
@@ -1445,6 +1479,7 @@ int main()
     appState.renderer.initialize();
     appState.renderSettings = appState.renderer.settings();
     appState.proceduralSettings = appState.renderer.settings();
+    // 4. 尝试恢复本地 session/cache；成功时可直接进入渲染阶段。
     loadSession(appState, kSessionFilePath, false);
     appState.renderer.setPlanetRotation(appState.planetYawDegrees, appState.planetPitchDegrees);
 
@@ -1457,11 +1492,13 @@ int main()
 
     while (!glfwWindowShouldClose(window))
     {
+        // 帧时间用于相机、自动旋转、反射权重平滑和 FFT 更新节流。
         const float currentTime = static_cast<float>(glfwGetTime());
         appState.deltaSeconds = currentTime - appState.previousFrameTime;
         appState.previousFrameTime = currentTime;
 
         if (appState.workflowStage == WorkflowStage::Generating) {
+            // 后台生成完成后，在主线程取出结果并上传 GPU 资源。
             appState.generationTimer += appState.deltaSeconds;
             if (appState.generationFuture.valid()
                 && appState.generationFuture.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
@@ -1476,6 +1513,7 @@ int main()
 
         handleKeyboardMovement(window, appState);
         if (appState.workflowStage == WorkflowStage::Render) {
+            // 自动缓慢旋转星球，同时维护轨道相机约束。
             appState.planetYawDegrees += kPlanetAutoSpinDegreesPerSecond * appState.deltaSeconds;
             appState.renderer.setPlanetRotation(appState.planetYawDegrees, appState.planetPitchDegrees);
             updateOrbitCamera(appState, appState.renderer.settings());
@@ -1491,6 +1529,7 @@ int main()
             ? appState.renderer.settings()
             : appState.renderSettings;
 
+        // 投影矩阵使用当前设置里的 near/far，支持大半径星球的远裁剪面。
         const glm::mat4 projectionMatrix = glm::perspective(
             glm::radians(appState.camera.fieldOfView),
             static_cast<float>(framebufferWidth) / static_cast<float>(framebufferHeight),
@@ -1509,6 +1548,7 @@ int main()
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
+        // UI 先生成 draw data，星球渲染后再提交 ImGui，保证面板覆盖在画面上方。
         drawDebugPanel(appState);
         drawPerformancePanel(appState);
         if (appState.workflowStage == WorkflowStage::Render) {

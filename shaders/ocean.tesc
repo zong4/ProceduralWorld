@@ -1,5 +1,8 @@
 #version 410 core
 
+// 海洋 tessellation control shader。
+// 只按距离调节细分；海面材质复杂度由 fragment 阶段处理。
+
 layout(vertices = 4) out;
 
 in vec2 vTexCoord[];
@@ -46,6 +49,7 @@ float computeTessLevel(vec2 uv, float uvRadius)
     float patchWorldRadius = seaLevelRadius * uvRadius * 2.35 * lodScale;
     float dist = max((sampleDist - patchWorldRadius) / lodScale, 0.001);
     float t = clamp((dist - tessMinDist) / (tessMaxDist - tessMinDist), 0.0, 1.0);
+    // 近处使用 tessMax，远处逐步降到 tessMin。
     return mix(tessMax, tessMin, t);
 }
 

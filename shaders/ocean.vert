@@ -1,5 +1,7 @@
 #version 410 core
 
+// 海洋顶点阶段：与地形类似，只做 patch UV remap 和海平面球面位置预估。
+
 layout (location = 0) in vec2 aUV;
 
 out vec2 vTexCoord;
@@ -15,6 +17,7 @@ uniform float seaLevelRadius;
 
 void main()
 {
+    // 当前 quadtree patch 的局部 UV 转换为 cube face UV。
     vTexCoord = nodeUvMin + aUV * nodeUvSize;
     vec2 faceUV = vTexCoord * 2.0 - 1.0;
     vec3 cubePos = faceNormal + faceUV.x * faceAxisU + faceUV.y * faceAxisV;

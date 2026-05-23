@@ -1,3 +1,5 @@
+// renderMode 调试输出：
+// 1=无光照材质色，2=高度灰度，3=法线可视化，其余返回 -1 表示正常光照。
 vec4 debugSurfaceOutput(int renderMode, SurfaceData surface, vec3 shadingNormal)
 {
     if (renderMode == 1) {

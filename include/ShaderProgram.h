@@ -12,6 +12,11 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
+// OpenGL shader 编译/链接小工具。
+// 特点：
+// - 支持 VS/FS 和 VS/TCS/TES/FS 两套构造方式；
+// - 在编译前递归展开本地 #include "xxx.glsl"；
+// - 提供常用 uniform setter，减少渲染代码中的 OpenGL 样板。
 class ShaderProgram
 {
 public:
@@ -74,6 +79,7 @@ public:
     }
 
 private:
+    // 递归展开 GLSL include。includeStack 用来检测循环包含，避免无限递归。
     static std::string expandIncludes(const std::filesystem::path& filePath,
                                       std::vector<std::filesystem::path>& includeStack)
     {
@@ -119,6 +125,7 @@ private:
         return expandedSource.str();
     }
 
+    // 读取、展开、编译单个 shader stage。编译错误直接打印到 stderr。
     static GLuint compileShader(const char* filePath, GLenum shaderType)
     {
         std::vector<std::filesystem::path> includeStack;
@@ -143,6 +150,7 @@ private:
         return shader;
     }
 
+    // 将已编译的 shader stage 链接成 program；链接后删除中间 shader 对象。
     void linkProgram(std::initializer_list<GLuint> shaders)
     {
         programId = glCreateProgram();

@@ -1,5 +1,8 @@
 #version 410 core
 
+// 海洋 tessellation evaluation shader。
+// 将 patch 投到海平面球壳，再采样 FFT 高度和水平位移生成 choppy wave。
+
 layout(quads, fractional_even_spacing, ccw) in;
 
 in vec2 tcTexCoord[];
@@ -39,6 +42,7 @@ vec3 cubeFacePoint(vec2 uv)
 
 vec3 triplanarWeights(vec3 sphereDir)
 {
+    // 球面无法直接使用单张平面 UV，这里用三轴投影权重混合 FFT 纹理。
     vec3 w = pow(abs(normalize(sphereDir)), vec3(4.0));
     return w / max(w.x + w.y + w.z, 0.0001);
 }
@@ -88,6 +92,7 @@ vec3 longitudeTangent(vec3 sphereDir)
 
 void main()
 {
+    // tessellation 坐标 -> 当前细分点 cube face UV。
     vec2 uv0 = mix(tcTexCoord[0], tcTexCoord[1], gl_TessCoord.x);
     vec2 uv1 = mix(tcTexCoord[3], tcTexCoord[2], gl_TessCoord.x);
     vec2 uv = mix(uv0, uv1, gl_TessCoord.y);
@@ -96,6 +101,7 @@ void main()
 
     vec3 sphereDir = normalize(cubeFacePoint(uv));
     float normalizedWaveHeight = sampleOceanFloatTriplanar(oceanHeightTexture, sphereDir, vec2(0.0));
+    // 通过邻近采样估计浪峰强度，fragment 阶段用于 SSS/未光照调试。
     float heightRight = sampleOceanFloatTriplanar(oceanHeightTexture, sphereDir, vec2(oceanHeightTexelSize, 0.0));
     float heightUp = sampleOceanFloatTriplanar(oceanHeightTexture, sphereDir, vec2(0.0, oceanHeightTexelSize));
     float heightSlope = length(vec2(heightRight - normalizedWaveHeight, heightUp - normalizedWaveHeight));
@@ -107,6 +113,7 @@ void main()
     vec3 localTangent = longitudeTangent(sphereDir);
     vec3 localBitangent = normalize(cross(sphereDir, localTangent));
     vec2 choppyDisplacement = sampleOceanVec2Triplanar(oceanDisplacementTexture, sphereDir) * oceanChoppiness;
+    // 水平位移沿球面切线/副切线方向应用，避免简单径向波浪过于平滑。
     vec3 localPos = sphereDir * (seaLevelRadius + waveHeight)
                   + localTangent * choppyDisplacement.x
                   + localBitangent * choppyDisplacement.y;
@@ -118,6 +125,7 @@ void main()
     teTangent = normalize(mat3(model) * localTangent);
     teBitangent = normalize(mat3(model) * localBitangent);
     vec4 relativeWorldPos = vec4(worldPos.xyz - cameraPos, 1.0);
+    // camera-relative view 与地形保持一致，减轻大半径星球的精度问题。
     teClipSpacePos = projection * cameraRelativeView * relativeWorldPos;
     gl_Position = teClipSpacePos;
     gl_ClipDistance[0] = dot(worldPos, clipPlane);

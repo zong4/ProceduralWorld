@@ -15,6 +15,7 @@ constexpr float kPi = 3.14159265358979323846f;
 constexpr float kGravity = 9.81f;
 constexpr int kStaticTextureResolution = 256;
 
+// FFT 分辨率必须是 2 的幂，Cooley-Tukey 迭代实现依赖这一点。
 bool isPowerOfTwo(int value)
 {
     return value > 0 && (value & (value - 1)) == 0;
@@ -22,6 +23,7 @@ bool isPowerOfTwo(int value)
 
 float gaussian(std::mt19937& generator)
 {
+    // Phillips spectrum 初始复振幅使用高斯随机数。
     static constexpr float invSqrt2 = 0.70710678118f;
     std::normal_distribution<float> distribution(0.0f, 1.0f);
     return distribution(generator) * invSqrt2;
@@ -57,6 +59,7 @@ float tileNoise(float x, float y, int period)
 
 float tileFbm(float u, float v)
 {
+    // 用周期 value noise 生成 fallback 法线贴图，保证边界可平铺。
     float value = 0.0f;
     float amplitude = 0.5f;
     float frequency = 4.0f;
@@ -81,6 +84,7 @@ GLuint createTexture2D(int width,
                        const void* pixels,
                        bool generateMipmaps = false)
 {
+    // 静态纹理 helper：海面细节法线需要 repeat + mipmap。
     GLuint texture = 0;
     glGenTextures(1, &texture);
     glBindTexture(GL_TEXTURE_2D, texture);
@@ -148,6 +152,7 @@ void FFTOcean::initialize(const Settings& settings)
     configureCascades();
     buildInitialSpectrum();
 
+    // 动态 FFT 输出纹理：height/normal/displacement/folding。
     glGenTextures(1, &heightTexture_);
     glBindTexture(GL_TEXTURE_2D, heightTexture_);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, resolution_, resolution_, 0, GL_RED, GL_FLOAT, nullptr);
@@ -226,6 +231,7 @@ void FFTOcean::buildStaticDetailTextures()
 {
     const std::filesystem::path waterTextureRoot = "assets/textures/water";
 
+    // 优先加载美术资源；缺失时程序生成可平铺 fallback，避免 shader 采样空纹理。
     detailNormalTextureA_ = loadTextureFromFile(waterTextureRoot / "water_detail_normal_a.png", false);
     detailNormalTextureB_ = loadTextureFromFile(waterTextureRoot / "water_detail_normal_b.png", false);
 
@@ -295,6 +301,7 @@ float FFTOcean::phillipsSpectrum(const glm::vec2& k, float spectrumAmplitude, fl
     const float largestWave = windSpeed * windSpeed / kGravity;
     const float dampingLength = largestWave * 0.001f;
     const float kDotWind = glm::dot(glm::normalize(k), settings_.windDirection);
+    // Phillips 谱：顺风波能量更高，过长/过短波被指数项抑制。
     const float directionalTerm = kDotWind * kDotWind;
     const float k2 = kLength * kLength;
     const float k4 = k2 * k2;
@@ -312,6 +319,7 @@ float FFTOcean::phillipsSpectrum(const glm::vec2& k, float spectrumAmplitude, fl
 
 void FFTOcean::configureCascades()
 {
+    // 每个 cascade 使用同一 FFT 分辨率，但物理 patchLength、振幅和速度不同。
     const std::size_t pixelCount = static_cast<std::size_t>(resolution_ * resolution_);
     for (int cascadeIndex = 0; cascadeIndex < kMaxCascadeCount; ++cascadeIndex) {
         CascadeState& cascade = cascades_[cascadeIndex];
@@ -333,6 +341,7 @@ void FFTOcean::configureCascades()
 
 void FFTOcean::buildInitialSpectrum()
 {
+    // 初始谱只在初始化时生成；运行时只推进相位。
     for (int cascadeIndex = 0; cascadeIndex < settings_.cascadeCount; ++cascadeIndex) {
         buildInitialSpectrum(cascades_[cascadeIndex], cascadeIndex * 92821);
     }
@@ -346,6 +355,7 @@ void FFTOcean::buildInitialSpectrum(CascadeState& cascade, int seedOffset)
         for (int x = 0; x < resolution_; ++x) {
             const glm::vec2 k = waveVector(x, y, cascade.patchLength);
             const float spectrum = std::sqrt(phillipsSpectrum(k, cascade.spectrumAmplitude, settings_.windSpeed));
+            // h0(k) 是复数高斯噪声乘以谱能量平方根。
             const Complex h0(gaussian(generator) * spectrum, gaussian(generator) * spectrum);
             cascade.initialSpectrum[index(x, y)] = h0;
         }
@@ -361,6 +371,7 @@ void FFTOcean::buildInitialSpectrum(CascadeState& cascade, int seedOffset)
 void FFTOcean::fft1D(std::vector<Complex>& data, bool inverse) const
 {
     const int n = static_cast<int>(data.size());
+    // bit-reversal 重排，迭代 FFT 的标准第一步。
     for (int i = 1, j = 0; i < n; ++i) {
         int bit = n >> 1;
         for (; j & bit; bit >>= 1) {
@@ -373,6 +384,7 @@ void FFTOcean::fft1D(std::vector<Complex>& data, bool inverse) const
     }
 
     for (int length = 2; length <= n; length <<= 1) {
+        // 蝶形合并，每轮处理长度翻倍。
         const float angle = (inverse ? 2.0f : -2.0f) * kPi / static_cast<float>(length);
         const Complex root(std::cos(angle), std::sin(angle));
         for (int start = 0; start < n; start += length) {
@@ -398,6 +410,7 @@ void FFTOcean::fft1D(std::vector<Complex>& data, bool inverse) const
 
 void FFTOcean::inverseFft2D(std::vector<Complex>& data) const
 {
+    // 2D IFFT = 先对每行做 1D IFFT，再对每列做 1D IFFT。
     std::vector<Complex> line(static_cast<std::size_t>(resolution_));
 
     for (int y = 0; y < resolution_; ++y) {
@@ -438,11 +451,13 @@ void FFTOcean::update(float timeSeconds)
                 const float omega = std::sqrt(kGravity * glm::length(k)) * cascade.speedMultiplier;
                 const Complex phase(std::cos(omega * timeSeconds), std::sin(omega * timeSeconds));
                 const int pixelIndex = index(x, y);
+                // h(k,t)=h0(k)e^{iwt}+conj(h0(-k))e^{-iwt}
                 cascade.frequencySpectrum[pixelIndex] = cascade.initialSpectrum[pixelIndex] * phase
                                                        + cascade.initialSpectrumConjugate[pixelIndex] * std::conj(phase);
 
                 const float kLength = glm::length(k);
                 if (kLength > 0.00001f) {
+                    // 水平位移谱与高度谱相差 -i * k/|k|，用于 choppy wave。
                     const Complex minusI(0.0f, -1.0f);
                     cascade.displacementSpectrumX[pixelIndex] = minusI * (k.x / kLength) * cascade.frequencySpectrum[pixelIndex];
                     cascade.displacementSpectrumZ[pixelIndex] = minusI * (k.y / kLength) * cascade.frequencySpectrum[pixelIndex];
@@ -463,6 +478,7 @@ void FFTOcean::update(float timeSeconds)
         for (int y = 0; y < resolution_; ++y) {
             for (int x = 0; x < resolution_; ++x) {
                 const int pixelIndex = index(x, y);
+                // checkerboard sign 把频谱中心移回纹理空间原点。
                 const float checkerboardSign = ((x + y) & 1) != 0 ? -1.0f : 1.0f;
                 const float height = cascade.spatialHeights[pixelIndex].real()
                                    * checkerboardSign
@@ -496,6 +512,7 @@ void FFTOcean::update(float timeSeconds)
     const float choppyNormalScale = settings_.choppiness;
     for (int y = 0; y < resolution_; ++y) {
         for (int x = 0; x < resolution_; ++x) {
+            // 根据高度和水平位移的中心差分重建法线。
             const float left = heightPixels_[index(x - 1, y)];
             const float right = heightPixels_[index(x + 1, y)];
             const float down = heightPixels_[index(x, y - 1)];
@@ -523,6 +540,7 @@ void FFTOcean::update(float timeSeconds)
             const float dDzDz = (displacementUp.y - displacementDown.y) / (2.0f * texelWorldSize);
             const float jacobian = (1.0f + choppyNormalScale * dDxDx) * (1.0f + choppyNormalScale * dDzDz)
                                  - (choppyNormalScale * dDxDz) * (choppyNormalScale * dDzDx);
+            // folding 表示 choppy 位移导致的折叠/浪尖趋势，当前主要作为扩展数据保留。
             foldingPixels_[index(x, y)] = glm::clamp((1.0f - jacobian) * 1.5f, 0.0f, 1.0f);
         }
     }
@@ -532,6 +550,7 @@ void FFTOcean::update(float timeSeconds)
 
 void FFTOcean::uploadTextures()
 {
+    // CPU FFT 完成后用 glTexSubImage2D 更新 GPU 纹理，避免每帧重建 texture object。
     glBindTexture(GL_TEXTURE_2D, heightTexture_);
     glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, resolution_, resolution_, GL_RED, GL_FLOAT, heightPixels_.data());
 

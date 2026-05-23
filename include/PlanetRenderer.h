@@ -14,6 +14,7 @@
 
 class PlanetProceduralData;
 
+// 地形调试/展示模式。
 enum class PlanetRenderMode : int {
     Shaded = 0,
     Unshaded = 1,
@@ -21,13 +22,17 @@ enum class PlanetRenderMode : int {
     Normals = 3
 };
 
+// 线框叠加模式：可选择显示陆地 patch 或海洋 patch 的细分结构。
 enum class PlanetWireMode : int {
     None = 0,
     Terrain = 1,
     Ocean = 2
 };
 
+// 所有可调渲染/生成参数。
+// 这一个结构同时服务 UI、CPU 生成、GPU uniform 上传和 session 保存。
 struct PlanetRenderSettings {
+    // 星球几何尺度与 tessellation LOD。
     float planetRadius = 200.0f;
     float seaLevelOffset = 0.0f;
     float tessellationMax = 3.0f;
@@ -40,6 +45,7 @@ struct PlanetRenderSettings {
     float oceanTessellationMin = 1.0f;
     float oceanTessellationNearDistance = 40.0f;
     float oceanTessellationFarDistance = 550.0f;
+    // 程序化地形和侵蚀参数。
     float terrainHeightScale = 18.0f;
     float terrainSkirtDepth = 0.40f;
     float terrainNoiseScale = 0.5f;
@@ -57,6 +63,7 @@ struct PlanetRenderSettings {
     float regionalDetailEndAltitude = 2200.0f;
     float microDetailStartAltitude = 90.0f;
     float microDetailEndAltitude = 520.0f;
+    // 地表材质颜色与 biome/slope 阈值。
     glm::vec3 terrainLowlandColor = glm::vec3(0.23f, 0.44f, 0.18f);
     glm::vec3 terrainForestColor = glm::vec3(0.10f, 0.30f, 0.12f);
     glm::vec3 terrainDesertColor = glm::vec3(0.70f, 0.57f, 0.32f);
@@ -72,6 +79,7 @@ struct PlanetRenderSettings {
     float terrainMaterialNoiseScale = 0.030f;
     float terrainMaterialNoiseStrength = 0.14f;
     float coarseGridLineWidth = 1.6f;
+    // 天空、大气和相机裁剪面。
     glm::vec3 skyColor = glm::vec3(0.0f);
     float fogDensity = 0.0f;
     bool renderAtmosphere = true;
@@ -85,6 +93,7 @@ struct PlanetRenderSettings {
     glm::vec3 atmosphereMieColor = glm::vec3(1.0f, 0.72f, 0.42f);
     float cameraNearPlane = 1.0f;
     float cameraFarPlane = 5000.0f;
+    // 海水透明度、颜色、反射折射、波浪和材质参数。
     float oceanAlpha = 0.96f;
     float oceanShallowAlpha = 0.48f;
     float oceanDeepAlpha = 0.98f;
@@ -128,9 +137,14 @@ struct PlanetRenderSettings {
     bool renderOcean = true;
 };
 
+// 渲染器负责：
+// 1) 管理 shader、mesh、FBO 和 GPU texture；
+// 2) 每帧 CPU 四叉树 LOD/裁剪；
+// 3) 按 terrain/ocean/atmosphere/wire 顺序提交 draw call。
 class PlanetRenderer
 {
 public:
+    // CPU LOD 阶段的统计信息，用于 performance 面板。
     struct CullingStats {
         std::size_t visitedNodes = 0;
         std::size_t frustumCulledNodes = 0;
@@ -139,6 +153,7 @@ public:
         std::size_t emittedPatches = 0;
     };
 
+    // 每帧各渲染阶段耗时和动态质量参数。
     struct PerformanceStats {
         float totalMs = 0.0f;
         float cullingMs = 0.0f;
@@ -185,18 +200,21 @@ public:
     const PerformanceStats& performanceStats() const;
 
 private:
+    // cube face 局部坐标系，与 PlanetProceduralData 中的定义保持一致。
     struct FaceBasis {
         glm::vec3 normal;
         glm::vec3 axisU;
         glm::vec3 axisV;
     };
 
+    // CPU 四叉树节点，使用 cube face UV 范围描述 patch。
     struct QuadtreeNode {
         glm::vec2 uvMin{0.0f, 0.0f};
         float uvSize = 1.0f;
         int depth = 0;
     };
 
+    // 一个 patch 内水/陆/海岸覆盖情况，来自 CPU prefix sum 快速查询。
     struct PatchWaterCoverage {
         bool hasData = false;
         bool hasWater = false;
@@ -204,6 +222,7 @@ private:
         float maxShoreMask = 0.0f;
     };
 
+    // 每帧实际提交给 shader 的 patch。
     struct RenderPatch {
         int faceIndex = 0;
         glm::vec2 uvMin{0.0f, 0.0f};
@@ -212,16 +231,19 @@ private:
         PatchWaterCoverage waterCoverage;
     };
 
+    // 从 view-projection 矩阵提取出的 6 个裁剪平面。
     struct Frustum {
         std::array<glm::vec4, 6> planes{};
     };
 
+    // LOD/裁剪使用的球面近似包围体。
     struct NodeBounds {
         glm::vec3 worldDirection{0.0f, 1.0f, 0.0f};
         float radius = 0.001f;
         float lodScale = 1.0f;
     };
 
+    // 所有地形和海洋 patch 共享同一个规则网格 VAO，由 tessellation shader 放大。
     struct TerrainMesh {
         GLuint vertexArrayObject = 0;
         GLuint vertexBufferObject = 0;
@@ -232,6 +254,7 @@ private:
         void draw() const;
     };
 
+    // 大气层使用普通球体网格，不走 tessellation。
     struct SphereMesh {
         GLuint vertexArrayObject = 0;
         GLuint vertexBufferObject = 0;
@@ -242,6 +265,7 @@ private:
         void draw() const;
     };
 
+    // 反射/折射离屏渲染目标。
     struct RenderTarget {
         GLuint framebufferObject = 0;
         GLuint colorTexture = 0;
@@ -319,6 +343,7 @@ private:
     static Frustum extractFrustum(const glm::mat4& viewProjectionMatrix);
     static glm::vec4 normalizePlane(const glm::vec4& plane);
     glm::vec3 worldDirection(const glm::vec3& localDirection) const;
+    // 下面一组函数组成 CPU 可见性/LOD 流程。
     NodeBounds computeNodeBounds(const FaceBasis& face, const QuadtreeNode& node) const;
     bool isNodeOutsideFrustum(const Frustum& frustum, const NodeBounds& bounds) const;
     bool isNodeHiddenByHorizon(const FlyCamera& camera, const NodeBounds& bounds) const;
@@ -342,6 +367,7 @@ private:
     std::vector<RenderPatch> buildVisibleOceanPatches() const;
     bool patchHasOceanCoverage(const RenderPatch& patch) const;
 
+    // 给 terrain/ocean/wire shader 统一上传当前 patch 和全局渲染参数。
     void applyCommonUniforms(const ShaderProgram& program,
                              const FlyCamera& camera,
                              const glm::mat4& viewMatrix,
@@ -350,6 +376,7 @@ private:
 
     float seaLevelRadius() const;
 
+    // 渲染 pass。反射/折射 pass 会复用 terrain pass 并启用裁剪平面。
     void drawTerrainPass(const FlyCamera& camera, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix);
     void drawTerrainPass(const FlyCamera& camera,
                          const glm::mat4& viewMatrix,

@@ -1,5 +1,8 @@
 #version 410 core
 
+// 地形片元阶段。
+// 根据 TES 输出的高度/法线/球面方向采样材质数据，支持普通渲染和多种 debug mask。
+
 in vec3 teWorldPos;
 in vec3 teNormal;
 in vec3 teSphereDir;
@@ -25,6 +28,7 @@ uniform sampler2DArray proceduralBiomeWeightBTexture;
 
 void main()
 {
+    // skirt 区域使用更接近球面的法线和原始 surfaceHeight，避免边裙出现突兀光照。
     float skirtMask = clamp(teSkirt, 0.0, 1.0);
     vec3 sphereDir = normalize(teSphereDir);
     vec3 shadingNormal = normalize(mix(normalize(teNormal), sphereDir, skirtMask));
@@ -32,6 +36,7 @@ void main()
     SurfaceData surface = sampleSurfaceData(surfaceHeight, teWorldPos, shadingNormal, sphereDir);
 
     if (terrainMaskDebugMode > 0) {
+        // 调试模式直接输出单个 mask 或组合色，便于检查生成数据。
         vec3 sampleDir = sphereDir;
         PlanetSample planet = samplePlanet(sampleDir, surfaceHeight);
         vec4 erosionData = planet.erosionData;

@@ -9,6 +9,8 @@
 
 #include "PlanetProceduralData.h"
 
+// 与 CPU 生成器一致的 6 个 cube face 坐标系。
+// 每个 patch 只需要 faceIndex + uv 范围，就能在 shader 里还原球面方向。
 const std::array<PlanetRenderer::FaceBasis, 6> PlanetRenderer::kPlanetFaces = {{
     {{ 1.0f,  0.0f,  0.0f}, { 0.0f,  0.0f, -1.0f}, { 0.0f,  1.0f,  0.0f}},
     {{-1.0f,  0.0f,  0.0f}, { 0.0f,  0.0f,  1.0f}, { 0.0f,  1.0f,  0.0f}},
@@ -57,6 +59,7 @@ void PlanetRenderer::RenderTarget::create(int targetWidth, int targetHeight)
     width = targetWidth;
     height = targetHeight;
 
+    // 反射/折射 FBO：颜色使用 RGBA8，折射额外需要 depth texture 计算水柱厚度。
     glGenFramebuffers(1, &framebufferObject);
     glBindFramebuffer(GL_FRAMEBUFFER, framebufferObject);
 
@@ -93,6 +96,7 @@ void PlanetRenderer::initialize()
 {
     if (initialized_) return;
 
+    // 地形、海洋、线框和大气各自使用独立 shader program。
     terrainProgram_ = ShaderProgram("shaders/terrain.vert",
                                     "shaders/terrain.tesc",
                                     "shaders/terrain.tese",
@@ -129,6 +133,7 @@ void PlanetRenderer::initialize()
     terrainMesh_.buildGrid(kNodeGridResolution);
     atmosphereMesh_.buildSphere(96, 48);
     fftOcean_.initialize();
+    // terrain/ocean patch 都以 4 控制点 quad patch 输入 tessellation pipeline。
     glPatchParameteri(GL_PATCH_VERTICES, 4);
 
     initialized_ = true;
@@ -140,6 +145,7 @@ void PlanetRenderer::setPlanetRotation(float yawDegrees, float pitchDegrees)
     planetPitchDegrees_ = pitchDegrees;
 
     glm::mat4 rotationMatrix(1.0f);
+    // 星球旋转只改变 modelMatrix，不改变相机轨道坐标。
     rotationMatrix = glm::rotate(rotationMatrix, glm::radians(planetYawDegrees_), glm::vec3(0.0f, 1.0f, 0.0f));
     rotationMatrix = glm::rotate(rotationMatrix, glm::radians(planetPitchDegrees_), glm::vec3(1.0f, 0.0f, 0.0f));
     modelMatrix_ = rotationMatrix;
@@ -167,6 +173,7 @@ void PlanetRenderer::setProceduralData(const PlanetProceduralData& proceduralDat
 
     const int resolution = proceduralData.resolution();
     const std::size_t layerSize = static_cast<std::size_t>(resolution * resolution);
+    // OpenGL 2D texture array 的层顺序就是 6 个 cube face。
     std::vector<float> height(layerSize * 6, 0.0f);
     std::vector<float> waterDepth(layerSize * 6, 0.0f);
     std::vector<float> shoreMask(layerSize * 6, 0.0f);
@@ -208,6 +215,7 @@ void PlanetRenderer::setProceduralData(const PlanetProceduralData& proceduralDat
 
         const std::size_t layerOffset = layerSize * faceIndex;
         for (std::size_t i = 0; i < layerSize; ++i) {
+            // 侵蚀相关 4 个标量打包成一个 RGBA 纹理，减少 sampler 数量。
             erosionData[layerOffset + i] = glm::vec4(
                 face.channelMask[i],
                 face.flowMask[i],
@@ -274,6 +282,8 @@ void PlanetRenderer::setProceduralData(const PlanetProceduralData& proceduralDat
     uploadTextureArrayRgba(proceduralBiomeWeightATexture_, biomeWeightA);
     uploadTextureArrayRgba(proceduralBiomeWeightBTexture_, biomeWeightB);
 
+    // CPU prefix sum 用于快速判断 patch 是否有水/海岸。
+    // 这避免每帧 LOD 时反复扫描 patch 内所有 texel。
     const int prefixStride = resolution + 1;
     const std::size_t prefixLayerSize = static_cast<std::size_t>(prefixStride * prefixStride);
     proceduralWaterCoveragePrefixCpu_.assign(prefixLayerSize * 6, 0);
@@ -337,6 +347,7 @@ void PlanetRenderer::render(const FlyCamera& camera,
     const int framebufferWidth = std::max(viewport[2], 1);
     const int framebufferHeight = std::max(viewport[3], 1);
 
+    // 1. CPU LOD/裁剪：生成本帧可见地形 patch 和海洋 patch。
     auto passStart = Clock::now();
     updateAdaptiveLodBeforeCulling();
     const Frustum frustum = extractFrustum(projectionMatrix * viewMatrix);
@@ -354,6 +365,7 @@ void PlanetRenderer::render(const FlyCamera& camera,
     frameStats.estimatedTerrainTriangles = estimatePatchTriangles(visiblePatches_.size(), effectiveTessellationMax_);
     frameStats.estimatedOceanTriangles = estimatePatchTriangles(visibleOceanPatches_.size(), effectiveOceanTessellationMax_);
 
+    // 2. 更新 FFT 海浪纹理；可通过 frame stride 降低 CPU FFT/上传频率。
     passStart = Clock::now();
     const int fftCascadeCount = std::clamp(settings_.oceanFftCascadeCount, 1, 3);
     const int fftFrameStride = std::max(settings_.oceanFftFrameStride, 1);
@@ -371,6 +383,7 @@ void PlanetRenderer::render(const FlyCamera& camera,
     }
     frameStats.fftMs = elapsedMs(passStart, Clock::now());
 
+    // 3. 离屏渲染海面反射/折射目标。
     passStart = Clock::now();
     drawReflectionRefractionPasses(camera, viewMatrix, projectionMatrix, framebufferWidth, framebufferHeight);
     frameStats.reflectionRefractionMs = elapsedMs(passStart, Clock::now());
@@ -383,6 +396,7 @@ void PlanetRenderer::render(const FlyCamera& camera,
     frameStats.reflectionWeight = oceanReflectionWeight_;
     frameStats.refractionWeight = oceanRefractionWeight_;
 
+    // 4. 主画面 pass：地形 -> 海洋 -> 大气 -> 可选线框。
     passStart = Clock::now();
     drawTerrainPass(camera, viewMatrix, projectionMatrix);
     frameStats.terrainMs = elapsedMs(passStart, Clock::now());
@@ -454,6 +468,7 @@ void PlanetRenderer::updateAdaptiveLodBeforeCulling()
     }
 
     const float pressure = previousPatchCount / budget;
+    // patch 数超过预算时提高 split 阈值，低于预算时逐步恢复细节。
     if (pressure > 1.12f) {
         lodSplitPixelScale_ *= glm::mix(1.0f, 1.12f, glm::clamp((pressure - 1.0f) * 0.75f, 0.0f, 1.0f));
     } else if (pressure < 0.72f) {
@@ -482,6 +497,7 @@ void PlanetRenderer::updateEffectiveTessellationBudget(std::size_t visiblePatchC
     }
 
     const float tessScale = glm::clamp(1.0f / std::sqrt(patchPressure), 0.58f, 1.0f);
+    // patch 数已经偏高时，降低每个 patch 内部 tessellation，防止三角形数失控。
     effectiveTessellationMax_ = glm::max(landMin, settings_.tessellationMax * tessScale);
 
     const float oceanShare = visiblePatchCount > 0
@@ -547,6 +563,7 @@ void PlanetRenderer::TerrainMesh::buildGrid(int patchResolution)
         indices.push_back(topLeft);
     };
 
+    // 四边额外生成 skirt quad。TES 会把 skirt 顶点向下拉，遮盖不同 LOD 边界裂缝。
     for (int column = 0; column < patchResolution; ++column) {
         const float u0 = static_cast<float>(column) * uvStep;
         const float u1 = static_cast<float>(column + 1) * uvStep;
@@ -716,6 +733,7 @@ glm::vec3 PlanetRenderer::nodeCenterDirection(const FaceBasis& face, const Quadt
 
 PlanetRenderer::Frustum PlanetRenderer::extractFrustum(const glm::mat4& viewProjectionMatrix)
 {
+    // 从 OpenGL 列主序矩阵中取行，组合出左右上下近远 6 个裁剪平面。
     const glm::vec4 row0(viewProjectionMatrix[0][0], viewProjectionMatrix[1][0], viewProjectionMatrix[2][0], viewProjectionMatrix[3][0]);
     const glm::vec4 row1(viewProjectionMatrix[0][1], viewProjectionMatrix[1][1], viewProjectionMatrix[2][1], viewProjectionMatrix[3][1]);
     const glm::vec4 row2(viewProjectionMatrix[0][2], viewProjectionMatrix[1][2], viewProjectionMatrix[2][2], viewProjectionMatrix[3][2]);
@@ -747,6 +765,7 @@ glm::vec3 PlanetRenderer::worldDirection(const glm::vec3& localDirection) const
 
 PlanetRenderer::NodeBounds PlanetRenderer::computeNodeBounds(const FaceBasis& face, const QuadtreeNode& node) const
 {
+    // 用 3x3 采样估算球面 patch 半径和 cube-sphere 畸变比例，供裁剪/LOD 使用。
     const float sampleRadius = settings_.planetRadius + settings_.terrainHeightScale * 2.0f;
     const glm::vec3 centerDirection = nodeCenterDirection(face, node);
     const glm::vec3 center = centerDirection * sampleRadius;
@@ -803,6 +822,7 @@ bool PlanetRenderer::isNodeHiddenByHorizon(const FlyCamera& camera,
     }
 
     const glm::vec3 cameraDirection = glm::normalize(camera.position);
+    // 球体地平线裁剪：背向且落在地平线之后的 patch 不需要递归。
     const float horizonDot = settings_.planetRadius / cameraDistanceFromOrigin;
     const float safetyMargin = bounds.radius / settings_.planetRadius;
     return glm::dot(cameraDirection, bounds.worldDirection) < horizonDot - safetyMargin;
@@ -851,6 +871,7 @@ PlanetRenderer::PatchWaterCoverage PlanetRenderer::analyzePatchWaterCoverage(int
     }
 
     const std::uint32_t coveredTexels = static_cast<std::uint32_t>((x1 - x0) * (y1 - y0));
+    // 前缀和 O(1) 查询 patch 矩形内水面/海岸 texel 数。
     const std::uint32_t waterTexels = queryPrefix(proceduralWaterCoveragePrefixCpu_, x0, y0, x1, y1);
     const std::uint32_t looseShoreTexels = queryPrefix(proceduralShoreCoverageLoosePrefixCpu_, x0, y0, x1, y1);
     const std::uint32_t strictShoreTexels = queryPrefix(proceduralShoreCoverageStrictPrefixCpu_, x0, y0, x1, y1);
@@ -876,6 +897,7 @@ bool PlanetRenderer::shouldSplitNode(const FlyCamera& camera,
     const float distanceToCamera = glm::max(centerDistanceToCamera - bounds.radius, 0.001f);
     const float projectionScale = (0.5f * static_cast<float>(framebufferHeight))
                                 / glm::tan(glm::radians(camera.fieldOfView) * 0.5f);
+    // 屏幕投影半径越大，越需要继续四叉树细分。
     const float projectedRadius = bounds.radius * bounds.lodScale * projectionScale / distanceToCamera;
     return projectedRadius > kLodSplitPixels * lodSplitPixelScale_;
 }
@@ -902,6 +924,7 @@ void PlanetRenderer::collectVisiblePatches(const FlyCamera& camera,
         return;
     }
 
+    // 海岸或水陆混合 patch 即使屏幕尺寸还不大，也强制细分到更深层。
     PatchWaterCoverage nodeCoverage;
     bool hasNodeCoverage = false;
     bool forceShoreLod = false;
@@ -914,6 +937,7 @@ void PlanetRenderer::collectVisiblePatches(const FlyCamera& camera,
         ++stats.splitNodes;
         const float childSize = node.uvSize * 0.5f;
 
+        // 标准四叉树拆分为 2x2 子节点。
         for (int childY = 0; childY < 2; ++childY) {
             for (int childX = 0; childX < 2; ++childX) {
                 QuadtreeNode childNode;
@@ -957,6 +981,7 @@ std::vector<PlanetRenderer::RenderPatch> PlanetRenderer::buildVisiblePatches(con
 
 std::vector<PlanetRenderer::RenderPatch> PlanetRenderer::buildVisibleOceanPatches() const
 {
+    // 海洋 pass 只画含水或近海岸 patch，减少无效透明绘制。
     std::vector<RenderPatch> oceanPatches;
     oceanPatches.reserve(visiblePatches_.size());
     for (const RenderPatch& patch : visiblePatches_) {
@@ -984,6 +1009,7 @@ void PlanetRenderer::applyCommonUniforms(const ShaderProgram& program,
                                          const RenderPatch& patch) const
 {
     const FaceBasis& face = kPlanetFaces[patch.faceIndex];
+    // cameraRelativeView 去掉平移，顶点阶段手动使用 worldPos-cameraPos，提升大尺度坐标稳定性。
     const glm::mat4 cameraRelativeView = glm::mat4(glm::mat3(viewMatrix));
     const float cameraAltitude = glm::max(glm::length(camera.position) - settings_.planetRadius, 0.0f);
 
@@ -1065,6 +1091,7 @@ void PlanetRenderer::applyCommonUniforms(const ShaderProgram& program,
     program.setInt("useProceduralOceanData", hasProceduralOceanData_ ? 1 : 0);
     program.setInt("useProceduralData", hasProceduralOceanData_ ? 1 : 0);
     program.setFloat("proceduralDataTexelSize", proceduralDataResolution_ > 0 ? 1.0f / static_cast<float>(proceduralDataResolution_) : 0.0f);
+    // 每个 draw call 只改变当前 patch 的 face basis 和 node UV 范围。
     program.setVec2("nodeUvMin", patch.uvMin);
     program.setVec2("nodeUvSize", patch.uvSize);
     program.setVec3("oceanShallowColor", settings_.oceanShallowColor);
@@ -1095,12 +1122,14 @@ void PlanetRenderer::drawTerrainPass(const FlyCamera& camera,
 
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
     if (useClipPlane) {
+        // 反射/折射 pass 复用地形 shader，通过 clip plane 保留水面上/下部分。
         glEnable(GL_CLIP_DISTANCE0);
     } else {
         glDisable(GL_CLIP_DISTANCE0);
     }
 
     glActiveTexture(GL_TEXTURE0);
+    // terrain shader 需要所有程序化数据层来做位移、法线、材质和 debug 输出。
     glBindTexture(GL_TEXTURE_2D_ARRAY, proceduralWaterDepthTexture_);
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D_ARRAY, proceduralHeightTexture_);
@@ -1145,10 +1174,12 @@ void PlanetRenderer::drawOceanPass(const FlyCamera& camera,
 
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    // 水面透明混合但不写深度，避免挡住后续大气；地形深度仍参与测试。
     glDepthMask(GL_FALSE);
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
     glActiveTexture(GL_TEXTURE0);
+    // ocean shader 同时采样反射/折射 FBO、FFT 波浪纹理和程序化水深。
     glBindTexture(GL_TEXTURE_2D, reflectionTarget_.colorTexture);
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, refractionTarget_.colorTexture);
@@ -1210,6 +1241,7 @@ void PlanetRenderer::drawAtmospherePass(const FlyCamera& camera,
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glEnable(GL_CULL_FACE);
+    // 从外壳内部/外部观察时绘制背面，形成包住星球的透明大气层。
     glCullFace(GL_FRONT);
     glDepthFunc(GL_LEQUAL);
     glDepthMask(GL_FALSE);
@@ -1286,6 +1318,7 @@ void PlanetRenderer::drawReflectionRefractionPasses(const FlyCamera& camera,
         ? distanceWeight(settings_.oceanRefractionMaxAltitude, settings_.oceanAutoDistanceLod)
         : 0.0f;
     const float blendSpeed = 1.0f - std::exp(-currentDeltaSeconds_ * 6.0f);
+    // 权重平滑可避免自动距离 LOD 开关反射/折射时画面突变。
     oceanReflectionWeight_ = glm::mix(oceanReflectionWeight_, targetReflectionWeight, blendSpeed);
     oceanRefractionWeight_ = glm::mix(oceanRefractionWeight_, targetRefractionWeight, blendSpeed);
 
@@ -1298,6 +1331,7 @@ void PlanetRenderer::drawReflectionRefractionPasses(const FlyCamera& camera,
         1.0f
     );
     const float targetScale = glm::clamp(std::round(rawTargetScale * 8.0f) / 8.0f, 0.25f, 1.0f);
+    // 反射/折射 target 根据相机高度和用户 scale 降采样，降低离屏渲染成本。
     const int targetWidth = std::max(static_cast<int>(std::round(static_cast<float>(framebufferWidth) * targetScale)), 1);
     const int targetHeight = std::max(static_cast<int>(std::round(static_cast<float>(framebufferHeight) * targetScale)), 1);
     const bool reflectionEnabled = reflectionUserEnabled && oceanReflectionWeight_ > 0.02f;
@@ -1357,6 +1391,7 @@ void PlanetRenderer::drawReflectionRefractionPasses(const FlyCamera& camera,
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         FlyCamera reflectedCamera = camera;
+        // 平面反射近似：把相机和朝向沿海平面 Y=seaLevelRadius 镜像。
         reflectedCamera.position = glm::vec3(
             camera.position.x,
             2.0f * seaLevelY - camera.position.y,
@@ -1396,6 +1431,7 @@ void PlanetRenderer::drawReflectionRefractionPasses(const FlyCamera& camera,
         glClearColor(settings_.skyColor.r, settings_.skyColor.g, settings_.skyColor.b, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+        // 折射 pass 保留水面以下/水后的地形，同时保存深度供 ocean.frag 计算水柱厚度。
         drawTerrainPass(camera, viewMatrix, projectionMatrix, true, refractionPlaneY, true);
         lastRefractionUpdated_ = true;
     } else if (!refractionEnabled && !refractionWasReady) {
@@ -1444,6 +1480,7 @@ void PlanetRenderer::drawWireOverlayPass(const FlyCamera& camera,
     }
 
     if (drawOceanWire) {
+        // 海洋线框需要同样的 FFT 位移，保证线框贴合实际波面。
         glActiveTexture(GL_TEXTURE3);
         glBindTexture(GL_TEXTURE_2D, fftOcean_.heightTexture());
         glActiveTexture(GL_TEXTURE4);
@@ -1469,6 +1506,7 @@ void PlanetRenderer::drawWireOverlayPass(const FlyCamera& camera,
 
     glEnable(GL_POLYGON_OFFSET_LINE);
     glPolygonOffset(-1.0f, -1.0f);
+    // 第一遍画细 tessellation 线。
     glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
     for (const RenderPatch& patch : wirePatches) {
@@ -1499,6 +1537,7 @@ void PlanetRenderer::drawWireOverlayPass(const FlyCamera& camera,
     glDepthFunc(GL_LEQUAL);
     glDepthMask(GL_FALSE);
 
+    // 第二遍用 fragment shader 画粗 quadtree 网格，辅助观察 CPU LOD patch。
     for (const RenderPatch& patch : wirePatches) {
         applyCommonUniforms(coarseProgram, camera, viewMatrix, projectionMatrix, patch);
         if (drawOceanWire) {

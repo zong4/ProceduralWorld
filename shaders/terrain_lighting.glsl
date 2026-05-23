@@ -1,6 +1,7 @@
 uniform vec3 skyColor;
 uniform float fogDensity;
 
+// 简化 Blinn-Phong + 半球环境光 + 指数雾。
 LightingData evaluateLighting(SurfaceData surface, vec3 worldPos, vec3 shadingNormal)
 {
     LightingData lighting;
@@ -21,6 +22,7 @@ LightingData evaluateLighting(SurfaceData surface, vec3 worldPos, vec3 shadingNo
 
     vec3 color = surface.baseColor * (ambientLight + ndotl * sunColor) + specular * sunColor;
 
+    // 使用距离平方指数雾，将远处地形推向 skyColor。
     float fogDistance = length(cameraPos - worldPos);
     lighting.fogFactor = exp(-fogDistance * fogDistance * fogDensity);
     lighting.litColor = mix(skyColor, color, lighting.fogFactor);
@@ -29,6 +31,7 @@ LightingData evaluateLighting(SurfaceData surface, vec3 worldPos, vec3 shadingNo
 
 vec3 toneMapAndGamma(vec3 color)
 {
+    // Reinhard tone mapping 后转到近似 sRGB。
     color = color / (color + vec3(1.0));
     return pow(color, vec3(1.0 / 2.2));
 }

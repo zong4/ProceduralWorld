@@ -1,5 +1,8 @@
 #version 410 core
 
+// 海洋片元阶段。
+// 组合 FFT normal、细节 normal、反射/折射 FBO、深度水色、Fresnel、GGX 高光和浅水透光。
+
 in vec3 teWorldPos;
 in vec3 teNormal;
 in vec3 teSphereDir;
@@ -67,6 +70,7 @@ vec3 toneMapAndGamma(vec3 color)
 
 float linearizeDepth(float depthSample, float nearPlane, float farPlane)
 {
+    // OpenGL 非线性深度转线性 view-space 深度，用于计算水柱厚度。
     float z = depthSample * 2.0 - 1.0;
     return (2.0 * nearPlane * farPlane) / (farPlane + nearPlane - z * (farPlane - nearPlane));
 }
@@ -91,6 +95,7 @@ vec3 unpackStandardNormalToYUp(vec3 packedNormal)
 
 vec3 triplanarWeights(vec3 sphereDir)
 {
+    // 按球面方向在 XYZ 三个投影之间混合，避免极区 UV 拉伸。
     vec3 w = pow(abs(normalize(sphereDir)), vec3(4.0));
     return w / max(w.x + w.y + w.z, 0.0001);
 }
@@ -137,6 +142,7 @@ float saturate(float value)
 
 float distributionGGX(float nDotH, float roughness)
 {
+    // 微表面高光项，水面 specular 使用简化 Cook-Torrance。
     float a = roughness * roughness;
     float a2 = a * a;
     float denom = nDotH * nDotH * (a2 - 1.0) + 1.0;
@@ -171,6 +177,7 @@ struct OceanPlanetSample
 
 OceanPlanetSample samplePlanet(vec3 sphereDir)
 {
+    // 从程序化地形数据判断当前海面片元是否真的覆盖水域。
     OceanPlanetSample planetSample;
     planetSample.terrainHeight = sampleFloatArraySeamlessNarrow(proceduralHeightTexture, sphereDir);
     planetSample.bakedWaterDepth = max(sampleFloatArraySeamless(proceduralWaterDepthTexture, sphereDir), 0.0);
@@ -182,6 +189,7 @@ OceanPlanetSample samplePlanet(vec3 sphereDir)
 
 void main()
 {
+    // 当前片元的屏幕坐标，用来采样反射/折射 render target。
     vec2 screenUV = teClipSpacePos.xy / teClipSpacePos.w * 0.5 + 0.5;
     vec3 radialNormal = normalize(teNormal);
     vec3 tangent = normalize(teTangent);
@@ -205,6 +213,7 @@ void main()
     vec2 counterFlow = vec2(-0.17, 0.19) * timeSeconds;
     vec3 detailNormalA = samplePackedNormalTriplanar(waterDetailNormalTextureA, sphereDir, oceanDetailNormalScale, detailFlow, detailLod);
     vec3 detailNormalB = samplePackedNormalTriplanar(waterDetailNormalTextureB, sphereDir, oceanDetailNormalScale * 1.73, detailRotation * counterFlow, detailLod + 0.5);
+    // FFT normal 表示大浪，detail normal 表示近景小波纹；远处逐渐淡出细节 normal。
     vec3 detailTangentNormal = normalize(vec3(
         detailNormalA.x + detailNormalB.x * 0.45,
         detailNormalA.y * detailNormalB.y,
@@ -221,16 +230,19 @@ void main()
     float materialDistanceFade = 1.0 - smoothstep(oceanDetailFadeDistance * 0.55, oceanDetailFadeDistance * 1.80, distanceToCamera);
     vec3 viewNormal = normalize(mat3(view) * N);
     vec2 distortion = viewNormal.xy * oceanDistortionStrength * mix(0.18, 1.0, materialDistanceFade);
+    // 法线扰动屏幕 UV，形成水面折射/反射扭曲。
     vec4 reflection = texture(reflectionTexture, screenUV + distortion);
     vec4 refraction = texture(refractionTexture, screenUV - distortion * 0.5);
 
     float sceneDepth = linearizeDepth(texture(refractionDepthTexture, screenUV).r, cameraNearPlane, cameraFarPlane);
     float waterSurfaceDepth = linearizeDepth(gl_FragCoord.z, cameraNearPlane, cameraFarPlane);
     float waterColumnDepth = max(sceneDepth - waterSurfaceDepth, 0.0);
+    // 同时使用屏幕深度和程序化水深，近景边缘稳定、远景覆盖完整。
     OceanPlanetSample planet = samplePlanet(sphereDir);
     float signedHeightWaterDepth = planet.signedWaterDepth;
     float heightWaterDepth = max(signedHeightWaterDepth, 0.0);
     if (signedHeightWaterDepth <= 0.0) {
+        // 地形高于海平面处不绘制水。
         discard;
     }
     float proceduralWaterDepth = planet.waterDepth;
@@ -250,6 +262,7 @@ void main()
     float depthBlend = clamp(min(waterColumnDepth * oceanDepthScale, visualWaterDepth) / max(oceanDepthRange, 0.001), 0.0, 1.0);
     float shallowDepth = clamp(visualWaterDepth / max(oceanShallowDepthRange, 0.001), 0.0, 1.0);
 
+    // Fresnel：视线越贴近水面，反射占比越高。
     vec3 waterF0 = vec3(0.0204);
     vec3 fresnelColor = fresnelSchlick(nDotV, waterF0);
     float fresnel = clamp(fresnelColor.r * oceanFresnelStrength, 0.02, 1.0);
@@ -269,6 +282,7 @@ void main()
 
     vec3 color = mix(refractedColor, reflectedColor, fresnel);
 
+    // GGX specular 高光。
     float roughness = oceanRoughness;
     roughness = clamp(roughness / max(oceanSpecularSharpness, 0.001), 0.025, 1.0);
     float D = distributionGGX(nDotH, roughness);
@@ -280,6 +294,7 @@ void main()
     float viewBackLight = pow(saturate(dot(V, -L) * 0.5 + 0.5), oceanSSSPower);
     float lightWrap = pow(saturate(dot(N, -L) * 0.5 + 0.5), 1.4);
     float crestTranslucency = pow(saturate(teWaveCrest), 1.15);
+    // 简化次表面散射/透光：浪尖和浅水更偏青绿色。
     float shallowTranslucency = pow(saturate(1.0 - shallowDepth), 2.2) * 0.35;
     float sssMask = saturate((crestTranslucency + shallowTranslucency) * mix(lightWrap, viewBackLight, 0.45));
     vec3 sss = oceanSSSColor * sssMask * oceanSSSStrength;

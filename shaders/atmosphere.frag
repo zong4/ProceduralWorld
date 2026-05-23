@@ -1,5 +1,8 @@
 #version 410 core
 
+// 简化实时大气散射。
+// 沿视线在大气壳内积分 Rayleigh/Mie 密度，并根据太阳方向估计散射颜色。
+
 in vec3 vWorldPos;
 in vec3 vSphereNormal;
 
@@ -29,6 +32,7 @@ vec3 toneMap(vec3 color)
 
 bool raySphere(vec3 origin, vec3 direction, float radius, out vec2 hit)
 {
+    // 射线和以原点为中心的球求交，返回近/远 t。
     float b = dot(origin, direction);
     float c = dot(origin, origin) - radius * radius;
     float h = b * b - c;
@@ -43,6 +47,7 @@ bool raySphere(vec3 origin, vec3 direction, float radius, out vec2 hit)
 
 float henyeyGreenstein(float cosTheta, float g)
 {
+    // Mie 相函数，g 越大前向散射越强。
     float g2 = g * g;
     float denom = max(0.04, pow(1.0 + g2 - 2.0 * g * cosTheta, 1.5));
     return (1.0 - g2) / denom;
@@ -53,6 +58,7 @@ void main()
     vec3 viewToAtmosphere = normalize(vWorldPos - cameraPos);
     vec3 sunDir = normalize(-lightDir);
 
+    // 先找到视线穿过大气壳的区间。
     vec2 atmosphereHit;
     if (!raySphere(cameraPos, viewToAtmosphere, atmosphereRadius, atmosphereHit)) {
         discard;
@@ -63,6 +69,7 @@ void main()
 
     vec2 planetHit;
     if (raySphere(cameraPos, viewToAtmosphere, planetRadius, planetHit) && planetHit.x > 0.0) {
+        // 如果视线先打到地表，则积分到地表为止。
         rayEnd = min(rayEnd, planetHit.x);
     }
 
@@ -84,6 +91,7 @@ void main()
     float opticalDepth = 0.0;
 
     for (int i = 0; i < 18; ++i) {
+        // 固定步数积分，性能稳定；密度随高度指数衰减。
         float t = rayStart + (float(i) + 0.5) * stepLength;
         vec3 samplePos = cameraPos + viewToAtmosphere * t;
         float altitude = max(length(samplePos) - planetRadius, 0.0);
@@ -99,6 +107,7 @@ void main()
 
         vec2 sunHit;
         raySphere(samplePos, sunDir, atmosphereRadius, sunHit);
+        // 简化太阳方向透射：穿过大气越长，直射光越弱。
         float sunPath = max(sunHit.y, 0.0) / shellThickness;
         float sunTransmittance = exp(-sunPath * atmosphereDensity * 0.035);
 

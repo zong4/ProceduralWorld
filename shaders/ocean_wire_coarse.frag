@@ -1,5 +1,7 @@
 #version 410 core
 
+// 海洋粗网格叠加。用于观察 ocean patch 的 CPU LOD 分布。
+
 in vec2 teTexCoord;
 in vec3 teSphereDir;
 
@@ -17,6 +19,7 @@ uniform sampler2DArray proceduralWaterDepthTexture;
 
 float gridLineMask(float coord, float segments, float width)
 {
+    // 抗锯齿网格线 mask，fwidth 根据屏幕导数自动调节线宽。
     float scaled = coord * max(segments, 1.0);
     float distToLine = min(fract(scaled), 1.0 - fract(scaled));
     float aa = max(fwidth(scaled) * width, 1e-4);
@@ -25,6 +28,7 @@ float gridLineMask(float coord, float segments, float width)
 
 bool hasWaterSurface(vec3 sphereDir)
 {
+    // 复用程序化高度/水深，避免陆地 patch 上出现海洋线框。
     float terrainHeight = sampleFloatArraySeamlessNarrow(proceduralHeightTexture, sphereDir);
     float signedWaterDepth = (seaLevelOffset - terrainHeight) * heightScale;
     float bakedWaterDepth = max(sampleFloatArraySeamless(proceduralWaterDepthTexture, sphereDir), 0.0);

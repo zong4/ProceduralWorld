@@ -1,5 +1,9 @@
 #version 410 core
 
+// 地形 tessellation evaluation shader。
+// 这里将细分后的 quad 坐标映射到 cube-sphere，采样 CPU 烘焙高度，
+// 再叠加视距相关的运行时细节，最终输出世界坐标、法线和裁剪距离。
+
 layout(quads, fractional_even_spacing, ccw) in;
 
 in vec2 tcTexCoord[];
@@ -83,6 +87,7 @@ float valueNoise(vec3 p)
 
 float fbm3(vec3 p)
 {
+    // 运行时细节使用 value-noise fBM；基础大地形已经在 CPU 端烘焙。
     float value = 0.0;
     float amplitude = 0.5;
     float total = 0.0;
@@ -130,6 +135,7 @@ float runtimeShoreMask(float h)
 
 float runtimeTerrainDetail(vec3 sphereDir, float baseHeight)
 {
+    // 相机越近，regional/micro detail 权重越高；远处减少高频细节避免闪烁。
     float regionalWeight = regionalDetailStrength * (1.0 - smoothstep(
         regionalDetailStartAltitude,
         regionalDetailEndAltitude,
@@ -154,6 +160,7 @@ float runtimeTerrainDetail(vec3 sphereDir, float baseHeight)
     );
 
     float landMask = smoothstep(seaLevelOffset - 0.015, seaLevelOffset + 0.075, baseHeight);
+    // 海岸附近降低陆地细节，避免近海处被运行时噪声抬出/压入水面。
     float shoreDetailFade = smoothstep(0.018, 0.115, abs(baseHeight - seaLevelOffset));
     float landDetailMask = landMask * shoreDetailFade;
     float continentalShelf = smoothstep(seaLevelOffset - 0.22, seaLevelOffset + 0.36, baseHeight);
@@ -207,6 +214,7 @@ float runtimeTerrainDetail(vec3 sphereDir, float baseHeight)
     float micro = fbm3(p * 15.0 + warp * 5.0) * 2.0 - 1.0;
     vec4 biomeA = samplePlanetBiomeA(sphereDir);
     vec4 biomeB = samplePlanetBiomeB(sphereDir);
+    // biome 权重会抑制或增强运行时细节：湿地/沙滩更平，岩雪区更粗糙。
     float beachBiome = biomeA.r;
     float grassBiome = biomeA.g;
     float forestBiome = biomeA.b;
@@ -217,6 +225,7 @@ float runtimeTerrainDetail(vec3 sphereDir, float baseHeight)
     float shallowWaterBiome = biomeB.a;
 
     float detail = 0.0;
+    // 多尺度山脊、massif、峰顶和微细节叠加成最终 runtime detail。
     detail += ridgeWeight * rollingDetail * 0.055 * (1.0 - mountainMask * 0.50);
     detail += regionalWeight * landDetailMask * highlandShoulder * (highlandVariation * 2.0 - 1.0) * 0.020;
     detail += regionalWeight * landDetailMask * highlandCore * (0.026 + highlandVariation * 0.020);
@@ -268,6 +277,7 @@ float finalTerrainHeightAtDir(vec3 sphereDir)
     float baseHeight = terrainHeightAtDir(sphereDir);
     float h = baseHeight + runtimeTerrainDetail(sphereDir, baseHeight);
     if (baseHeight < seaLevelOffset) {
+        // 海底高度必须保持在海平面下，避免运行时细节穿出水面。
         float waterDepth = seaLevelOffset - baseHeight;
         float submergeMargin = mix(0.001, 0.012, smoothstep(0.0, 0.10, waterDepth));
         h = min(h, seaLevelOffset - submergeMargin);
@@ -293,6 +303,7 @@ vec3 displacedPositionFromDir(vec3 sphereDir)
 
 vec3 computeSphericalNormal(vec3 sphereDir)
 {
+    // 在球面切线/副切线方向做中心差分，得到位移后真实法线。
     vec3 n = normalize(sphereDir);
     vec3 up = abs(n.y) < 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
     vec3 tangent = normalize(cross(up, n));
@@ -315,6 +326,7 @@ vec3 computeSphericalNormal(vec3 sphereDir)
 
 void main()
 {
+    // 根据 tessellation 坐标对四个控制点插值，得到当前细分点 UV。
     vec2 uv0 = mix(tcTexCoord[0], tcTexCoord[1], gl_TessCoord.x);
     vec2 uv1 = mix(tcTexCoord[3], tcTexCoord[2], gl_TessCoord.x);
     vec2 uv = mix(uv0, uv1, gl_TessCoord.y);
@@ -329,6 +341,7 @@ void main()
     float h = finalTerrainHeightAtUv(uv);
     teSurfaceHeight = h;
     teSkirt = skirtWeight;
+    // skirt 顶点沿法线下拉，用来遮盖不同 LOD patch 边界裂缝。
     h -= skirtWeight * terrainSkirtDepth / max(heightScale, 0.0001);
     teHeight = h;
 
@@ -340,6 +353,7 @@ void main()
     teNormal = normalize(mat3(transpose(inverse(model))) * localNormal);
 
     vec4 relativeWorldPos = vec4(worldPos.xyz - cameraPos, 1.0);
+    // camera-relative view 降低大尺度坐标下的浮点精度问题。
     teClipSpacePos = projection * cameraRelativeView * relativeWorldPos;
     gl_Position = teClipSpacePos;
     gl_ClipDistance[0] = dot(worldPos, clipPlane);

@@ -17,6 +17,7 @@ const std::array<PlanetProceduralData::FaceBasis, 6> PlanetProceduralData::kFace
 
 namespace
 {
+// 缓存文件版本号和 magic 用来拒绝旧格式/损坏文件。
 constexpr char kProceduralCacheMagic[8] = { 'P', 'W', 'C', 'A', 'C', 'H', 'E', '9' };
 constexpr std::uint32_t kProceduralCacheVersion = 30;
 
@@ -99,6 +100,8 @@ struct BiomeWeights {
     float shallowWater = 0.0f;
 };
 
+// 海岸遮蔽度：用多层 value noise 估计某处是否像海湾/内海一样“受保护”。
+// 受保护海岸更容易生成沙滩、湿地；暴露海岸更容易生成岩岸。
 float coastalShelter(const glm::vec3& sphereDir)
 {
     const auto hash = [](const glm::vec3& p) {
@@ -148,6 +151,7 @@ float coastalShelter(const glm::vec3& sphereDir)
     return glm::smoothstep(0.42f, 0.78f, sheltered);
 }
 
+// 大尺度气候区域噪声，用于让沙漠、森林、岩地等形成片区，而不是纯纬度条带。
 float climateRegionNoise(const glm::vec3& sphereDir, float scale, const glm::vec3& offset)
 {
     const auto hash = [](const glm::vec3& p) {
@@ -190,6 +194,8 @@ float climateRegionNoise(const glm::vec3& sphereDir, float scale, const glm::vec
     return value / std::max(total, 0.0001f);
 }
 
+// 将地形、水文、气候、坡度和侵蚀信息合成为 8 类 biome 权重。
+// 这里输出的是“混合权重”，不是互斥分类；后续 shader 会按权重混色。
 BiomeWeights computeBiome(float height,
                           float waterDepth,
                           float shore,
@@ -478,6 +484,7 @@ bool PlanetProceduralData::saveCache(const char* path) const
     }
 
     file.write(kProceduralCacheMagic, sizeof(kProceduralCacheMagic));
+    // 文件头保存统计信息，随后逐 face 写入所有标量/向量层。
     const std::int32_t resolution = resolution_;
     if (!writeBinary(file, kProceduralCacheVersion)
         || !writeBinary(file, resolution)
@@ -526,6 +533,7 @@ bool PlanetProceduralData::loadCache(const char* path, const PlanetRenderSetting
 
     std::uint32_t version = 0;
     std::int32_t resolution = 0;
+    // 缓存不做跨版本兼容；算法或字段变更时 bump 版本并强制重新生成。
     if (!readBinary(file, version)
         || version != kProceduralCacheVersion
         || !readBinary(file, resolution)
@@ -586,6 +594,7 @@ bool PlanetProceduralData::loadCache(const char* path, const PlanetRenderSetting
 
 PlanetGlobalHeightField PlanetProceduralData::globalHeightField() const
 {
+    // 将内部 FaceData 转成通用高度场结构，供未来局部 LOD/工具链复用。
     PlanetGlobalHeightField heightField;
     heightField.faceResolution = resolution_;
     heightField.minHeight = minHeight_;
@@ -702,6 +711,8 @@ void PlanetProceduralData::generate(const PlanetRenderSettings& settings,
 
     reportProgress("Preparing terrain buffers");
 
+    // 第一阶段：为 6 个 cube face 采样基础高度。
+    // 每个 texel 先映射到球面方向，再调用 terrainHeight 得到归一化高度。
     for (std::size_t faceIndex = 0; faceIndex < faces_.size(); ++faceIndex) {
         FaceData& faceData = faces_[faceIndex];
         faceData.resolution = resolution_;
@@ -734,6 +745,8 @@ void PlanetProceduralData::generate(const PlanetRenderSettings& settings,
         }
     }
 
+    // 后续阶段故意多次“水文/biome -> 塑形/侵蚀 -> 水文/biome”循环，
+    // 让地形、河道、湿度和材质分布互相影响，而不是单向涂色。
     computeWaterClimateFields(settings, [&](const char* status) {
         advanceModuleProgress(GenerationModule::InitialClimate, status);
     });
@@ -818,6 +831,8 @@ void PlanetProceduralData::fixCubeFaceSeams()
     const int geometrySeamRings = 1;
     const int materialSeamRings = 1;
 
+    // 标量层接缝修复：把 face 边界和跨 face 邻居取平均。
+    // neighborCell 支持越界 UV 映射到相邻 face，因此这里不需要手写 12 条边关系。
     const auto reconcileField = [&](std::vector<float> FaceData::* field, int seamRings) {
         std::array<std::vector<float>, 6> updated;
         for (std::size_t faceIndex = 0; faceIndex < faces_.size(); ++faceIndex) {
@@ -852,6 +867,7 @@ void PlanetProceduralData::fixCubeFaceSeams()
             faces_[faceIndex].*field = std::move(updated[faceIndex]);
         }
     };
+    // vec4 层接缝修复，逻辑与标量层一致，用于 biome 权重。
     const auto reconcileVec4Field = [&](std::vector<glm::vec4> FaceData::* field, int seamRings) {
         std::array<std::vector<glm::vec4>, 6> updated;
         for (std::size_t faceIndex = 0; faceIndex < faces_.size(); ++faceIndex) {
@@ -904,6 +920,8 @@ void PlanetProceduralData::fixCubeFaceSeams()
 void PlanetProceduralData::computeWaterClimateFields(const PlanetRenderSettings& settings,
                                                      const std::function<void(const char*)>& advanceProgress)
 {
+    // 根据当前高度重新计算水深、海岸 mask、温度和湿度。
+    // 侵蚀/biome 塑形之后会再次调用，所以这些字段始终跟最终地形同步。
     for (std::size_t faceIndex = 0; faceIndex < faces_.size(); ++faceIndex) {
         FaceData& faceData = faces_[faceIndex];
 
@@ -933,6 +951,7 @@ void PlanetProceduralData::computeWaterClimateFields(const PlanetRenderSettings&
 void PlanetProceduralData::refineTerrainFromBiomeWeights(const PlanetRenderSettings& settings,
                                                          const std::function<void(const char*)>& advanceProgress)
 {
+    // 初始 biome 反过来塑造地形：沙漠更平、湿地更低、岩雪区域更粗糙。
     const float seaLevel = settings.seaLevelOffset;
     for (std::size_t faceIndex = 0; faceIndex < faces_.size(); ++faceIndex) {
         FaceData& faceData = faces_[faceIndex];
@@ -1015,6 +1034,7 @@ void PlanetProceduralData::updateHydrologyMoisture(const PlanetRenderSettings& s
                                       + faceData.channelMask[center] * 0.30f
                                       + faceData.depositionMask[center] * 0.24f;
 
+                // 查 5x5 邻域，水体/河道会向周围扩散湿度；neighborCell 处理跨面邻居。
                 float neighborWater = 0.0f;
                 float neighborFlow = 0.0f;
                 for (int oy = -2; oy <= 2; ++oy) {
@@ -1070,6 +1090,7 @@ void PlanetProceduralData::computeBiomeWeights(const PlanetRenderSettings& setti
         const CellRef ref = cellFromDirection(glm::normalize(dir), n);
         return faces_[static_cast<std::size_t>(ref.face)].height[ref.index];
     };
+    // 在球面切线方向做中心差分，得到坡度估计。
     const auto computeSphericalSlope = [&](const glm::vec3& sphereDir) {
         const glm::vec3 nDir = glm::normalize(sphereDir);
         const glm::vec3 up = std::abs(nDir.y) < 0.9f
@@ -1087,6 +1108,7 @@ void PlanetProceduralData::computeBiomeWeights(const PlanetRenderSettings& setti
         const float dhBitangent = (hU - hD) / (2.0f * eps);
         return glm::clamp(std::sqrt(dhTangent * dhTangent + dhBitangent * dhBitangent) * 0.08f, 0.0f, 1.0f);
     };
+    // 统计周围水体，额外估计海湾/浅湾遮蔽度，供 beach/wetland 权重使用。
     const auto computeCoastalWater = [&](int faceIndex, int x, int y) {
         float immediateWater = 0.0f;
         float surroundingWater = 0.0f;
@@ -1225,6 +1247,7 @@ void PlanetProceduralData::smoothBiomeWeights(int radius, float blend)
                 }
 
                 const std::size_t index = indexOf(x, y);
+                // 高斯邻域平滑后重新归一化陆地权重，保持 shallowWater 与 land 权重总量稳定。
                 glm::vec4 a = glm::mix(faceData.biomeWeightA[index], sumA / std::max(totalWeight, 0.0001f), clampedBlend);
                 glm::vec4 b = glm::mix(faceData.biomeWeightB[index], sumB / std::max(totalWeight, 0.0001f), clampedBlend);
 
@@ -1289,6 +1312,7 @@ void PlanetProceduralData::applyErosion(const PlanetRenderSettings& settings,
     };
 
     for (FaceData& faceData : faces_) {
+        // 侵蚀 mask 重新生成，不沿用上一次 bake 的残留值。
         faceData.erosionMask.assign(faceData.height.size(), 0.0f);
         faceData.channelMask.assign(faceData.height.size(), 0.0f);
         faceData.flowMask.assign(faceData.height.size(), 0.0f);
@@ -1369,6 +1393,7 @@ void PlanetProceduralData::applyErosion(const PlanetRenderSettings& settings,
                     }
 
                     if (downhillCount <= 0 || totalDrop <= 0.000001f) {
+                        // 没有下坡方向时水停留并少量沉积。
                         const float standingDeposit = currentSediment * depositionRate * 0.18f;
                         faceDelta[center] += standingDeposit;
                         currentSediment -= standingDeposit;
@@ -1393,6 +1418,7 @@ void PlanetProceduralData::applyErosion(const PlanetRenderSettings& settings,
 
                     const float flowSpeed = glm::clamp(maxDrop * 6.0f, 0.0f, 1.0f);
                     const float capacity = std::max(flowSpeed * currentWater * capacityFactor, 0.00003f);
+                    // sediment capacity 决定当前格是侵蚀还是沉积。
                     if (currentSediment < capacity && erosionStrength > 0.0f) {
                         const float erodeAmount = std::min(
                             (capacity - currentSediment) * erosionStrength * landMask,
@@ -1416,6 +1442,7 @@ void PlanetProceduralData::applyErosion(const PlanetRenderSettings& settings,
                     faceData.flowMask[center] += movedWater * flowSpeed;
 
                     for (int i = 0; i < downhillCount; ++i) {
+                        // 只向最陡的两个方向分流水和沉积物，形成更清晰的流路。
                         const float share = downhill[i].drop / totalDrop;
                         const float waterShare = movedWater * share;
                         const std::size_t neighborFaceIndex = static_cast<std::size_t>(downhill[i].face);
@@ -1471,6 +1498,7 @@ void PlanetProceduralData::applyErosion(const PlanetRenderSettings& settings,
                             FaceData& neighborFace = faces_[static_cast<std::size_t>(neighbor.face)];
                             const float slopeToNeighbor = h - neighborFace.height[neighbor.index];
                             if (slopeToNeighbor > talus * 1.45f) {
+                                // 热力侵蚀：超过安息角的坡面向低邻居滑落。
                                 const float slide = std::min(
                                     (slopeToNeighbor - talus * 1.45f) * thermalStrength * landMask,
                                     slopeToNeighbor * 0.18f
@@ -1539,6 +1567,7 @@ void PlanetProceduralData::applyErosion(const PlanetRenderSettings& settings,
                 const float concavityGate = glm::smoothstep(0.0015f, 0.020f, concavity);
                 const float flow = faceData.flowMask[center];
                 const float wear = faceData.wearMask[center];
+                // 河道 mask 偏向“凹陷 + 有流量 + 有坡差”的位置。
                 float channel = flow * concavityGate * slopeGate;
                 channel += wear * concavityGate * 0.18f;
                 channelRaw[static_cast<std::size_t>(faceIndex)][center] = std::pow(glm::clamp(channel, 0.0f, 1.0f), 1.8f);
@@ -1577,6 +1606,7 @@ int PlanetProceduralData::faceIndexFromDirection(const glm::vec3& dir)
 
 PlanetProceduralData::CellRef PlanetProceduralData::cellFromDirection(const glm::vec3& dir, int resolution)
 {
+    // 球面方向 -> 主轴最大的 cube face -> 该 face 的 UV/cell。
     const int n = std::max(resolution, 1);
     const glm::vec3 d = glm::normalize(dir);
     const int mappedFace = faceIndexFromDirection(d);
@@ -1600,6 +1630,7 @@ PlanetProceduralData::CellRef PlanetProceduralData::neighborCell(int faceIndex, 
         return CellRef{ faceIndex, static_cast<std::size_t>(y * n + x) };
     }
 
+    // 越界时先把越界 UV 转回球面方向，再重新映射到正确 face。
     const glm::vec2 uv(
         (static_cast<float>(x) + 0.5f) / static_cast<float>(n),
         (static_cast<float>(y) + 0.5f) / static_cast<float>(n)
@@ -1620,6 +1651,7 @@ glm::vec3 PlanetProceduralData::hash3(const glm::vec3& p)
 
 float PlanetProceduralData::gradientNoise(const glm::vec3& p)
 {
+    // 3D gradient noise：每个晶格角点用 hash3 生成伪随机梯度，再做平滑插值。
     const glm::vec3 i = glm::floor(p);
     const glm::vec3 f = glm::fract(p);
     const glm::vec3 u = f * f * f * (f * (f * 6.0f - 15.0f) + 10.0f);
@@ -1644,6 +1676,7 @@ float PlanetProceduralData::gradientNoise(const glm::vec3& p)
 
 float PlanetProceduralData::fbm(const glm::vec3& p, int octaves, float lacunarity, float gain)
 {
+    // fBM = 多个 octave 的 gradientNoise 叠加；频率逐层升高、振幅逐层降低。
     float value = 0.0f;
     float amplitude = 0.5f;
     float frequency = 1.0f;
@@ -1666,6 +1699,7 @@ float PlanetProceduralData::altitudeBandWeight(float startAltitude, float endAlt
 
 float PlanetProceduralData::terrainHeight(const PlanetRenderSettings& settings, const glm::vec3& sphereDir)
 {
+    // 基础高度合成顺序：大陆轮廓 -> 高地/盆地 -> 山脉/峰顶 -> 海底地貌。
     const glm::vec3 p = sphereDir * settings.terrainNoiseScale;
     const glm::vec3 warp(
         fbm(p + glm::vec3(3.1f, 0.0f, 0.0f), 4, 2.0f, 0.5f),
@@ -1736,6 +1770,7 @@ float PlanetProceduralData::terrainHeight(const PlanetRenderSettings& settings, 
     const float signedWaterDepth = settings.seaLevelOffset - h;
     const float oceanMask = glm::smoothstep(0.0f, 0.045f, signedWaterDepth);
     if (oceanMask > 0.0f) {
+        // 海面以下继续塑造大陆架、深海盆地、中洋脊和海沟。
         const float shoreRamp = glm::smoothstep(0.0f, 0.075f, signedWaterDepth);
         const float shelfMask = glm::smoothstep(0.015f, 0.20f, signedWaterDepth);
         const float basinMask = glm::smoothstep(0.16f, 0.56f, signedWaterDepth);
@@ -1768,6 +1803,7 @@ PlanetProceduralData::PlanetSample PlanetProceduralData::samplePlanetBase(const 
                                                                           const glm::vec3& sphereDir,
                                                                           float height)
 {
+    // 基础采样只依赖当前高度和球面方向，供多轮生成阶段重复使用。
     const glm::vec3 n = glm::normalize(sphereDir);
     PlanetSample sample;
     sample.height = height;
@@ -1784,6 +1820,7 @@ PlanetProceduralData::PlanetSample PlanetProceduralData::samplePlanetBase(const 
 
 float PlanetProceduralData::temperature(const PlanetRenderSettings& settings, const glm::vec3& sphereDir, float height)
 {
+    // 温度 = 纬度主导 + 海拔降温 + 少量 fBM 扰动。
     const float latitude01 = std::abs(sphereDir.y);
     const float latitudeTemperature = 1.0f - latitude01;
     const float heightCooling = std::max(height - settings.seaLevelOffset, 0.0f) * 0.35f;
@@ -1793,6 +1830,7 @@ float PlanetProceduralData::temperature(const PlanetRenderSettings& settings, co
 
 float PlanetProceduralData::moisture(const glm::vec3& sphereDir, float shoreMask)
 {
+    // 湿度 = 大尺度噪声 + 海岸加湿 + 轻微纬度修正；侵蚀后还会被水文再次修正。
     const float moistureNoise = fbm(sphereDir * 4.0f + glm::vec3(1.2f, 9.3f, 4.8f), 5, 2.0f, 0.5f) * 0.5f + 0.5f;
     const float shoreMoisture = shoreMask * 0.35f;
     const float latitudeMoisture = 1.0f - std::abs(sphereDir.y) * 0.25f;

@@ -1,5 +1,7 @@
 #version 410 core
 
+// 海洋细线框叠加。只在实际有水面的区域显示。
+
 in vec3 teSphereDir;
 
 out vec4 FragColor;
@@ -14,6 +16,7 @@ uniform sampler2DArray proceduralWaterDepthTexture;
 
 bool hasWaterSurface(vec3 sphereDir)
 {
+    // 复用程序化高度/水深，避免陆地 patch 上出现海洋线框。
     float terrainHeight = sampleFloatArraySeamlessNarrow(proceduralHeightTexture, sphereDir);
     float signedWaterDepth = (seaLevelOffset - terrainHeight) * heightScale;
     float bakedWaterDepth = max(sampleFloatArraySeamless(proceduralWaterDepthTexture, sphereDir), 0.0);

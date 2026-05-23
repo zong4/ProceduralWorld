@@ -19,6 +19,10 @@ uniform sampler2DArray proceduralHeightTexture;
 uniform sampler2DArray proceduralTemperatureTexture;
 uniform sampler2DArray proceduralMoistureTexture;
 
+// 地形材质合成。
+// 输入为 CPU 烘焙的高度/水深/温湿度/侵蚀/biome 权重和运行时法线，
+// 输出一个 SurfaceData.baseColor，后续由 terrain_lighting.glsl 做光照。
+
 #include "planet_sampling.glsl"
 
 float hash31(vec3 p)
@@ -52,6 +56,7 @@ float valueNoise(vec3 p)
 
 float fbm3(vec3 p)
 {
+    // 材质层使用 fBM 打散颜色和 biome 边界，避免大块纯色。
     float value = 0.0;
     float amplitude = 0.5;
     float total = 0.0;
@@ -105,6 +110,8 @@ struct PlanetSample
 
 PlanetSample samplePlanet(vec3 sphereDir, float finalHeight)
 {
+    // 汇总当前片元需要的所有程序化数据层。
+    // runtimeWaterDepth 来自最终高度，bakedWaterDepth 来自 CPU 烘焙，两者组合更稳定。
     PlanetSample planetSample;
     planetSample.height = finalHeight;
     planetSample.bakedHeight = sampleFloatArraySeamlessNarrow(proceduralHeightTexture, sphereDir);
@@ -126,6 +133,7 @@ SurfaceData sampleSurfaceData(float height, vec3 worldPos, vec3 shadingNormal, v
     SurfaceData surface;
     PlanetSample planet = samplePlanet(sphereDir, height);
 
+    // slope 由真实法线和径向方向计算，后面用于裸岩/雪线/植被剔除。
     vec3 radialUp = normalize(worldPos);
     surface.radialAlignment = clamp(dot(normalize(shadingNormal), radialUp), 0.0, 1.0);
     surface.slope = 1.0 - surface.radialAlignment;
@@ -156,6 +164,7 @@ SurfaceData sampleSurfaceData(float height, vec3 worldPos, vec3 shadingNormal, v
     float snowWeight = clamp(biomeB.g, 0.0, 1.0);
     float wetlandWeight = clamp(biomeB.b, 0.0, 1.0);
     float shallowWaterWeight = clamp(biomeB.a, 0.0, 1.0);
+    // CPU 生成的 beach/rock 权重之外，再根据运行时海岸和坡度动态补强。
     float runtimeBeach = runtimeShore
                        * runtimeLand
                        * coastShelter
@@ -191,6 +200,7 @@ SurfaceData sampleSurfaceData(float height, vec3 worldPos, vec3 shadingNormal, v
     rockWeight *= 1.0 - beachDominance * 0.35;
 
     float mountainDesertCull = smoothstep(0.115, 0.245, relativeHeight + surface.slope * 0.46 + wearMask * 0.20);
+    // 沙漠只保留在低坡低海拔平原；被挤出的权重转给草地或岩石。
     float desertPlain = (1.0 - smoothstep(0.12, 0.34, surface.slope))
                       * (1.0 - smoothstep(0.14, 0.32, relativeHeight))
                       * (1.0 - mountainDesertCull)
@@ -201,6 +211,7 @@ SurfaceData sampleSurfaceData(float height, vec3 worldPos, vec3 shadingNormal, v
     grassWeight += displacedDesert * (1.0 - smoothstep(0.18, 0.46, surface.slope + relativeHeight * 0.20)) * 0.34;
 
     float alpineVegetationCull = smoothstep(0.105, 0.235, relativeHeight + surface.slope * 0.32);
+    // 森林/草地随海拔、坡度、侵蚀剔除，剔除部分转为岩石或草地过渡。
     float forestSlopeViability = 1.0 - smoothstep(0.14, 0.32, surface.slope);
     forestSlopeViability *= 1.0 - smoothstep(0.095, 0.205, relativeHeight);
     forestSlopeViability *= 1.0 - smoothstep(0.115, 0.255, relativeHeight + surface.slope * 0.70);
@@ -224,6 +235,7 @@ SurfaceData sampleSurfaceData(float height, vec3 worldPos, vec3 shadingNormal, v
     rockWeight += displacedGrass * smoothstep(0.18, 0.42, surface.slope + relativeHeight * 0.15) * 0.52;
 
     float alpineMaterialMask = smoothstep(0.14, 0.38, relativeHeight + surface.slope * 0.42);
+    // 陡坡、高地、冲刷区和干燥裸地都会提高岩石权重。
     float steepRockMask = smoothstep(0.20, 0.50, surface.slope);
     float dryRockPlain = smoothstep(0.04, 0.20, relativeHeight)
                        * (1.0 - smoothstep(0.38, 0.76, relativeHeight))
@@ -267,6 +279,7 @@ SurfaceData sampleSurfaceData(float height, vec3 worldPos, vec3 shadingNormal, v
     wetlandWeight *= mix(0.76, 1.20, fbm3(radialUp * 38.0 + vec3(5.6, 22.4, 7.1)));
 
     float dominantLandWeight = max(max(max(beachWeight, grassWeight), max(forestWeight, desertWeight)), max(max(rockWeight, snowWeight), wetlandWeight));
+    // 主导 biome 越明确，权重曲线越锐利；边界处保持柔和混合。
     float biomeContrast = mix(1.32, 2.32, smoothstep(0.16, 0.52, dominantLandWeight));
     beachWeight = sharpenBiomeWeight(beachWeight, biomeContrast * 0.88);
     grassWeight = sharpenBiomeWeight(grassWeight, biomeContrast);
@@ -285,6 +298,7 @@ SurfaceData sampleSurfaceData(float height, vec3 worldPos, vec3 shadingNormal, v
 
     float landWeight = beachWeight + grassWeight + forestWeight + desertWeight + rockWeight + snowWeight + wetlandWeight;
     if (landWeight + shallowWaterWeight <= 0.0001) {
+        // 缓存缺失或权重被极端参数压空时的兜底材质分类。
         float landMask = smoothstep(0.0, max(terrainBeachWidth, 0.0001), relativeHeight);
         float seabedMask = smoothstep(0.0001, 0.08, waterDepth);
         float fallbackBeach = (1.0 - smoothstep(terrainBeachWidth * 0.35, terrainBeachWidth, abs(relativeHeight)))
@@ -331,6 +345,7 @@ SurfaceData sampleSurfaceData(float height, vec3 worldPos, vec3 shadingNormal, v
     vec3 abyssalClayColor = vec3(0.18, 0.16, 0.15);
     vec3 seabedRockColor = terrainRockColor * 0.78;
     vec3 shallowWaterColor = mix(shallowShelfColor, sedimentColor, smoothstep(0.25, 2.5, waterDepth));
+    // 浅水海床颜色受深度、冲刷和沉积影响。
     shallowWaterColor = mix(shallowWaterColor, abyssalClayColor, smoothstep(2.0, 10.0, waterDepth));
     shallowWaterColor = mix(shallowWaterColor, seabedRockColor, clamp(wearMask * 0.35 + surface.slope * 0.18, 0.0, 0.55));
     shallowWaterColor = mix(shallowWaterColor, sedimentColor, depositionMask * 0.35);
@@ -348,6 +363,7 @@ SurfaceData sampleSurfaceData(float height, vec3 worldPos, vec3 shadingNormal, v
     color = mix(color, rockColor * mix(0.86, 1.08, fbm3(radialUp * 42.0 + 9.3)), exposedRockMask * 0.28);
     color = mix(color, rockColor, wearMask * smoothstep(0.26, 0.62, surface.slope) * 0.34);
     color = mix(color, vec3(0.52, 0.43, 0.30), depositionMask * 0.28);
+    // 侵蚀/水流 mask 作为最终 tint：河道更暗更湿，沉积更偏土色。
     color = mix(color, vec3(0.06, 0.16, 0.10), channelMask * 0.12);
     color = mix(color, vec3(0.08, 0.20, 0.11), flowMask * 0.22);
     color = mix(color, terrainBeachColor * 0.72, shallowWaterWeight * 0.20);

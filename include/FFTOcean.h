@@ -7,9 +7,15 @@
 #include <glad/glad.h>
 #include <glm/glm.hpp>
 
+// CPU 版 FFT 海浪模拟。
+// 每帧根据 Phillips spectrum 推进频域波，再做 2D inverse FFT 得到高度、法线、
+// 水平位移和 folding 纹理。渲染阶段的 ocean shader 会把这些 2D 纹理以
+// triplanar 的方式贴到球形海面上。
 class FFTOcean
 {
 public:
+    // 海浪谱和多级 cascade 的参数。
+    // cascade 用不同 patch length/振幅/速度覆盖大浪、中浪和细浪。
     struct Settings {
         int resolution = 128;
         float patchLength = 48.0f;
@@ -48,6 +54,9 @@ private:
     using Complex = std::complex<float>;
     static constexpr int kMaxCascadeCount = 3;
 
+    // 单个频域 cascade 的所有临时数组。
+    // initialSpectrum 是 h0(k)，frequencySpectrum 是随时间变化的 h(k,t)，
+    // spatial* 是 inverse FFT 后的空间域结果。
     struct CascadeState {
         float patchLength = 48.0f;
         float spectrumAmplitude = 0.0007f;
@@ -79,13 +88,16 @@ private:
     std::vector<float> foldingPixels_;
     bool initialized_ = false;
 
+    // 周期纹理索引，保证 FFT 结果在边界处无缝平铺。
     int index(int x, int y) const;
     glm::vec2 waveVector(int x, int y, float patchLength) const;
+    // Phillips 海浪谱：根据风向、风速和波数 k 给出初始能量。
     float phillipsSpectrum(const glm::vec2& k, float spectrumAmplitude, float windSpeed) const;
     void configureCascades();
     void buildInitialSpectrum();
     void buildInitialSpectrum(CascadeState& cascade, int seedOffset);
     void buildStaticDetailTextures();
+    // 原地 Cooley-Tukey FFT；inverse=true 时执行 IFFT 并归一化。
     void inverseFft2D(std::vector<Complex>& data) const;
     void fft1D(std::vector<Complex>& data, bool inverse) const;
     void uploadTextures();

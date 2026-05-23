@@ -1,5 +1,8 @@
 #version 410 core
 
+// 地形 tessellation control shader。
+// 负责根据相机距离、地形高度变化、海岸/侵蚀/biome 复杂度决定每条边的细分等级。
+
 // Input patch: 4 control points (quad patch)
 layout(vertices = 4) out;
 
@@ -60,6 +63,7 @@ float computeTerrainComplexity(vec2 uv, float uvRadius)
         return 0.0;
     }
 
+    // 对高度场做小范围采样，估计局部 relief/curvature。
     vec2 eps = vec2(max(max(uvRadius * 0.65, proceduralDataTexelSize * 2.0), 0.0015), 0.0);
     vec2 uvL = clamp(uv - eps.xy, vec2(0.0), vec2(1.0));
     vec2 uvR = clamp(uv + eps.xy, vec2(0.0), vec2(1.0));
@@ -75,6 +79,7 @@ float computeTerrainComplexity(vec2 uv, float uvRadius)
     float curvature = abs((hL + hR + hD + hU) * 0.25 - hC) * heightScale;
     float relief = clamp(smoothstep(0.25, 2.2, heightRange) + smoothstep(0.08, 0.75, curvature), 0.0, 1.0);
 
+    // 海岸、侵蚀、山地材质都会提高复杂度，让这些区域获得更高 tessellation。
     vec3 dir = cubeSphereDirection(uv);
     float waterDepth = max(sampleFloatArraySeamless(proceduralWaterDepthTexture, dir), 0.0);
     float shore = 1.0 - smoothstep(0.0, max(oceanShoreBlendWidth * 1.4, 0.001), abs((seaLevelOffset - hC) * heightScale));
@@ -106,6 +111,7 @@ float computeTessLevel(vec2 uv, float uvRadius)
     // Linearly interpolate based on distance
     float t = clamp((dist - tessMinDist) / (tessMaxDist - tessMinDist), 0.0, 1.0);
     float distanceLevel = mix(tessMax, tessMin, t);
+    // 距离是基础等级，复杂地形可把等级重新推向 tessMax。
     float complexity = computeTerrainComplexity(uv, uvRadius);
     float complexityLevel = mix(distanceLevel, tessMax, complexity * (1.0 - t * 0.45));
     return clamp(complexityLevel, tessMin, tessMax);
@@ -121,6 +127,7 @@ void main()
     // Only compute tessellation levels once (invocation 0)
     if (gl_InvocationID == 0)
     {
+        // 边细分等级在边中点采样，便于相邻 patch 在共享边上得到接近的 tess level。
         // Compute levels at edge midpoints for smooth transitions
         // Edge 0: bottom (v=0), vertices 0 and 1
         vec2 mid0 = (vTexCoord[0] + vTexCoord[1]) * 0.5;

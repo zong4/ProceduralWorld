@@ -1,3 +1,7 @@
+// cube-sphere texture array 采样工具。
+// CPU 将 6 个 cube face 上传为 sampler2DArray；这里负责球面方向和 face/uv 的互转，
+// 并在 face 边界附近混合多个面，减少接缝。
+
 struct FaceUv
 {
     int face;
@@ -48,6 +52,7 @@ vec3 faceBasisAxisV(int f)
 
 FaceUv directionToFaceUv(vec3 dir)
 {
+    // 按最大绝对轴选择 cube face，再投影回该面的 UV。
     vec3 d = normalize(dir);
     int mappedFace = faceIndexFromDirection(d);
     vec3 n = faceBasisNormal(mappedFace);
@@ -76,11 +81,13 @@ vec2 faceUvForFace(int f, vec3 dir)
 
 float cubeFaceBlendWidth()
 {
+    // 材质层使用较宽的跨面混合，隐藏颜色/权重接缝。
     return max(proceduralDataTexelSize * 2.5, 0.010);
 }
 
 float cubeFaceHeightBlendWidth()
 {
+    // 高度层使用较窄的混合，避免边界处几何被过度抹平。
     return max(proceduralDataTexelSize * 0.75, 0.0015);
 }
 
@@ -96,6 +103,7 @@ vec4 sampleVec4ArrayOnFace(sampler2DArray tex, vec3 dir, int f)
 
 float sampleFloatArraySeamlessWidth(sampler2DArray tex, vec3 dir, float width)
 {
+    // 在接近 cube 边/角时按三个主轴权重混合相邻 face 的采样值。
     vec3 d = normalize(dir);
     vec3 a = abs(d);
     float maxAxis = max(max(a.x, a.y), a.z);
@@ -113,6 +121,7 @@ float sampleFloatArraySeamlessWidth(sampler2DArray tex, vec3 dir, float width)
 
 vec4 sampleVec4ArraySeamlessWidth(sampler2DArray tex, vec3 dir, float width)
 {
+    // vec4 版本用于 biome 权重和侵蚀 RGBA 数据。
     vec3 d = normalize(dir);
     vec3 a = abs(d);
     float maxAxis = max(max(a.x, a.y), a.z);
