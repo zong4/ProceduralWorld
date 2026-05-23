@@ -140,6 +140,7 @@ private:
     void computeWaterClimateFields(const PlanetRenderSettings& settings, const std::function<void(const char*)>& advanceProgress);
     void refineTerrainFromBiomeWeights(const PlanetRenderSettings& settings, const std::function<void(const char*)>& advanceProgress);
     void applyErosion(const PlanetRenderSettings& settings, const std::function<void(const char*)>& advanceProgress);
+    void extractPrimaryRiver(const PlanetRenderSettings& settings, const std::function<void(const char*)>& advanceProgress);
     void updateHydrologyMoisture(const PlanetRenderSettings& settings);
     void computeBiomeWeights(const PlanetRenderSettings& settings, const std::function<void(const char*)>& advanceProgress);
     void smoothBiomeWeights(int radius, float blend);

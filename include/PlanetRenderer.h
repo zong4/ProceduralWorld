@@ -46,19 +46,19 @@ struct PlanetRenderSettings {
     float oceanTessellationNearDistance = 40.0f;
     float oceanTessellationFarDistance = 550.0f;
     // 程序化地形和侵蚀参数。
-    float terrainHeightScale = 18.0f;
+    float terrainHeightScale = 30.0f;
     float terrainSkirtDepth = 0.40f;
-    float terrainNoiseScale = 0.5f;
-    float mountainMaskStrength = 1.25f;
-    float mountainMaskScale = 2.4f;
-    float mountainRidgeSharpness = 2.6f;
-    int erosionIterations = 48;
-    float erosionStrength = 0.045f;
+    float terrainNoiseScale = 0.72f;
+    float mountainMaskStrength = 1.75f;
+    float mountainMaskScale = 3.1f;
+    float mountainRidgeSharpness = 3.4f;
+    int erosionIterations = 96;
+    float erosionStrength = 0.075f;
     float erosionTalus = 0.028f;
     float erosionSediment = 0.58f;
     float erosionThermalStrength = 0.014f;
-    float regionalDetailStrength = 0.95f;
-    float microDetailStrength = 0.10f;
+    float regionalDetailStrength = 1.12f;
+    float microDetailStrength = 0.20f;
     float regionalDetailStartAltitude = 900.0f;
     float regionalDetailEndAltitude = 2200.0f;
     float microDetailStartAltitude = 90.0f;
@@ -78,6 +78,11 @@ struct PlanetRenderSettings {
     float terrainSnowEnd = 0.95f;
     float terrainMaterialNoiseScale = 0.030f;
     float terrainMaterialNoiseStrength = 0.14f;
+    bool renderRivers = true;
+    float riverVisibility = 1.45f;
+    float riverWidth = 1.05f;
+    float riverShine = 0.95f;
+    glm::vec3 riverColor = glm::vec3(0.02f, 0.36f, 0.42f);
     float coarseGridLineWidth = 1.6f;
     // 天空、大气和相机裁剪面。
     glm::vec3 skyColor = glm::vec3(0.0f);

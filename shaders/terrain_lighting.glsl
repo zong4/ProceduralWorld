@@ -13,6 +13,7 @@ LightingData evaluateLighting(SurfaceData surface, vec3 worldPos, vec3 shadingNo
 
     float ndotl = max(dot(N, L), 0.0);
     float specular = pow(max(dot(N, H), 0.0), 32.0) * 0.08;
+    float riverSpecular = pow(max(dot(N, H), 0.0), 96.0) * surface.riverSpecular * 0.75;
 
     vec3 sunColor = vec3(1.0, 0.95, 0.85);
     vec3 groundBounce = vec3(0.10, 0.08, 0.06);
@@ -20,7 +21,7 @@ LightingData evaluateLighting(SurfaceData surface, vec3 worldPos, vec3 shadingNo
     vec3 ambientLight = mix(groundBounce, skyColor * 0.24, surface.radialAlignment);
     ambientLight += vec3(0.035);
 
-    vec3 color = surface.baseColor * (ambientLight + ndotl * sunColor) + specular * sunColor;
+    vec3 color = surface.baseColor * (ambientLight + ndotl * sunColor) + (specular + riverSpecular) * sunColor;
 
     // 使用距离平方指数雾，将远处地形推向 skyColor。
     float fogDistance = length(cameraPos - worldPos);

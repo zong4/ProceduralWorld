@@ -4,7 +4,7 @@
 
 ## 1. 项目一句话概述
 
-本项目是一个基于 C++17 + OpenGL 4.1 的实时程序化星球渲染系统。核心内容包括：cube-sphere 星球网格、CPU 四叉树 LOD、GPU tessellation、程序化地形/气候/生物群系生成、水文与侵蚀模拟、FFT 海洋、平面反射/折射、深度水色混合、Fresnel 反射和简化大气散射。
+本项目是一个基于 C++17 + OpenGL 4.1 的实时程序化星球渲染系统。核心内容包括：cube-sphere 星球网格、CPU 四叉树 LOD、GPU tessellation、程序化地形/气候/生物群系生成、水文与侵蚀模拟、基于侵蚀流量 mask 的主河道提取与可见河流渲染、FFT 海洋、平面反射/折射、深度水色混合、Fresnel 反射和简化大气散射。
 
 运行入口和主要模块：
 
@@ -36,7 +36,7 @@ xmake run
 4. `PlanetRenderer` 把 CPU 数据打包成 GPU texture array，包括高度图、生物群系图、侵蚀 mask 等。
 5. 每帧根据相机位置更新四叉树 LOD，剔除不可见 patch，并提交地形 patch。
 6. 地形 shader 采样高度图，把 cube face 上的点归一化到球面，再按高度偏移得到星球表面。
-7. 地形 fragment shader 根据高度、坡度、生物群系、侵蚀 mask 混合材质颜色。
+7. 侵蚀后处理会从高地源头沿地形/flow 方向提取一条主河道，地形 fragment shader 再根据 channel/flow mask 叠加河水、湿润岸线和水面高光。
 8. 海洋模块更新 FFT 波浪，把频谱结果写入高度、法线、位移贴图。
 9. 渲染海洋前先渲染反射 FBO 和折射 FBO，海洋 shader 再采样这两张贴图做 Fresnel 混合。
 10. 最后绘制大气壳，用 Rayleigh/Mie 散射近似天空和大气边缘。
@@ -202,14 +202,20 @@ value = noise(p * freq0) * amp0
 | `PlanetProceduralData::computeHydrology` | 水文相关数据计算 |
 | `PlanetProceduralData.cpp` 中 erosion 参数 | 雨量、蒸发、容量、沉积、侵蚀等参数 |
 | `PlanetRenderer::updateProceduralTextures` | 把侵蚀数据打包到 RGBA 贴图 |
-| `shaders/terrain_surface.glsl` | 使用侵蚀 mask 影响地表材质 |
-| `src/main.cpp` Erosion 面板 | UI 调节侵蚀参数 |
+| `PlanetProceduralData::extractPrimaryRiver` | 从侵蚀结果中追踪一条更长、更连续的主河道 |
+| `shaders/terrain_surface.glsl` | 使用侵蚀 mask 影响地表材质，并把主 channel/flow mask 渲染成河流 |
+| `shaders/terrain_lighting.glsl` | 给河流区域增加额外镜面高光 |
+| `src/main.cpp` Erosion / Rivers 面板 | UI 调节侵蚀参数和河流显示参数 |
 
 ### 答辩时怎么说
 
 可以这样回答：
 
 > 侵蚀是在 CPU 高度图上迭代的。每个格点根据高度差把水流分配给更低的邻居，水流根据坡度和速度得到 sediment capacity。如果当前携带沉积物小于容量，就从地形中侵蚀；如果超过容量，就沉积回地面。热侵蚀则检查相邻格点坡度，超过 talus 阈值时把物质从高处搬到低处。最后我把 channel、flow、wear、deposition 打包进 RGBA mask，shader 用这些 mask 表现河道冲刷和沉积区域。
+
+河流渲染可以这样补充：
+
+> 河流不是单独手画的贴图，而是来自侵蚀结果。侵蚀先产生 flow、wear、channel 等 mask，然后 `extractPrimaryRiver` 会从高地源头候选点开始，沿着更低、更有累积流量的位置追踪一条长路径，并把这条路径写回主 channelMask。其他零散 flow 只保留为湿润痕迹。渲染时 shader 主要用 channelMask 生成河水颜色和高光，用 flowMask 做河岸湿润，所以视觉重点是一条连续蜿蜒的主河，而不是一堆短蓝线。
 
 需要注意：
 
@@ -339,6 +345,7 @@ shader 在球面海洋上采样这些贴图，得到动态波浪、法线扰动�
 | FFT 动态波浪 | 已实现 | `FFTOcean.cpp`, `ocean.tese` | 讲频谱、IFFT、高度/法线/位移贴图 |
 | 液压侵蚀 | 已实现简化版 | `applyErosion` | 讲水流、容量、侵蚀、沉积；说明是 CPU 网格近似 |
 | 热侵蚀 | 已实现简化版 | `applyErosion` | 讲坡度超过阈值时物质滑移 |
+| 河流可视化 | 已实现 | `extractPrimaryRiver`, `terrain_surface.glsl`, `terrain_lighting.glsl` | 讲主河道提取、channel/flow mask 生成河道颜色、湿润岸线和高光 |
 | 反射/折射 | 已实现 | `drawReflectionRefractionPasses`, `ocean.frag` | 讲两个 FBO、深度、Fresnel |
 | 大气散射 | 已实现简化版 | `atmosphere.frag` | 讲 Rayleigh/Mie、指数密度、视线积分 |
 | Debug/性能 | 已实现 | `main.cpp`, `PerformanceStats` | 展示 debug mask 和 performance 面板 |
@@ -372,6 +379,12 @@ shader 在球面海洋上采样这些贴图，得到动态波浪、法线扰动�
 回答：
 
 > 是的。侵蚀在 CPU 高度图上迭代，会修改高度数据，同时记录 channel、flow、wear、deposition 这些 mask。高度变化会影响最终几何，mask 会影响 shader 材质表现。
+
+### Q4.1：河流是怎么渲染出来的？
+
+回答：
+
+> 河流不是额外手绘的图片，也不是单独的 mesh。侵蚀阶段会产生 flow/wear/channel mask，后处理 `extractPrimaryRiver` 会从高地源头候选点开始，沿着低处和累积流量高的位置追踪一条更长的主河道，并把这条路径写回 channelMask。渲染时 `terrain_surface.glsl` 主要用 channelMask 生成蓝绿色河水，用 flowMask 暗化湿润河岸；`terrain_lighting.glsl` 再给河道区域加 specular。所以现在效果更强调一条连续蜿蜒的长河，而不是很多短河流。
 
 ### Q5：FFT 海洋和普通 noise 水面有什么区别？
 
@@ -414,7 +427,7 @@ shader 在球面海洋上采样这些贴图，得到动态波浪、法线扰动�
 1. 启动程序，先展示完整星球视角。
 2. 拉近地表，展示 LOD 和 tessellation 后的地形细节。
 3. 打开 terrain debug mask，依次展示高度、温度、湿度、生物群系、侵蚀 mask。
-4. 调整 erosion 参数或切换侵蚀显示，说明 channel/flow/wear/deposition。
+4. 调整 erosion 参数或切换侵蚀显示，说明 channel/flow/wear/deposition，再打开 Rivers 开关展示主河道颜色和高光来自提取后的 channel/flow mask。
 5. 移动到海岸线，展示海洋透明、水深颜色变化和岸线效果。
 6. 打开/关闭 reflection、refraction、Fresnel 或 planar targets，展示水面反射折射差异。
 7. 调整 ocean wind、amplitude 等参数，展示 FFT 海浪变化。
@@ -438,5 +451,4 @@ shader 在球面海洋上采样这些贴图，得到动态波浪、法线扰动�
 
 如果老师只给很短时间，可以这样总结：
 
-> 这个项目实现了一个实时程序化星球。地形部分使用 cube-sphere，把六个 cube face 转成球面，CPU 四叉树负责大范围 LOD，GPU tessellation 负责 patch 内细分。高度由 gradient noise 和 fBM 生成，并结合大陆、山脉、海底等地貌因子。温度和湿度根据纬度、海拔、水域距离和噪声生成，再决定生物群系权重。项目还做了 CPU 简化液压侵蚀和热侵蚀，输出 channel、flow、wear、deposition mask 给 shader。海洋使用 FFT 频谱生成动态波浪，并通过 reflection/refraction FBO、深度水色混合和 Fresnel 实现水面效果。天空部分使用大气球壳和 Rayleigh/Mie 散射近似。所有中间数据都可以通过 ImGui debug view 和性能面板验证。
-
+> 这个项目实现了一个实时程序化星球。地形部分使用 cube-sphere，把六个 cube face 转成球面，CPU 四叉树负责大范围 LOD，GPU tessellation 负责 patch 内细分。高度由 gradient noise 和 fBM 生成，并结合大陆、山脉、海底等地貌因子。温度和湿度根据纬度、海拔、水域距离和噪声生成，再决定生物群系权重。项目还做了 CPU 简化液压侵蚀和热侵蚀，输出 channel、flow、wear、deposition mask，并从这些 mask 中提取一条主河道给 shader 渲染河流颜色、湿润岸线和高光。海洋使用 FFT 频谱生成动态波浪，并通过 reflection/refraction FBO、深度水色混合和 Fresnel 实现水面效果。天空部分使用大气球壳和 Rayleigh/Mie 散射近似。所有中间数据都可以通过 ImGui debug view 和性能面板验证。

@@ -12,6 +12,11 @@ uniform float terrainSnowStart;
 uniform float terrainSnowEnd;
 uniform float terrainMaterialNoiseScale;
 uniform float terrainMaterialNoiseStrength;
+uniform int renderRivers;
+uniform float riverVisibility;
+uniform float riverWidth;
+uniform float riverShine;
+uniform vec3 riverColor;
 uniform float oceanShoreBlendWidth;
 uniform float heightScale;
 uniform float proceduralDataTexelSize;
@@ -131,6 +136,8 @@ PlanetSample samplePlanet(vec3 sphereDir, float finalHeight)
 SurfaceData sampleSurfaceData(float height, vec3 worldPos, vec3 shadingNormal, vec3 sphereDir)
 {
     SurfaceData surface;
+    surface.riverMask = 0.0;
+    surface.riverSpecular = 0.0;
     PlanetSample planet = samplePlanet(sphereDir, height);
 
     // slope 由真实法线和径向方向计算，后面用于裸岩/雪线/植被剔除。
@@ -366,6 +373,23 @@ SurfaceData sampleSurfaceData(float height, vec3 worldPos, vec3 shadingNormal, v
     // 侵蚀/水流 mask 作为最终 tint：河道更暗更湿，沉积更偏土色。
     color = mix(color, vec3(0.06, 0.16, 0.10), channelMask * 0.12);
     color = mix(color, vec3(0.08, 0.20, 0.11), flowMask * 0.22);
+    float riverNoise = fbm3(radialUp * 180.0 + vec3(41.2, 9.7, 63.5));
+    float riverWidthSafe = max(riverWidth, 0.05);
+    float riverCore = smoothstep(0.18, 0.58 / riverWidthSafe, channelMask);
+    float riverShoulder = smoothstep(0.16, 0.64 / riverWidthSafe, channelMask + flowMask * 0.18);
+    float riverMask = clamp(max(riverCore, riverShoulder * channelMask * 0.72), 0.0, 1.0);
+    riverMask *= runtimeLand;
+    riverMask *= 1.0 - smoothstep(0.0, max(oceanShoreBlendWidth * 2.0, 0.002), waterDepth);
+    riverMask *= smoothstep(-0.015, 0.095, relativeHeight + 0.055);
+    riverMask *= mix(0.84, 1.12, riverNoise);
+    float riversEnabled = renderRivers != 0 ? 1.0 : 0.0;
+    riverMask = clamp(riverMask * riverVisibility * riversEnabled, 0.0, 1.0);
+    float riverBank = clamp(flowMask * 0.42 + channelMask * 0.92, 0.0, 1.0) * runtimeLand;
+    vec3 riverWaterColor = mix(riverColor * 0.82, vec3(0.02, 0.56, 0.64), clamp(channelMask * 0.72 + moisture * 0.22, 0.0, 1.0));
+    color = mix(color, vec3(0.035, 0.105, 0.065), riverBank * 0.22 * riversEnabled);
+    color = mix(color, riverWaterColor, riverMask * 0.92);
+    surface.riverMask = riverMask;
+    surface.riverSpecular = riverMask * riverShine;
     color = mix(color, terrainBeachColor * 0.72, shallowWaterWeight * 0.20);
     color = mix(color, alpineColor, treeLineBlend * 0.48);
 

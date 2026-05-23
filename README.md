@@ -6,6 +6,7 @@ An OpenGL 4.1 procedural planet renderer built with GLFW, GLAD, GLM, and xmake.
 
 - Cube-sphere planet rendering with tessellation shaders
 - Per-face quadtree LOD on the CPU
+- Erosion-driven primary meandering river rendering from channel/flow masks
 - Shaded, wireframe, height-map, and normal visualization modes
 - Fly camera controls for inspecting the planet at multiple scales
 
@@ -54,6 +55,7 @@ xmake run -y
 - `W/A/S/D`: move camera
 - `Q/E`: move down/up
 - `Right Mouse + Drag`: rotate camera
+- `Left Mouse + Drag`: rotate planet manually
 - `Mouse Wheel`: zoom
 - `1`: shaded mode
 - `2`: toggle wireframe overlay
@@ -68,7 +70,30 @@ xmake run -y
 
 ## Progress
 
-**Team size:** 3 | **Target:** 15p | **Current:** 5.5p
+**Team size:** 3 | **Target:** 15p | **Current estimate:** 11.5p conservative / 12.5p defensible
+
+### Current Score Estimate
+
+The old 5.5p estimate is outdated. The current code now includes CPU procedural planet data, climate/biome fields, hydraulic and thermal erosion, primary meandering river extraction from channel/flow masks, FFT ocean waves, planar reflection/refraction, depth-based water color, Fresnel mixing, and atmospheric scattering.
+
+| Module | Current implementation | Conservative | Defensible |
+| --- | --- | ---: | ---: |
+| **Noise terrain geometry** | CPU procedural height generation with gradient noise/fBM, continents, mountains, basins, ocean floor, uploaded as GPU texture arrays | 1p | 1p |
+| **Variable-resolution tessellation / LOD** | CPU cube-face quadtree LOD, frustum/horizon culling, shore-aware refinement, GPU tessellation control shader | 2p | 2p |
+| **Sphere / cube-sphere tessellation** | Six cube faces mapped to a sphere in tessellation evaluation shader; height displaces along sphere normal | 1p | 1p |
+| **Height-, slope-, biome-based shading** | Height/slope/biome/erosion-aware procedural material blending with debug masks | 1p | 1p |
+| **Basic water + FFT waves** | Spherical ocean pass, FFT height/normal/displacement textures, choppy displacement, detail normals | 2p | 2p |
+| **Texture splatting / material blending** | Procedural biome-weight material blending exists, but not full real-texture splatting | 0.5p | 0.5p |
+| **Hydraulic + thermal erosion + rivers** | CPU grid hydraulic erosion, flow, sediment capacity, erode/deposit, thermal talus smoothing, erosion masks, primary river extraction, visible river tint/highlight pass | 1p | 1p |
+| **Water reflection & refraction** | Planar reflection/refraction FBOs, depth-based color blend, Fresnel mixing, performance controls | 1p | 2p |
+| **Procedural sky / atmosphere** | Atmosphere shell with Rayleigh/Mie-style scattering approximation and tunable density/exposure/colors | 2p | 2p |
+| **Procedural vegetation** | Not implemented | 0p | 0p |
+
+**Total:** **11.5p conservative**, **12.5p defensible**.
+
+Use the conservative total if the grader is strict about planar reflection/refraction or real texture splatting. Use the defensible total if planar reflection/refraction with depth blend and Fresnel is counted as the full water extension.
+
+Remaining likely points: real sampled terrain texture splatting (+0.5p), more advanced/GPU erosion (+1p), procedural vegetation (+1p to +2p), and a more complete sky system with day/night or god rays (+1p to +3p).
 
 ### Completed
 

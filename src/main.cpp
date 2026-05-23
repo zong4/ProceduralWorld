@@ -41,7 +41,6 @@ constexpr int kWindowWidth = 1280;
 constexpr int kWindowHeight = 720;
 constexpr float kLockedCameraFov = 50.0f;
 constexpr float kOrbitAngularSpeedDegrees = 42.0f;
-constexpr float kPlanetAutoSpinDegreesPerSecond = 3.0f;
 constexpr const char* kSessionFilePath = "config/last_session.ini";
 constexpr const char* kProceduralCacheFilePath = "config/last_procedural_cache.bin";
 constexpr float kReferencePlanetRadius = 200.0f;
@@ -92,7 +91,9 @@ struct ApplicationState {
     bool showProceduralMaterialFeature = false;
     bool showRenderModeFeature = true;
     bool showVisibilityFeature = true;
+    bool showTerrainRuntimeFeature = true;
     bool showLightingFeature = false;
+    bool showRiverFeature = true;
     bool showAtmosphereFeature = false;
     bool showOceanColorFeature = false;
     bool showOceanWaveFeature = false;
@@ -113,8 +114,8 @@ ApplicationState* getState(GLFWwindow* window)
     return static_cast<ApplicationState*>(glfwGetWindowUserPointer(window));
 }
 
-// 只复制会影响“重新生成星球”的参数。
-// 渲染质量、海水反射、大气等运行时参数不需要触发 CPU 地形重烘焙。
+// 复制会影响“重新生成星球”或生成后地表显示的参数。
+// 海水反射、大气、相机、LOD 等纯运行时参数保留当前 renderSettings。
 void copyProceduralSettings(PlanetRenderSettings& destination, const PlanetRenderSettings& source)
 {
     destination.planetRadius = source.planetRadius;
@@ -150,6 +151,11 @@ void copyProceduralSettings(PlanetRenderSettings& destination, const PlanetRende
     destination.terrainSnowEnd = source.terrainSnowEnd;
     destination.terrainMaterialNoiseScale = source.terrainMaterialNoiseScale;
     destination.terrainMaterialNoiseStrength = source.terrainMaterialNoiseStrength;
+    destination.renderRivers = source.renderRivers;
+    destination.riverVisibility = source.riverVisibility;
+    destination.riverWidth = source.riverWidth;
+    destination.riverShine = source.riverShine;
+    destination.riverColor = source.riverColor;
 }
 
 float minCameraOrbitDistance(const PlanetRenderSettings& settings)
@@ -416,6 +422,9 @@ bool readVec3(const SessionValues& values, const std::string& key, glm::vec3& ou
     X(terrainSnowEnd) \
     X(terrainMaterialNoiseScale) \
     X(terrainMaterialNoiseStrength) \
+    X(riverVisibility) \
+    X(riverWidth) \
+    X(riverShine) \
     X(coarseGridLineWidth) \
     X(fogDensity) \
     X(atmosphereHeight) \
@@ -470,6 +479,7 @@ bool readVec3(const SessionValues& values, const std::string& key, glm::vec3& ou
     X(oceanAutoDistanceLod) \
     X(renderOceanWaves) \
     X(renderOceanMaterial) \
+    X(renderRivers) \
     X(renderTerrain) \
     X(renderOcean)
 
@@ -480,6 +490,7 @@ bool readVec3(const SessionValues& values, const std::string& key, glm::vec3& ou
     X(terrainRockColor) \
     X(terrainBeachColor) \
     X(terrainSnowColor) \
+    X(riverColor) \
     X(skyColor) \
     X(atmosphereRayleighColor) \
     X(atmosphereMieColor) \
@@ -576,7 +587,9 @@ bool saveSession(ApplicationState& state, const char* path = kSessionFilePath)
     writeBool(file, "showProceduralMaterialFeature", state.showProceduralMaterialFeature);
     writeBool(file, "showRenderModeFeature", state.showRenderModeFeature);
     writeBool(file, "showVisibilityFeature", state.showVisibilityFeature);
+    writeBool(file, "showTerrainRuntimeFeature", state.showTerrainRuntimeFeature);
     writeBool(file, "showLightingFeature", state.showLightingFeature);
+    writeBool(file, "showRiverFeature", state.showRiverFeature);
     writeBool(file, "showAtmosphereFeature", state.showAtmosphereFeature);
     writeBool(file, "showOceanColorFeature", state.showOceanColorFeature);
     writeBool(file, "showOceanWaveFeature", state.showOceanWaveFeature);
@@ -627,7 +640,9 @@ bool loadSession(ApplicationState& state, const char* path = kSessionFilePath, b
     readBool(values, "showProceduralMaterialFeature", state.showProceduralMaterialFeature);
     readBool(values, "showRenderModeFeature", state.showRenderModeFeature);
     readBool(values, "showVisibilityFeature", state.showVisibilityFeature);
+    readBool(values, "showTerrainRuntimeFeature", state.showTerrainRuntimeFeature);
     readBool(values, "showLightingFeature", state.showLightingFeature);
+    readBool(values, "showRiverFeature", state.showRiverFeature);
     readBool(values, "showAtmosphereFeature", state.showAtmosphereFeature);
     readBool(values, "showOceanColorFeature", state.showOceanColorFeature);
     readBool(values, "showOceanWaveFeature", state.showOceanWaveFeature);
@@ -648,6 +663,7 @@ bool loadSession(ApplicationState& state, const char* path = kSessionFilePath, b
         state.generatedPlanet.clear();
         state.hasGeneratedPlanet = false;
         state.workflowStage = WorkflowStage::ProceduralSetup;
+        state.showDebugPanel = true;
     }
 
     const PlanetRenderSettings& activeSettings = state.workflowStage == WorkflowStage::Render
@@ -661,7 +677,7 @@ bool loadSession(ApplicationState& state, const char* path = kSessionFilePath, b
 
     state.sessionMessage = loadedCache
         ? std::string("Loaded session and cached planet: ") + path
-        : std::string("Loaded session: ") + path;
+        : std::string("Loaded session but cached planet is missing or outdated; click Generate Planet.");
     return true;
 }
 
@@ -680,6 +696,23 @@ void drawSessionControls(ApplicationState& state)
     if (!state.sessionMessage.empty()) {
         ImGui::TextWrapped("%s", state.sessionMessage.c_str());
     }
+}
+
+void drawFeatureToggle(const char* label, bool& open)
+{
+    const ImVec4 activeColor(0.105f, 0.300f, 0.540f, 1.0f);
+    const ImVec4 inactiveColor(0.050f, 0.090f, 0.130f, 1.0f);
+    const ImVec4 hoveredColor(0.120f, 0.355f, 0.620f, 1.0f);
+
+    ImGui::PushID(label);
+    ImGui::PushStyleColor(ImGuiCol_Button, open ? activeColor : inactiveColor);
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, hoveredColor);
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, activeColor);
+    if (ImGui::Button(label, ImVec2(-1.0f, 26.0f))) {
+        open = !open;
+    }
+    ImGui::PopStyleColor(3);
+    ImGui::PopID();
 }
 
 void drawFeatureToggleRow(const char* firstLabel, bool& firstOpen, const char* secondLabel, bool& secondOpen)
@@ -743,6 +776,24 @@ void drawRenderFeatureToggleRow(const char* firstLabel,
     if (ImGui::Button(secondLabel, ImVec2(-1.0f, 26.0f))) {
         secondEnabled = !secondEnabled;
         secondPanelOpen = secondEnabled;
+    }
+    ImGui::PopStyleColor(3);
+    ImGui::PopID();
+}
+
+void drawRenderFeatureToggle(const char* label, bool& enabled, bool& panelOpen)
+{
+    const ImVec4 enabledColor(0.100f, 0.360f, 0.180f, 1.0f);
+    const ImVec4 disabledColor(0.150f, 0.060f, 0.060f, 1.0f);
+    const ImVec4 hoveredColor(0.160f, 0.480f, 0.260f, 1.0f);
+
+    ImGui::PushID(label);
+    ImGui::PushStyleColor(ImGuiCol_Button, enabled ? enabledColor : disabledColor);
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, hoveredColor);
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, enabledColor);
+    if (ImGui::Button(label, ImVec2(-1.0f, 26.0f))) {
+        enabled = !enabled;
+        panelOpen = enabled;
     }
     ImGui::PopStyleColor(3);
     ImGui::PopID();
@@ -824,7 +875,7 @@ void startPlanetGeneration(ApplicationState& state)
         clampedResolution * 6 + 1,
         clampedResolution * 6 + 2,
         clampedResolution * 6 + 1,
-        erosionActive ? erosionIterations + thermalIterations + 6 : 0,
+        erosionActive ? erosionIterations + thermalIterations + 8 : 0,
         clampedResolution * 6 + 3,
         clampedResolution * 6 + 2,
         1 + 6
@@ -1143,19 +1194,40 @@ void drawProceduralPanel(ApplicationState& state)
     ImGui::Text("Feature Panels");
     drawFeatureToggleRow("Terrain Bake", state.showProceduralTerrainFeature, "Erosion Bake", state.showProceduralErosionFeature);
     drawFeatureToggleRow("Detail Bands", state.showProceduralDetailFeature, "Terrain Materials", state.showProceduralMaterialFeature);
+    if (ImGui::Button("Preset: Rugged Rivers", ImVec2(-1.0f, 28.0f))) {
+        settings.terrainHeightScale = 34.0f * proceduralDistanceScale;
+        settings.terrainNoiseScale = 0.78f;
+        settings.mountainMaskStrength = 1.90f;
+        settings.mountainMaskScale = 3.35f;
+        settings.mountainRidgeSharpness = 3.80f;
+        settings.erosionIterations = 128;
+        settings.erosionStrength = 0.090f;
+        settings.erosionSediment = 0.72f;
+        settings.erosionThermalStrength = 0.020f;
+        settings.regionalDetailStrength = 1.18f;
+        settings.microDetailStrength = 0.26f;
+        settings.renderRivers = true;
+        settings.riverVisibility = 1.70f;
+        settings.riverWidth = 1.25f;
+        settings.riverShine = 1.05f;
+        state.showProceduralTerrainFeature = true;
+        state.showProceduralErosionFeature = true;
+        state.showProceduralDetailFeature = true;
+        state.showRiverFeature = true;
+    }
     ImGui::Separator();
     // 下面是会影响 CPU 烘焙的参数：地形高度、山脉、侵蚀、材质权重等。
     if (state.showProceduralTerrainFeature) {
         drawFeatureBodyBegin();
         ImGui::Text("Terrain Bake");
-    ImGui::SliderFloat("Planet Radius", &settings.planetRadius, 50.0f, 5000.0f, "%.1f");
-    ImGui::SliderFloat("Sea Level", &settings.seaLevelOffset, -1.5f, 1.5f, "%.2f");
-    ImGui::SliderFloat("Height Scale", &settings.terrainHeightScale, 0.0f, 80.0f * proceduralDistanceScale, "%.2f");
-    ImGui::SliderFloat("Noise Scale", &settings.terrainNoiseScale, 0.2f, 10.0f, "%.2f");
-    ImGui::SliderFloat("Mountain Mask", &settings.mountainMaskStrength, 0.0f, 2.4f, "%.2f");
-    ImGui::SliderFloat("Mountain Scale", &settings.mountainMaskScale, 0.5f, 8.0f, "%.2f");
-    ImGui::SliderFloat("Ridge Sharpness", &settings.mountainRidgeSharpness, 1.0f, 6.0f, "%.2f");
-    ImGui::SliderFloat("Skirt Depth", &settings.terrainSkirtDepth, 0.0f, 3.0f, "%.2f");
+        ImGui::SliderFloat("Planet Radius", &settings.planetRadius, 50.0f, 5000.0f, "%.1f");
+        ImGui::SliderFloat("Sea Level", &settings.seaLevelOffset, -1.5f, 1.5f, "%.2f");
+        ImGui::SliderFloat("Height Scale", &settings.terrainHeightScale, 0.0f, 80.0f * proceduralDistanceScale, "%.2f");
+        ImGui::SliderFloat("Noise Scale", &settings.terrainNoiseScale, 0.2f, 10.0f, "%.2f");
+        ImGui::SliderFloat("Mountain Mask", &settings.mountainMaskStrength, 0.0f, 2.4f, "%.2f");
+        ImGui::SliderFloat("Mountain Scale", &settings.mountainMaskScale, 0.5f, 8.0f, "%.2f");
+        ImGui::SliderFloat("Ridge Sharpness", &settings.mountainRidgeSharpness, 1.0f, 6.0f, "%.2f");
+        ImGui::SliderFloat("Skirt Depth", &settings.terrainSkirtDepth, 0.0f, 3.0f, "%.2f");
         ImGui::SliderInt("Face Resolution", &state.generationFaceResolution, 32, 512);
         drawFeatureBodyEnd();
     }
@@ -1297,13 +1369,15 @@ void drawRenderPanel(ApplicationState& state)
     ImGui::Separator();
     ImGui::Text("Render Features");
     drawRenderFeatureToggleRow("Terrain", settings.renderTerrain, state.showVisibilityFeature, "Ocean", settings.renderOcean, state.showOceanColorFeature);
-    drawRenderFeatureToggleRow("Atmosphere", settings.renderAtmosphere, state.showAtmosphereFeature, "Ocean Waves", settings.renderOceanWaves, state.showOceanWaveFeature);
-    drawRenderFeatureToggleRow("Ocean Material", settings.renderOceanMaterial, state.showOceanMaterialFeature, "Planar Targets", settings.renderOceanReflectionRefraction, state.showOceanReflectionFeature);
+    drawRenderFeatureToggleRow("Rivers", settings.renderRivers, state.showRiverFeature, "Atmosphere", settings.renderAtmosphere, state.showAtmosphereFeature);
+    drawRenderFeatureToggleRow("Ocean Waves", settings.renderOceanWaves, state.showOceanWaveFeature, "Ocean Material", settings.renderOceanMaterial, state.showOceanMaterialFeature);
+    drawRenderFeatureToggle("Planar Targets", settings.renderOceanReflectionRefraction, state.showOceanReflectionFeature);
     if (!settings.renderOcean) {
         ImGui::TextDisabled("Ocean-dependent effects are hidden while Ocean is off.");
     }
 
     state.showVisibilityFeature = settings.renderTerrain || settings.renderOcean;
+    state.showRiverFeature = settings.renderTerrain && settings.renderRivers;
     state.showAtmosphereFeature = settings.renderAtmosphere;
     state.showOceanColorFeature = settings.renderOcean;
     state.showOceanWaveFeature = settings.renderOcean && settings.renderOceanWaves;
@@ -1312,8 +1386,9 @@ void drawRenderPanel(ApplicationState& state)
 
     ImGui::Separator();
     ImGui::Text("Utility Panels");
-    drawFeatureToggleRow("Render Debug", state.showRenderModeFeature, "Lighting", state.showLightingFeature);
-    drawFeatureToggleRow("Advanced Render", state.showAdvancedRenderFeature, "Camera", state.showCameraFeature);
+    drawFeatureToggleRow("Render Debug", state.showRenderModeFeature, "Terrain Runtime", state.showTerrainRuntimeFeature);
+    drawFeatureToggleRow("Lighting", state.showLightingFeature, "Advanced Render", state.showAdvancedRenderFeature);
+    drawFeatureToggle("Camera", state.showCameraFeature);
     ImGui::Separator();
 
     if (state.showRenderModeFeature) {
@@ -1328,6 +1403,48 @@ void drawRenderPanel(ApplicationState& state)
         ImGui::Text("Terrain: %s", settings.renderTerrain ? "On" : "Off");
         ImGui::SameLine();
         ImGui::Text("Ocean: %s", settings.renderOcean ? "On" : "Off");
+        drawFeatureBodyEnd();
+    }
+
+    if (settings.renderTerrain && state.showTerrainRuntimeFeature) {
+        drawFeatureBodyBegin();
+        ImGui::Text("Terrain Runtime");
+        ImGui::TextDisabled("Immediate shader controls; bake-only terrain, biome, erosion need Generate Planet.");
+        ImGui::SliderFloat("Height Scale", &settings.terrainHeightScale, 0.0f, 120.0f * renderDistanceScale, "%.2f");
+        ImGui::SliderFloat("Sea Level", &settings.seaLevelOffset, -1.5f, 1.5f, "%.2f");
+        ImGui::SliderFloat("Noise Scale", &settings.terrainNoiseScale, 0.2f, 10.0f, "%.2f");
+        ImGui::SliderFloat("Mountain Mask", &settings.mountainMaskStrength, 0.0f, 2.8f, "%.2f");
+        ImGui::SliderFloat("Mountain Scale", &settings.mountainMaskScale, 0.5f, 8.0f, "%.2f");
+        ImGui::SliderFloat("Ridge Sharpness", &settings.mountainRidgeSharpness, 1.0f, 7.0f, "%.2f");
+        ImGui::SliderFloat("Regional Detail", &settings.regionalDetailStrength, 0.0f, 1.6f, "%.2f");
+        ImGui::SliderFloat("Micro Detail", &settings.microDetailStrength, 0.0f, 1.0f, "%.2f");
+        ImGui::SliderFloat("Regional Start", &settings.regionalDetailStartAltitude, 0.0f, 1800.0f * renderDistanceScale, "%.1f");
+        ImGui::SliderFloat("Regional End", &settings.regionalDetailEndAltitude, settings.regionalDetailStartAltitude + 10.0f, 5000.0f * renderDistanceScale, "%.1f");
+        ImGui::SliderFloat("Micro Start", &settings.microDetailStartAltitude, 0.0f, 800.0f * renderDistanceScale, "%.1f");
+        ImGui::SliderFloat("Micro End", &settings.microDetailEndAltitude, settings.microDetailStartAltitude + 10.0f, 2000.0f * renderDistanceScale, "%.1f");
+        ImGui::SliderFloat("Shore Lift", &settings.terrainShoreLift, 0.0f, 0.18f, "%.3f");
+        ImGui::SliderFloat("Beach Width", &settings.terrainBeachWidth, 0.005f, 0.25f, "%.3f");
+        ImGui::SliderFloat("Rock Slope Start", &settings.terrainRockSlopeStart, 0.0f, 0.8f, "%.2f");
+        ImGui::SliderFloat("Rock Slope End", &settings.terrainRockSlopeEnd, settings.terrainRockSlopeStart + 0.01f, 1.0f, "%.2f");
+        ImGui::SliderFloat("Snow Start", &settings.terrainSnowStart, 0.2f, 1.0f, "%.2f");
+        ImGui::SliderFloat("Snow End", &settings.terrainSnowEnd, settings.terrainSnowStart + 0.01f, 1.2f, "%.2f");
+        ImGui::SliderFloat("Material Noise Scale", &settings.terrainMaterialNoiseScale, 0.002f, 0.20f, "%.3f");
+        ImGui::SliderFloat("Material Noise", &settings.terrainMaterialNoiseStrength, 0.0f, 0.4f, "%.2f");
+        if (ImGui::Button("Runtime Rugged Boost", ImVec2(-1.0f, 26.0f))) {
+            settings.terrainHeightScale = 42.0f * renderDistanceScale;
+            settings.terrainNoiseScale = 0.88f;
+            settings.mountainMaskStrength = 2.10f;
+            settings.mountainMaskScale = 3.70f;
+            settings.mountainRidgeSharpness = 4.30f;
+            settings.regionalDetailStrength = 1.35f;
+            settings.microDetailStrength = 0.38f;
+            settings.terrainShoreLift = 0.055f;
+            settings.riverVisibility = 1.85f;
+            settings.riverWidth = 1.35f;
+            settings.riverShine = 1.15f;
+            settings.renderRivers = true;
+            state.showRiverFeature = true;
+        }
         drawFeatureBodyEnd();
     }
 
@@ -1350,6 +1467,16 @@ void drawRenderPanel(ApplicationState& state)
         ImGui::SliderFloat("Atmosphere Exposure", &settings.atmosphereExposure, 0.1f, 4.0f, "%.2f");
         ImGui::ColorEdit3("Rayleigh Color", &settings.atmosphereRayleighColor.x);
         ImGui::ColorEdit3("Mie Color", &settings.atmosphereMieColor.x);
+        drawFeatureBodyEnd();
+    }
+
+    if (settings.renderTerrain && settings.renderRivers && state.showRiverFeature) {
+        drawFeatureBodyBegin();
+        ImGui::Text("Rivers");
+        ImGui::ColorEdit3("River Color", &settings.riverColor.x);
+        ImGui::SliderFloat("Visibility", &settings.riverVisibility, 0.0f, 2.0f, "%.2f");
+        ImGui::SliderFloat("Width", &settings.riverWidth, 0.1f, 2.0f, "%.2f");
+        ImGui::SliderFloat("Shine", &settings.riverShine, 0.0f, 1.5f, "%.2f");
         drawFeatureBodyEnd();
     }
 
@@ -1700,8 +1827,7 @@ int main()
 
         handleKeyboardMovement(window, appState);
         if (appState.workflowStage == WorkflowStage::Render) {
-            // 自动缓慢旋转星球，同时维护轨道相机约束。
-            appState.planetYawDegrees += kPlanetAutoSpinDegreesPerSecond * appState.deltaSeconds;
+            // Render 阶段保持星球静止，方便观察河流、LOD 和材质 debug；需要旋转时用左键拖拽。
             appState.renderer.setPlanetRotation(appState.planetYawDegrees, appState.planetPitchDegrees);
             updateOrbitCamera(appState, appState.renderer.settings());
         }
@@ -1727,7 +1853,7 @@ int main()
 
         const glm::vec3 skyColor = appState.workflowStage == WorkflowStage::Render
             ? appState.renderer.settings().skyColor
-            : glm::vec3(0.0f);
+            : glm::vec3(0.018f, 0.035f, 0.070f);
         glClearColor(skyColor.r, skyColor.g, skyColor.b, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 

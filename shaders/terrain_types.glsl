@@ -4,6 +4,8 @@ struct SurfaceData
 {
     // 经过 biome/坡度/侵蚀混合后的基础反照率。
     vec3 baseColor;
+    float riverMask;
+    float riverSpecular;
     // 由法线与径向方向估算的坡度，0=平缓，1=垂直峭壁。
     float slope;
     float height01;

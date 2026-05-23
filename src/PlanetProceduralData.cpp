@@ -19,7 +19,7 @@ namespace
 {
 // 缓存文件版本号和 magic 用来拒绝旧格式/损坏文件。
 constexpr char kProceduralCacheMagic[8] = { 'P', 'W', 'C', 'A', 'C', 'H', 'E', '9' };
-constexpr std::uint32_t kProceduralCacheVersion = 30;
+constexpr std::uint32_t kProceduralCacheVersion = 31;
 
 template <typename T>
 bool writeBinary(std::ofstream& file, const T& value)
@@ -674,7 +674,7 @@ void PlanetProceduralData::generate(const PlanetRenderSettings& settings,
     moduleTotals[static_cast<std::size_t>(GenerationModule::InitialBiomes)] = resolution_ * 6 + 2;
     moduleTotals[static_cast<std::size_t>(GenerationModule::BiomeTerrain)] = resolution_ * 6 + 1;
     moduleTotals[static_cast<std::size_t>(GenerationModule::Erosion)] =
-        erosionActive ? erosionIterations + thermalIterations + 6 : 0;
+        erosionActive ? erosionIterations + thermalIterations + 8 : 0;
     moduleTotals[static_cast<std::size_t>(GenerationModule::FinalClimate)] = resolution_ * 6 + 3;
     moduleTotals[static_cast<std::size_t>(GenerationModule::FinalBiomes)] = resolution_ * 6 + 2;
     moduleTotals[static_cast<std::size_t>(GenerationModule::Finalize)] = 1 + 6;
@@ -768,8 +768,9 @@ void PlanetProceduralData::generate(const PlanetRenderSettings& settings,
     advanceModuleProgress(GenerationModule::BiomeTerrain, "Blending biome-shaped terrain seams");
 
     applyErosion(settings, advanceErosionProgress);
+    extractPrimaryRiver(settings, advanceErosionProgress);
     fixCubeFaceSeams();
-    advanceModuleProgress(GenerationModule::Finalize, "Blending erosion seams");
+    advanceModuleProgress(GenerationModule::Erosion, "Blending primary river seams");
 
     computeWaterClimateFields(settings, [&](const char* status) {
         advanceModuleProgress(GenerationModule::FinalClimate, status);
@@ -1583,6 +1584,274 @@ void PlanetProceduralData::applyErosion(const PlanetRenderSettings& settings,
         for (float& value : faces_[static_cast<std::size_t>(faceIndex)].channelMask) {
             value = glm::smoothstep(0.10f, 0.55f, value);
         }
+    }
+}
+
+void PlanetProceduralData::extractPrimaryRiver(const PlanetRenderSettings& settings,
+                                               const std::function<void(const char*)>& advanceProgress)
+{
+    const int n = resolution_;
+    if (n <= 4) {
+        return;
+    }
+
+    const std::size_t cellCount = static_cast<std::size_t>(n * n);
+    const float seaLevel = settings.seaLevelOffset;
+    const auto indexOf = [n](int x, int y) {
+        return static_cast<std::size_t>(y * n + x);
+    };
+    const auto cellDirection = [this, n](int faceIndex, std::size_t index) {
+        const int x = static_cast<int>(index % static_cast<std::size_t>(n));
+        const int y = static_cast<int>(index / static_cast<std::size_t>(n));
+        const glm::vec2 uv(
+            (static_cast<float>(x) + 0.5f) / static_cast<float>(n),
+            (static_cast<float>(y) + 0.5f) / static_cast<float>(n)
+        );
+        return cubeSphereDirection(kFaces[static_cast<std::size_t>(faceIndex)], uv);
+    };
+
+    std::array<std::vector<float>, 6> baseFlow;
+    std::array<std::vector<float>, 6> baseChannel;
+    std::array<std::vector<float>, 6> baseWear;
+    for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
+        const FaceData& faceData = faces_[static_cast<std::size_t>(faceIndex)];
+        baseFlow[static_cast<std::size_t>(faceIndex)] = faceData.flowMask;
+        baseChannel[static_cast<std::size_t>(faceIndex)] = faceData.channelMask;
+        baseWear[static_cast<std::size_t>(faceIndex)] = faceData.wearMask;
+    }
+
+    struct Candidate {
+        int face = 0;
+        std::size_t index = 0;
+        float score = 0.0f;
+    };
+    std::vector<Candidate> candidates;
+    candidates.reserve(64);
+
+    for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
+        const FaceData& faceData = faces_[static_cast<std::size_t>(faceIndex)];
+        for (std::size_t index = 0; index < cellCount; ++index) {
+            const float height = faceData.height[index];
+            const float relativeHeight = height - seaLevel;
+            if (relativeHeight <= 0.16f || faceData.waterDepth[index] > 0.0f) {
+                continue;
+            }
+
+            const glm::vec3 dir = cellDirection(faceIndex, index);
+            const float basinNoise = fbm(dir * 2.25f + glm::vec3(19.4f, 7.1f, 31.6f), 4, 2.0f, 0.52f) * 0.5f + 0.5f;
+            const float shorePenalty = glm::smoothstep(0.02f, 0.40f, faceData.shoreMask[index]);
+            const float score = relativeHeight * 1.90f
+                              + baseFlow[static_cast<std::size_t>(faceIndex)][index] * 0.75f
+                              + baseWear[static_cast<std::size_t>(faceIndex)][index] * 0.26f
+                              + basinNoise * 0.20f
+                              - shorePenalty * 0.95f;
+            candidates.push_back({ faceIndex, index, score });
+        }
+    }
+
+    if (candidates.empty()) {
+        return;
+    }
+
+    std::sort(candidates.begin(), candidates.end(), [](const Candidate& a, const Candidate& b) {
+        return a.score > b.score;
+    });
+    const std::size_t candidateCount = std::min<std::size_t>(candidates.size(), 32);
+
+    struct RiverNode {
+        int face = 0;
+        std::size_t index = 0;
+    };
+    struct RiverTrace {
+        std::vector<RiverNode> nodes;
+        bool reachedSea = false;
+        float score = -std::numeric_limits<float>::max();
+    };
+
+    const auto traceRiver = [&](const Candidate& source) {
+        RiverTrace trace;
+        std::array<std::vector<std::uint8_t>, 6> visited;
+        for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
+            visited[static_cast<std::size_t>(faceIndex)].assign(cellCount, 0);
+        }
+
+        int currentFace = source.face;
+        std::size_t currentIndex = source.index;
+        const float sourceHeight = faces_[static_cast<std::size_t>(currentFace)].height[currentIndex];
+        const int maxSteps = std::max(n * 10, 128);
+
+        for (int step = 0; step < maxSteps; ++step) {
+            trace.nodes.push_back({ currentFace, currentIndex });
+            visited[static_cast<std::size_t>(currentFace)][currentIndex] = 1;
+
+            const FaceData& currentFaceData = faces_[static_cast<std::size_t>(currentFace)];
+            const float currentHeight = currentFaceData.height[currentIndex];
+            if (trace.nodes.size() > static_cast<std::size_t>(std::max(n / 3, 18))
+                && currentHeight <= seaLevel + 0.010f) {
+                trace.reachedSea = true;
+                break;
+            }
+
+            const int cx = static_cast<int>(currentIndex % static_cast<std::size_t>(n));
+            const int cy = static_cast<int>(currentIndex / static_cast<std::size_t>(n));
+            float bestScore = -std::numeric_limits<float>::max();
+            CellRef bestNeighbor{ currentFace, currentIndex };
+
+            for (int oy = -1; oy <= 1; ++oy) {
+                for (int ox = -1; ox <= 1; ++ox) {
+                    if (ox == 0 && oy == 0) {
+                        continue;
+                    }
+
+                    const CellRef neighbor = neighborCell(currentFace, cx + ox, cy + oy, n);
+                    const std::size_t neighborFace = static_cast<std::size_t>(neighbor.face);
+                    const FaceData& neighborFaceData = faces_[neighborFace];
+                    const float neighborHeight = neighborFaceData.height[neighbor.index];
+                    const float drop = currentHeight - neighborHeight;
+                    const glm::vec3 dir = cellDirection(neighbor.face, neighbor.index);
+                    const float meander = fbm(dir * 6.8f + glm::vec3(4.7f, 23.1f, 9.6f), 3, 2.0f, 0.50f) * 0.5f + 0.5f;
+                    const float oldDrainage = baseFlow[neighborFace][neighbor.index] * 0.78f
+                                            + baseChannel[neighborFace][neighbor.index] * 1.05f;
+                    const float seaBonus = neighborHeight <= seaLevel + 0.008f
+                        ? (trace.nodes.size() > static_cast<std::size_t>(n / 2) ? 1.65f : -2.20f)
+                        : 0.0f;
+                    const float loopPenalty = visited[neighborFace][neighbor.index] != 0 ? 4.0f : 0.0f;
+                    const float diagonalPenalty = (ox != 0 && oy != 0) ? 0.035f : 0.0f;
+                    const float score = drop * 3.10f
+                                      - neighborHeight * 0.72f
+                                      + oldDrainage
+                                      + baseWear[neighborFace][neighbor.index] * 0.18f
+                                      + meander * 0.10f
+                                      + seaBonus
+                                      - loopPenalty
+                                      - diagonalPenalty;
+                    if (score > bestScore) {
+                        bestScore = score;
+                        bestNeighbor = neighbor;
+                    }
+                }
+            }
+
+            if (bestNeighbor.face == currentFace && bestNeighbor.index == currentIndex) {
+                break;
+            }
+            if (visited[static_cast<std::size_t>(bestNeighbor.face)][bestNeighbor.index] != 0) {
+                break;
+            }
+
+            currentFace = bestNeighbor.face;
+            currentIndex = bestNeighbor.index;
+        }
+
+        const RiverNode& endNode = trace.nodes.back();
+        const float endHeight = faces_[static_cast<std::size_t>(endNode.face)].height[endNode.index];
+        const float length01 = static_cast<float>(trace.nodes.size()) / static_cast<float>(std::max(n, 1));
+        const float altitudeDrop = std::max(sourceHeight - endHeight, 0.0f);
+        trace.score = length01 * 1.35f
+                    + altitudeDrop * 2.25f
+                    + (trace.reachedSea ? 2.40f : 0.0f)
+                    + source.score * 0.10f;
+        return trace;
+    };
+
+    RiverTrace bestTrace;
+    for (std::size_t i = 0; i < candidateCount; ++i) {
+        RiverTrace trace = traceRiver(candidates[i]);
+        if (trace.nodes.size() > bestTrace.nodes.size() && trace.score + 0.45f > bestTrace.score) {
+            bestTrace = std::move(trace);
+        } else if (trace.score > bestTrace.score) {
+            bestTrace = std::move(trace);
+        }
+    }
+
+    if (bestTrace.nodes.size() < static_cast<std::size_t>(std::max(n / 3, 18))) {
+        return;
+    }
+
+    std::array<std::vector<float>, 6> primaryChannel;
+    std::array<std::vector<float>, 6> primaryFlow;
+    for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
+        primaryChannel[static_cast<std::size_t>(faceIndex)].assign(cellCount, 0.0f);
+        primaryFlow[static_cast<std::size_t>(faceIndex)].assign(cellCount, 0.0f);
+        FaceData& faceData = faces_[static_cast<std::size_t>(faceIndex)];
+        for (std::size_t i = 0; i < cellCount; ++i) {
+            const float oldWetTrace = std::pow(glm::clamp(baseFlow[static_cast<std::size_t>(faceIndex)][i], 0.0f, 1.0f), 1.85f);
+            faceData.flowMask[i] = oldWetTrace * 0.10f;
+            faceData.channelMask[i] = 0.0f;
+        }
+    }
+
+    const int coreRadius = glm::clamp(n / 70, 2, 5);
+    const int bankRadius = coreRadius + 3;
+    const float invPathLength = bestTrace.nodes.size() > 1
+        ? 1.0f / static_cast<float>(bestTrace.nodes.size() - 1)
+        : 1.0f;
+
+    const auto paintRiver = [&](const RiverNode& node, float downstream) {
+        const int centerX = static_cast<int>(node.index % static_cast<std::size_t>(n));
+        const int centerY = static_cast<int>(node.index / static_cast<std::size_t>(n));
+        const float coreSigma = std::max(static_cast<float>(coreRadius) * (0.62f + downstream * 0.36f), 1.0f);
+        const float bankSigma = static_cast<float>(bankRadius) * (0.62f + downstream * 0.42f);
+        const float channelStrength = glm::mix(0.62f, 1.0f, downstream);
+        const float flowStrength = glm::mix(0.42f, 1.0f, downstream);
+
+        for (int oy = -bankRadius; oy <= bankRadius; ++oy) {
+            for (int ox = -bankRadius; ox <= bankRadius; ++ox) {
+                const float d2 = static_cast<float>(ox * ox + oy * oy);
+                if (d2 > static_cast<float>(bankRadius * bankRadius)) {
+                    continue;
+                }
+
+                const CellRef target = neighborCell(node.face, centerX + ox, centerY + oy, n);
+                const std::size_t targetFace = static_cast<std::size_t>(target.face);
+                const float core = std::exp(-d2 / (2.0f * coreSigma * coreSigma));
+                const float bank = std::exp(-d2 / (2.0f * bankSigma * bankSigma));
+                primaryChannel[targetFace][target.index] = std::max(
+                    primaryChannel[targetFace][target.index],
+                    channelStrength * core
+                );
+                primaryFlow[targetFace][target.index] = std::max(
+                    primaryFlow[targetFace][target.index],
+                    flowStrength * bank
+                );
+
+                FaceData& targetFaceData = faces_[targetFace];
+                const float carve = (0.0018f + downstream * 0.0042f) * core * channelStrength;
+                if (targetFaceData.height[target.index] > seaLevel + 0.006f) {
+                    targetFaceData.height[target.index] = std::max(
+                        targetFaceData.height[target.index] - carve,
+                        seaLevel + 0.006f
+                    );
+                }
+                targetFaceData.wearMask[target.index] = std::max(
+                    targetFaceData.wearMask[target.index],
+                    core * channelStrength * 0.82f
+                );
+                targetFaceData.erosionMask[target.index] = std::max(
+                    targetFaceData.erosionMask[target.index],
+                    bank * flowStrength * 0.46f
+                );
+            }
+        }
+    };
+
+    for (std::size_t i = 0; i < bestTrace.nodes.size(); ++i) {
+        paintRiver(bestTrace.nodes[i], static_cast<float>(i) * invPathLength);
+    }
+
+    for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
+        FaceData& faceData = faces_[static_cast<std::size_t>(faceIndex)];
+        for (std::size_t i = 0; i < cellCount; ++i) {
+            faceData.channelMask[i] = glm::smoothstep(0.18f, 0.78f, primaryChannel[static_cast<std::size_t>(faceIndex)][i]);
+            faceData.flowMask[i] = std::max(
+                faceData.flowMask[i],
+                glm::smoothstep(0.10f, 0.74f, primaryFlow[static_cast<std::size_t>(faceIndex)][i])
+            );
+        }
+    }
+
+    if (advanceProgress) {
+        advanceProgress("Extracting one primary meandering river");
     }
 }
 
