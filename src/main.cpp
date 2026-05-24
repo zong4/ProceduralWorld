@@ -57,6 +57,103 @@ std::string read_text_file(const std::filesystem::path& path)
     return ss.str();
 }
 
+std::string parse_shader_include(const std::string& line)
+{
+    const size_t first = line.find_first_not_of(" \t");
+    if (first == std::string::npos || line.compare(first, 8, "#include") != 0) {
+        return {};
+    }
+
+    const size_t after_directive = first + 8;
+    if (after_directive < line.size() && line[after_directive] != ' ' && line[after_directive] != '\t') {
+        return {};
+    }
+
+    const size_t open = line.find_first_of("\"<", after_directive);
+    if (open == std::string::npos) {
+        return {};
+    }
+
+    const char close_char = line[open] == '"' ? '"' : '>';
+    const size_t close = line.find(close_char, open + 1);
+    if (close == std::string::npos) {
+        return {};
+    }
+
+    return line.substr(open + 1, close - open - 1);
+}
+
+std::filesystem::path resolve_shader_include(
+    const std::filesystem::path& include_path,
+    const std::filesystem::path& current_dir)
+{
+    std::vector<std::filesystem::path> candidates;
+    if (include_path.is_absolute()) {
+        candidates.push_back(include_path);
+    } else {
+        candidates.push_back(current_dir / include_path);
+        candidates.push_back(std::filesystem::path(PCG_PROJECT_ROOT) / include_path);
+        candidates.push_back(std::filesystem::current_path() / include_path);
+    }
+
+    for (const auto& candidate : candidates) {
+        std::error_code ec;
+        if (std::filesystem::exists(candidate, ec)) {
+            return std::filesystem::canonical(candidate, ec);
+        }
+    }
+
+    throw std::runtime_error("Shader include not found: " + include_path.string());
+}
+
+std::string expand_shader_includes(
+    const std::filesystem::path& path,
+    std::vector<std::filesystem::path>& include_stack)
+{
+    std::error_code ec;
+    auto canonical_path = std::filesystem::canonical(path, ec);
+    if (ec) {
+        throw std::runtime_error("Shader file does not exist: " + path.string());
+    }
+
+    if (std::find(include_stack.begin(), include_stack.end(), canonical_path) != include_stack.end()) {
+        throw std::runtime_error("Cyclic shader include detected at: " + canonical_path.string());
+    }
+
+    include_stack.push_back(canonical_path);
+
+    std::istringstream input(read_text_file(canonical_path));
+    std::ostringstream output;
+    std::string line;
+    int line_number = 0;
+    while (std::getline(input, line)) {
+        ++line_number;
+        const std::string include_name = parse_shader_include(line);
+        if (include_name.empty()) {
+            output << line << '\n';
+            continue;
+        }
+
+        try {
+            const auto include_file = resolve_shader_include(include_name, canonical_path.parent_path());
+            output << expand_shader_includes(include_file, include_stack);
+            output << '\n';
+        } catch (const std::exception& e) {
+            throw std::runtime_error(
+                canonical_path.string() + ":" + std::to_string(line_number) + ": " + e.what());
+        }
+    }
+
+    include_stack.pop_back();
+    return output.str();
+}
+
+std::string load_shader_source(const std::filesystem::path& path)
+{
+    std::vector<std::filesystem::path> include_stack;
+    return expand_shader_includes(path, include_stack);
+}
+
 std::filesystem::path executable_dir(const char* argv0)
 {
     std::error_code ec;
@@ -89,11 +186,11 @@ std::filesystem::path find_shader_path(int argc, char** argv)
 
     const auto exe_dir = executable_dir(argv[0]);
     const std::vector<std::filesystem::path> candidates = {
-        std::filesystem::current_path() / "aaa",
-        std::filesystem::path(PCG_PROJECT_ROOT) / "aaa",
-        exe_dir / "aaa",
-        exe_dir / ".." / "aaa",
-        exe_dir / ".." / ".." / "aaa",
+        std::filesystem::current_path() / "shaders" / "planet" / "planet_shader.glsl",
+        std::filesystem::path(PCG_PROJECT_ROOT) / "shaders" / "planet" / "planet_shader.glsl",
+        exe_dir / "shaders" / "planet" / "planet_shader.glsl",
+        exe_dir / ".." / "shaders" / "planet" / "planet_shader.glsl",
+        exe_dir / ".." / ".." / "shaders" / "planet" / "planet_shader.glsl",
     };
 
     for (const auto& candidate : candidates) {
@@ -103,7 +200,7 @@ std::filesystem::path find_shader_path(int argc, char** argv)
         }
     }
 
-    throw std::runtime_error("Could not find shader file named aaa");
+    throw std::runtime_error("Could not find shader file: shaders/planet/planet_shader.glsl");
 }
 
 bool has_check_flag(int argc, char** argv)
@@ -202,7 +299,7 @@ void main()
 }
 )GLSL";
 
-    const std::string fragment_source = build_fragment_shader(read_text_file(shader_path));
+    const std::string fragment_source = build_fragment_shader(load_shader_source(shader_path));
     const GLuint vs = compile_shader(GL_VERTEX_SHADER, vertex_source, "Vertex shader");
     const GLuint fs = compile_shader(GL_FRAGMENT_SHADER, fragment_source, "Fragment shader");
 
