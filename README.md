@@ -1,157 +1,104 @@
 # Procedural World
 
-An OpenGL 4.1 procedural planet renderer built with GLFW, GLAD, GLM, and xmake.
+An OpenGL 3.3 realtime procedural planet renderer built with GLFW, GLAD,
+Dear ImGui, and xmake. The renderer keeps a lightweight Shadertoy-style
+fullscreen raymarching architecture, then layers terrain, water, sky, clouds,
+erosion masks, material blending, and vegetation distribution in GLSL.
 
 ## Features
 
-- Cube-sphere planet rendering with tessellation shaders
-- Per-face quadtree LOD on the CPU
-- Erosion-driven fractal tributary river rendering from channel/flow masks
-- Shaded, wireframe, height-map, and normal visualization modes
-- Fly camera controls for inspecting the planet at multiple scales
+- SDF/raymarched spherical terrain generated from gradient noise, fBM, ridged
+  noise, and domain warping.
+- Procedural continent, mountain, river, erosion-wear, deposition, vegetation,
+  and tree-canopy masks.
+- Height-, slope-, river-, erosion-, deposition-, and vegetation-driven
+  material blending with procedural texture grain.
+- Spherical sea level surface with animated wave normals, shoreline foam,
+  Fresnel sky reflection, and shallow-water refraction/bottom color blending.
+- Procedural sun and sky with a shared sun direction used for terrain, water,
+  clouds, and background lighting.
+- Volumetric procedural clouds with shadowing on the planet surface.
+- ImGui controls for terrain height, sea level, erosion strength, material
+  detail, vegetation/tree density and height, water appearance, sun position,
+  sky exposure, cloud parameters, time, and view rotation.
 
 ## Project Structure
 
 ```text
-include/
-  FlyCamera.h        Camera movement and view-matrix helper
-  PlanetRenderer.h   Planet rendering API and LOD-facing data structures
-  ShaderProgram.h    Shader compilation helper with lightweight #include support
+src/main.cpp
+  GLFW/OpenGL setup, ImGui controls, shader loading, and uniform updates.
 
-src/
-  main.cpp           GLFW application entry point and input wiring
-  PlanetRenderer.cpp Planet mesh rendering, cube-sphere mapping, and quadtree LOD
-
-shaders/
-  terrain.vert       Node-local UV remapping for the current quadtree patch
-  terrain.tesc       Distance-based tessellation control
-  terrain.tese       Cube-sphere displacement and normal generation
-  terrain.frag       Fragment shader entry point
-  terrain_types.glsl Shared terrain fragment data structures
-  terrain_surface.glsl Surface color and slope classification
-  terrain_lighting.glsl Lighting, fog, and tone mapping helpers
-  terrain_debug.glsl Debug visualization helpers
-  wire_fine.frag     Fine wireframe overlay color
-  wire_coarse.frag   Coarse quadtree grid overlay
+shaders/planet/
+  planet_shader.glsl   Include entry point for the GLSL shader set.
+  terrain.glsl         Noise terrain, erosion/river/deposition/tree canopy masks.
+  lighting.glsl        Terrain material blending and sun/sky lighting.
+  render.glsl          Raymarching, water surface, clouds, and final composition.
+  scene.glsl           Camera, sun direction, and procedural sky.
+  clouds.glsl          Volumetric cloud density, march, and cloud shadow pass.
+  noise.glsl           Hash noise and fBM helpers.
+  math.glsl            Camera rays, rotations, color conversion, utility math.
 ```
 
 ## Build
 
-1. Install [xmake](https://xmake.io/).
-2. Build the project:
-
 ```bash
 xmake build
+xmake run pcg_raymarch
 ```
 
-3. Run the executable:
+To compile the shader without opening a visible window:
 
 ```bash
-xmake run -y
+xmake run pcg_raymarch --check
 ```
 
 ## Controls
 
-- `W/A/S/D`: move camera
-- `Q/E`: move down/up
-- `Right Mouse + Drag`: rotate camera
-- `Left Mouse + Drag`: rotate planet manually
-- `Mouse Wheel`: zoom
-- `1`: shaded mode
-- `2`: toggle wireframe overlay
-- `3`: height-map mode
-- `4`: normal mode
-- `Esc`: quit
+- Left mouse drag: rotate the planet.
+- Mouse wheel or `Zoom` slider: zoom.
+- `Esc`: quit.
+- ImGui panel: tune terrain, sea level, erosion, materials, vegetation, water,
+  sun, sky, clouds, speed, pause, and vsync.
 
-## Notes
+## Grading Notes
 
-- Shaders are copied into the build output automatically by `xmake.lua`.
-- The current LOD system is a first-pass quadtree implementation. It improves patch density around the camera but does not yet stitch mixed-depth patch borders.
+The current project intentionally does not use tessellation shaders or mesh
+shaders. It reaches the assignment target by adding several procedural effects
+inside a fast raymarching renderer instead of building a heavy mesh terrain
+pipeline.
 
-## Progress
+| Assignment item | Current implementation | Expected credit |
+| --- | --- | ---: |
+| Realistic terrain geometry with noise | Spherical SDF terrain using fBM, ridged noise, domain warping, continent masks, mountain masks, and finite-difference normals. | 1p |
+| Varying resolution using tessellation / mesh shaders | Not implemented in this raymarch version. Raymarching naturally draws fixed screen resolution, but this is not tessellation or mesh shading. | 0p |
+| Terrain realism with erosion | Procedural erosion approximation: river channels lower terrain, wear striations roughen slopes, lowland deposition raises/alluvial areas, and masks affect material color. | 1p |
+| Blended textures by height and slope | Height/slope/material masks blend sand, soil, grass, forest, rock, bare alpine, snow, wet riverbed, and deposition colors with procedural texture grain. | 1p |
+| Flat/spherical water with reflection/refraction | Spherical sea level surface with wave normals, Fresnel sky reflection, shallow refraction/bottom color, depth color, and shoreline foam. It is a real-time approximation, not FBO planar reflection. | 1-1.5p |
+| Procedural sun and sky | Procedural sky gradient, horizon color, sun disc/glow, exposure, sun azimuth/elevation controls. | 2p |
+| Same sun illuminates world | `sun_direction()` drives terrain lighting, water highlights, sky, and cloud shadow direction. | 1p |
+| Procedural vegetation | Vegetation density plus explicit tree-canopy mask generated from height, slope, moisture, river proximity, clump noise, and cell placement; rendered as forest/grass/canopy material with subtle canopy displacement. | 1-2p |
+| Procedural volumetric clouds | fBM cloud shell with absorption and cloud shadows on terrain. This is extra visual complexity beyond the listed terrain requirements. | 1p bonus/defensible |
 
-**Team size:** 3 | **Target:** 15p | **Current estimate:** 11.5p conservative / 12.5p defensible
+Conservative total: about 8p-9p if the grader only accepts exact listed
+features and gives no credit for raymarch-specific approximations.
 
-### Current Score Estimate
+Defensible presentation total: about 12p if the grader accepts procedural
+erosion, approximate reflection/refraction, procedural tree-canopy vegetation,
+and volumetric clouds as project complexity. The remaining strongest upgrade
+would be a true FBO reflection/refraction pass or an explicit tessellated mesh
+terrain mode.
 
-The old 5.5p estimate is outdated. The current code now includes CPU procedural planet data, climate/biome fields, hydraulic and thermal erosion, fractal tributary river extraction from channel/flow masks, FFT ocean waves, planar reflection/refraction, depth-based water color, Fresnel mixing, and atmospheric scattering.
+## Defense Talking Points
 
-| Module | Current implementation | Conservative | Defensible |
-| --- | --- | ---: | ---: |
-| **Noise terrain geometry** | CPU procedural height generation with gradient noise/fBM, continents, mountains, basins, ocean floor, uploaded as GPU texture arrays | 1p | 1p |
-| **Variable-resolution tessellation / LOD** | CPU cube-face quadtree LOD, frustum/horizon culling, shore-aware refinement, GPU tessellation control shader | 2p | 2p |
-| **Sphere / cube-sphere tessellation** | Six cube faces mapped to a sphere in tessellation evaluation shader; height displaces along sphere normal | 1p | 1p |
-| **Height-, slope-, biome-based shading** | Height/slope/biome/erosion-aware procedural material blending with debug masks | 1p | 1p |
-| **Basic water + FFT waves** | Spherical ocean pass, FFT height/normal/displacement textures, choppy displacement, detail normals | 2p | 2p |
-| **Texture splatting / material blending** | Procedural biome-weight material blending exists, but not full real-texture splatting | 0.5p | 0.5p |
-| **Hydraulic + thermal erosion + rivers** | CPU grid hydraulic erosion, flow, sediment capacity, erode/deposit, thermal talus smoothing, erosion masks, fractal tributary extraction, river tint/highlight/refraction-style pass | 1p | 1p |
-| **Water reflection & refraction** | Planar reflection/refraction FBOs, depth-based color blend, Fresnel mixing, performance controls | 1p | 2p |
-| **Procedural sky / atmosphere** | Atmosphere shell with Rayleigh/Mie-style scattering approximation and tunable density/exposure/colors | 2p | 2p |
-| **Procedural vegetation** | Not implemented | 0p | 0p |
-
-**Total:** **11.5p conservative**, **12.5p defensible**.
-
-Use the conservative total if the grader is strict about planar reflection/refraction or real texture splatting. Use the defensible total if planar reflection/refraction with depth blend and Fresnel is counted as the full water extension.
-
-Remaining likely points: real sampled terrain texture splatting (+0.5p), more advanced/GPU erosion (+1p), procedural vegetation (+1p to +2p), and a more complete sky system with day/night or god rays (+1p to +3p).
-
-### Completed
-
-| Module | Work Done | Points |
-|--------|-----------|--------|
-| **Noise terrain geometry** (1p) | GPU-side height generation in TES; 6-octave fBm with lacunarity 2 / gain 0.45; domain-warped input coordinates via two fBm pre-passes; ridge noise blended for sharp peaks; surface normals computed via central finite differences | 1p |
-| **Variable-resolution tessellation** (2p) | TCS computes per-edge tessellation level from camera distance to edge midpoint (linear map tessMin→tessMax); TES uses `fractional_even_spacing` for crack-free transitions between adjacent patches | 2p |
-| **Sphere tessellation** (1p) | Tessellated sphere geometry as initial rendering target | 1p |
-| **Height- & slope-based shading** (1p) | Fragment shader assigns 7 biome colors by normalized height + surface slope (deep ocean, shallow water, sand, grass, forest, bare rock, snow); Blinn-Phong lighting with hemisphere ambient and specular highlight | 0.5p |
-| **Basic water surface** (1–2p) | Flat water plane rendered at sea level | 1p |
-
-**Subtotal: 5.5p**
-
-### Planned
-
-#### Texture splatting — up to 1p remaining
-
-| What to build | Expected score |
-|---------------|----------------|
-| + Sample real textures per biome, blend by splat map | 1p |
-
-#### Hydraulic erosion — 1–2p
-
-| What to build | Expected score |
-|---------------|----------------|
-| Basic hydraulic erosion: particle simulation on CPU or simple GPU pass, visibly smoother valleys and ridges | 1p |
-| + Full GPU compute shader, iterative sediment carry/deposit, realistic gullies and alluvial fans | 2p |
-
-#### Water reflection & refraction — 1p remaining
-
-| What to build | Expected score |
-|---------------|----------------|
-| + Planar reflection + refraction with depth-based color blend + Fresnel | 2p |
-
-#### Procedural sky & sun — 2–5p total
-
-| What to build | Expected score |
-|---------------|----------------|
-| Basic sky gradient + hardcoded sun disc | ~1p |
-| + Preetham or Nishita atmospheric scattering, physically correct sky color | 2p |
-| + Sun direction drives scene directional light color and intensity | 3–4p |
-| + Full day/night cycle, sky-ambient coupling, god rays or horizon glow | 5p |
-
-#### Procedural vegetation — 1p+
-
-| What to build | Expected score |
-|---------------|----------------|
-| Instanced billboard grass, placement filtered by slope and height | 1p |
-| + 3D tree meshes (L-system or SDF), wind animation, density variation | 2–3p+ |
-
-<!-- ### Score Summary
-
-| Scenario | Points |
-|----------|--------|
-| Current | 5.5p |
-| + Texture splatting (finish) | +0.5p → **6p** |
-| + Erosion (basic) | +1p → **7p** |
-| + Water (reflection + refraction) | +1p → **8p** |
-| + Sky (Nishita + lighting) | +3p → **11p** |
-| + Vegetation (billboards) | +1p → **12p** |
-| + Vegetation (trees) + sky stretch | +2–3p → **14–15p** | -->
+- The terrain height is not one noise call. It combines domain-warped
+  continents, ridged mountain ranges, upland detail, river channel carving,
+  erosion wear, deposition, and vegetation canopy displacement.
+- The water is a separate spherical surface at sea level. It uses terrain depth
+  below the water to switch between shallow refraction and deep water color, and
+  uses Schlick-style Fresnel for view-dependent reflection.
+- The sun direction is shared by the sky, terrain lighting, water glints, and
+  cloud shadows, so changing sun azimuth/elevation changes the whole scene.
+- Vegetation is procedural and distribution-based: it appears on land, avoids
+  steep/alpine regions, becomes denser near moist/river regions, and is broken
+  into natural clumps. A separate cell-noise tree-canopy mask adds visible
+  canopy patches and small geometric displacement.

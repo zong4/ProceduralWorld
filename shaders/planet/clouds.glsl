@@ -39,7 +39,7 @@ void clouds_march(
 	_in(float) max_travel,
 	_in(mat3) rot
 ){
-	const int steps = 75;
+	const int steps = 42;
 	float t_step = max_ray_dist / float(steps);
 	float t = 0.;
 
@@ -60,7 +60,7 @@ void clouds_shadow_march(
 	_inout(volume_sampler_t) cloud,
 	_in(mat3) rot
 ){
-	const int steps = 5;
+	const int steps = 3;
 	float t_step = max_height / float(steps);
 	float t = 0.;
 
