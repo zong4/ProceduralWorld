@@ -374,8 +374,7 @@ SurfaceData sampleSurfaceData(float height, vec3 worldPos, vec3 shadingNormal, v
     color = mix(color, rockColor, wearMask * smoothstep(0.26, 0.62, surface.slope) * 0.34);
     color = mix(color, vec3(0.52, 0.43, 0.30), depositionMask * 0.28);
     float viewDistance = length(cameraPos - worldPos);
-    float nearDetail = 1.0 - smoothstep(planetRadius * 0.28, planetRadius * 1.65, viewDistance);
-    nearDetail *= runtimeLand;
+    float nearDetail = 0.0;
     float finePebble = fbm3(radialUp * 820.0 + vec3(7.3, 19.1, 3.6));
     float fineGrain = fbm3(radialUp * 1450.0 + vec3(31.2, 4.7, 22.5));
     float crackNoise = 1.0 - abs(fbm3(radialUp * 560.0 + vec3(12.4, 8.8, 41.6)) * 2.0 - 1.0);

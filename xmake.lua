@@ -12,6 +12,7 @@ add_requires("imgui", {configs = {glfw = true, opengl3 = true}})
 target("ProceduralWorld")
     set_kind("binary")
     add_files("src/*.cpp")
+    add_files("src/Instumentor/*.cpp")
     add_includedirs("include")
     add_includedirs("third_party/stb")
     add_packages("glfw", "glad", "glm", "imgui")
@@ -33,6 +34,25 @@ target("ProceduralWorld")
         end
         os.cp("assets", asset_dst)
     end)
+
+    if is_plat("windows") then
+        add_links("opengl32")
+        add_cxxflags("/utf-8", {tools = "cl"})
+    elseif is_plat("macosx") then
+        add_frameworks("OpenGL")
+        add_ldflags("-framework CoreFoundation")
+    elseif is_plat("linux") then
+        add_links("GL", "dl", "pthread")
+    end
+
+target("TerrainHeightDiagnostics")
+    set_kind("binary")
+    add_files("tools/TerrainHeightDiagnostics.cpp")
+    add_files("src/PlanetProceduralData.cpp")
+    add_files("src/Instumentor/*.cpp")
+    add_includedirs("include")
+    add_includedirs("third_party/stb")
+    add_packages("glfw", "glad", "glm", "imgui")
 
     if is_plat("windows") then
         add_links("opengl32")

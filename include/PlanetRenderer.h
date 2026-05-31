@@ -14,7 +14,7 @@
 
 class PlanetProceduralData;
 
-// 地形调试/展示模式。
+// 地形调试/展示模式�?
 enum class PlanetRenderMode : int {
     Shaded = 0,
     Unshaded = 1,
@@ -22,48 +22,45 @@ enum class PlanetRenderMode : int {
     Normals = 3
 };
 
-// 线框叠加模式：可选择显示陆地 patch 或海洋 patch 的细分结构。
+// 线框叠加模式：可选择显示陆地 patch 或海�?patch 的细分结构�?
 enum class PlanetWireMode : int {
     None = 0,
-    Terrain = 1,
-    Ocean = 2
+    Ocean = 1,
+    BakedLod = 2,
+    MountainMask = 3
 };
 
-// 所有可调渲染/生成参数。
-// 这一个结构同时服务 UI、CPU 生成、GPU uniform 上传和 session 保存。
+enum class TerrainFeatureOverlayMode : int {
+    None = 0,
+    All = 1,
+    Rivers = 2,
+    Coast = 3,
+    Ridges = 4,
+    Erosion = 5
+};
+
+// 所有可调渲�?生成参数�?
+// 这一个结构同时服�?UI、CPU 生成、GPU uniform 上传�?session 保存�?
 struct PlanetRenderSettings {
-    // 星球几何尺度与 tessellation LOD。
+    // 星球几何尺度�?tessellation LOD�?
     float planetRadius = 200.0f;
     float seaLevelOffset = 0.0f;
-    float tessellationMax = 5.0f;
-    float tessellationMin = 1.0f;
-    float tessellationNearDistance = 80.0f;
-    float tessellationFarDistance = 900.0f;
-    bool adaptiveTerrainLod = true;
-    int terrainPatchBudget = 760;
     float oceanTessellationMax = 1.0f;
     float oceanTessellationMin = 1.0f;
     float oceanTessellationNearDistance = 40.0f;
     float oceanTessellationFarDistance = 550.0f;
-    // 程序化地形和侵蚀参数。
-    float terrainHeightScale = 30.0f;
-    float terrainSkirtDepth = 0.40f;
-    float terrainNoiseScale = 0.72f;
-    float mountainMaskStrength = 1.75f;
-    float mountainMaskScale = 3.1f;
-    float mountainRidgeSharpness = 3.4f;
-    int erosionIterations = 96;
-    float erosionStrength = 0.075f;
+    // 程序化地形和侵蚀参数�?
+    float terrainHeightScale = 22.0f;
+    float terrainNoiseScale = 0.58f;
+    float mountainMaskStrength = 0.55f;
+    float mountainMaskScale = 1.8f;
+    float mountainRidgeSharpness = 2.6f;
+    int erosionIterations = 0;
+    float erosionStrength = 0.0f;
     float erosionTalus = 0.028f;
     float erosionSediment = 0.58f;
-    float erosionThermalStrength = 0.014f;
-    float regionalDetailStrength = 1.12f;
-    float microDetailStrength = 0.30f;
-    float regionalDetailStartAltitude = 900.0f;
-    float regionalDetailEndAltitude = 2200.0f;
-    float microDetailStartAltitude = 90.0f;
-    float microDetailEndAltitude = 520.0f;
-    // 地表材质颜色与 biome/slope 阈值。
+    float erosionThermalStrength = 0.0f;
+    // 地表材质颜色�?biome/slope 阈值�?
     glm::vec3 terrainLowlandColor = glm::vec3(0.23f, 0.44f, 0.18f);
     glm::vec3 terrainForestColor = glm::vec3(0.10f, 0.30f, 0.12f);
     glm::vec3 terrainDesertColor = glm::vec3(0.70f, 0.57f, 0.32f);
@@ -71,13 +68,12 @@ struct PlanetRenderSettings {
     glm::vec3 terrainBeachColor = glm::vec3(0.72f, 0.66f, 0.46f);
     glm::vec3 terrainSnowColor = glm::vec3(0.90f, 0.94f, 0.98f);
     float terrainBeachWidth = 0.045f;
-    float terrainShoreLift = 0.035f;
     float terrainRockSlopeStart = 0.24f;
     float terrainRockSlopeEnd = 0.62f;
     float terrainSnowStart = 0.72f;
     float terrainSnowEnd = 0.95f;
     float terrainMaterialNoiseScale = 0.030f;
-    float terrainMaterialNoiseStrength = 0.20f;
+    float terrainMaterialNoiseStrength = 0.0f;
     bool renderRivers = true;
     float riverVisibility = 1.45f;
     float riverWidth = 0.58f;
@@ -85,7 +81,7 @@ struct PlanetRenderSettings {
     float riverRefractionStrength = 0.48f;
     glm::vec3 riverColor = glm::vec3(0.02f, 0.36f, 0.42f);
     float coarseGridLineWidth = 1.6f;
-    // 天空、大气和相机裁剪面。
+    // 天空、大气和相机裁剪面�?
     glm::vec3 skyColor = glm::vec3(0.0f);
     float fogDensity = 0.0f;
     bool renderAtmosphere = true;
@@ -99,7 +95,7 @@ struct PlanetRenderSettings {
     glm::vec3 atmosphereMieColor = glm::vec3(1.0f, 0.72f, 0.42f);
     float cameraNearPlane = 1.0f;
     float cameraFarPlane = 5000.0f;
-    // 海水透明度、颜色、反射折射、波浪和材质参数。
+    // 海水透明度、颜色、反射折射、波浪和材质参数�?
     float oceanAlpha = 0.96f;
     float oceanShallowAlpha = 0.48f;
     float oceanDeepAlpha = 0.98f;
@@ -140,19 +136,19 @@ struct PlanetRenderSettings {
     glm::vec3 oceanSSSColor = glm::vec3(0.18f, 0.82f, 0.78f);
     PlanetRenderMode renderMode = PlanetRenderMode::Shaded;
     PlanetWireMode wireMode = PlanetWireMode::None;
-    int terrainMaskDebugMode = 0;
+    TerrainFeatureOverlayMode featureOverlayMode = TerrainFeatureOverlayMode::None;
     bool renderTerrain = true;
     bool renderOcean = true;
 };
 
 // 渲染器负责：
-// 1) 管理 shader、mesh、FBO 和 GPU texture；
-// 2) 每帧 CPU 四叉树 LOD/裁剪；
-// 3) 按 terrain/ocean/atmosphere/wire 顺序提交 draw call。
+// 1) 管理 shader、mesh、FBO �?GPU texture�?
+// 2) 每帧 CPU 四叉�?LOD/裁剪�?
+// 3) �?terrain/ocean/atmosphere/wire 顺序提交 draw call�?
 class PlanetRenderer
 {
 public:
-    // CPU LOD 阶段的统计信息，用于 performance 面板。
+    // CPU LOD 阶段的统计信息，用于 performance 面板�?
     struct CullingStats {
         std::size_t visitedNodes = 0;
         std::size_t frustumCulledNodes = 0;
@@ -161,7 +157,7 @@ public:
         std::size_t emittedPatches = 0;
     };
 
-    // 每帧各渲染阶段耗时和动态质量参数。
+    // 每帧各渲染阶段耗时和动态质量参数�?
     struct PerformanceStats {
         float totalMs = 0.0f;
         float cullingMs = 0.0f;
@@ -183,10 +179,11 @@ public:
         float reflectionWeight = 0.0f;
         float refractionWeight = 0.0f;
         std::size_t oceanPatchCount = 0;
+        std::size_t bakedChunkCount = 0;
+        std::size_t visibleBakedChunkCount = 0;
+        std::array<std::size_t, 3> visibleBakedChunkLodCount{};
         float lodSplitPixelScale = 1.0f;
-        float effectiveLandTessMax = 1.0f;
         float effectiveOceanTessMax = 1.0f;
-        float lodBudgetPressure = 0.0f;
         std::size_t estimatedTerrainTriangles = 0;
         std::size_t estimatedOceanTriangles = 0;
     };
@@ -203,26 +200,26 @@ public:
     void render(const FlyCamera& camera, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix, float timeSeconds);
 
     const char* currentModeLabel() const;
-    std::size_t visiblePatchCount() const;
+    std::size_t visibleOceanPatchCount() const;
     const CullingStats& cullingStats() const;
     const PerformanceStats& performanceStats() const;
 
 private:
-    // cube face 局部坐标系，与 PlanetProceduralData 中的定义保持一致。
+    // cube face 局部坐标系，与 PlanetProceduralData 中的定义保持一致�?
     struct FaceBasis {
         glm::vec3 normal;
         glm::vec3 axisU;
         glm::vec3 axisV;
     };
 
-    // CPU 四叉树节点，使用 cube face UV 范围描述 patch。
+    // CPU 四叉树节点，使用 cube face UV 范围描述 patch�?
     struct QuadtreeNode {
         glm::vec2 uvMin{0.0f, 0.0f};
         float uvSize = 1.0f;
         int depth = 0;
     };
 
-    // 一个 patch 内水/陆/海岸覆盖情况，来自 CPU prefix sum 快速查询。
+    // 一�?patch 内水/�?海岸覆盖情况，来�?CPU prefix sum 快速查询�?
     struct PatchWaterCoverage {
         bool hasData = false;
         bool hasWater = false;
@@ -230,8 +227,8 @@ private:
         float maxShoreMask = 0.0f;
     };
 
-    // 每帧实际提交给 shader 的 patch。
-    struct RenderPatch {
+    // 每帧实际提交�?shader �?patch�?
+    struct OceanPatch {
         int faceIndex = 0;
         glm::vec2 uvMin{0.0f, 0.0f};
         glm::vec2 uvSize{1.0f, 1.0f};
@@ -239,19 +236,19 @@ private:
         PatchWaterCoverage waterCoverage;
     };
 
-    // 从 view-projection 矩阵提取出的 6 个裁剪平面。
+    // �?view-projection 矩阵提取出的 6 个裁剪平面�?
     struct Frustum {
         std::array<glm::vec4, 6> planes{};
     };
 
-    // LOD/裁剪使用的球面近似包围体。
+    // LOD/裁剪使用的球面近似包围体�?
     struct NodeBounds {
         glm::vec3 worldDirection{0.0f, 1.0f, 0.0f};
         float radius = 0.001f;
         float lodScale = 1.0f;
     };
 
-    // 所有地形和海洋 patch 共享同一个规则网格 VAO，由 tessellation shader 放大。
+    // 所有地形和海洋 patch 共享同一个规则网�?VAO，由 tessellation shader 放大�?
     struct TerrainMesh {
         GLuint vertexArrayObject = 0;
         GLuint vertexBufferObject = 0;
@@ -262,7 +259,40 @@ private:
         void draw() const;
     };
 
-    // 大气层使用普通球体网格，不走 tessellation。
+    struct VisibleBakedChunk {
+        std::uint32_t chunkIndex = 0;
+        std::uint8_t lod = 0;
+    };
+
+    struct BakedTerrainMesh {
+        struct IndexRange {
+            GLsizei indexCount = 0;
+            std::size_t firstIndex = 0;
+            std::size_t triangleCount = 0;
+        };
+
+        struct ChunkDrawRange {
+            std::array<IndexRange, 3> lods{};
+            glm::vec3 localCenter{0.0f};
+            float radius = 0.0f;
+        };
+
+        GLuint vertexArrayObject = 0;
+        GLuint vertexBufferObject = 0;
+        GLuint indexBufferObject = 0;
+        GLuint lineVertexArrayObject = 0;
+        GLuint lineVertexBufferObject = 0;
+        GLsizei indexCount = 0;
+        std::vector<ChunkDrawRange> chunks;
+
+        void release();
+        void upload(const PlanetProceduralData& proceduralData, float planetRadius, float heightScale);
+        void draw(const std::vector<VisibleBakedChunk>& visibleChunks) const;
+        void drawWire(const std::vector<VisibleBakedChunk>& visibleChunks) const;
+        void drawChunkBounds(const std::vector<VisibleBakedChunk>& visibleChunks) const;
+    };
+
+    // 大气层使用普通球体网格，不走 tessellation�?
     struct SphereMesh {
         GLuint vertexArrayObject = 0;
         GLuint vertexBufferObject = 0;
@@ -273,7 +303,7 @@ private:
         void draw() const;
     };
 
-    // 反射/折射离屏渲染目标。
+    // 反射/折射离屏渲染目标�?
     struct RenderTarget {
         GLuint framebufferObject = 0;
         GLuint colorTexture = 0;
@@ -283,6 +313,22 @@ private:
 
         void release();
         void create(int targetWidth, int targetHeight);
+    };
+
+    struct FeatureSegmentMesh {
+        struct TypeRange {
+            GLsizei vertexCount = 0;
+            std::size_t firstVertex = 0;
+        };
+
+        GLuint vertexArrayObject = 0;
+        GLuint vertexBufferObject = 0;
+        GLsizei vertexCount = 0;
+        std::array<TypeRange, 4> ranges{};
+
+        void release();
+        void upload(const PlanetProceduralData& proceduralData, float planetRadius, float heightScale);
+        void draw(TerrainFeatureOverlayMode mode) const;
     };
 
     static constexpr int kNodeGridResolution = 10;
@@ -295,6 +341,8 @@ private:
 
     PlanetRenderSettings settings_;
     TerrainMesh terrainMesh_;
+    BakedTerrainMesh bakedTerrainMesh_;
+    FeatureSegmentMesh featureSegmentMesh_;
     SphereMesh atmosphereMesh_;
     RenderTarget reflectionTarget_;
     RenderTarget refractionTarget_;
@@ -306,15 +354,16 @@ private:
     GLuint proceduralMoistureTexture_ = 0;
     GLuint proceduralBiomeWeightATexture_ = 0;
     GLuint proceduralBiomeWeightBTexture_ = 0;
+    GLuint proceduralDomainWeightTexture_ = 0;
     std::vector<std::uint32_t> proceduralWaterCoveragePrefixCpu_;
     std::vector<std::uint32_t> proceduralShoreCoverageLoosePrefixCpu_;
     std::vector<std::uint32_t> proceduralShoreCoverageStrictPrefixCpu_;
     int proceduralDataResolution_ = 0;
     bool hasProceduralOceanData_ = false;
-    ShaderProgram terrainProgram_;
+    ShaderProgram terrainChunkProgram_;
+    ShaderProgram bakedChunkBoundsProgram_;
+    ShaderProgram featureSegmentProgram_;
     ShaderProgram oceanProgram_;
-    ShaderProgram wireOverlayProgram_;
-    ShaderProgram coarseGridProgram_;
     ShaderProgram oceanWireOverlayProgram_;
     ShaderProgram oceanCoarseGridProgram_;
     ShaderProgram atmosphereProgram_;
@@ -325,8 +374,8 @@ private:
     float lastRenderTimeSeconds_ = 0.0f;
     float planetYawDegrees_ = 0.0f;
     float planetPitchDegrees_ = 0.0f;
-    std::vector<RenderPatch> visiblePatches_;
-    std::vector<RenderPatch> visibleOceanPatches_;
+    std::vector<OceanPatch> visibleOceanPatches_;
+    std::vector<VisibleBakedChunk> visibleBakedChunks_;
     CullingStats lastCullingStats_;
     PerformanceStats lastPerformanceStats_;
     int oceanFftFrameCounter_ = 0;
@@ -339,7 +388,6 @@ private:
     float oceanReflectionWeight_ = 1.0f;
     float oceanRefractionWeight_ = 1.0f;
     float lodSplitPixelScale_ = 1.0f;
-    float effectiveTessellationMax_ = 3.0f;
     float effectiveOceanTessellationMax_ = 1.0f;
     bool hasLastRenderTimeSeconds_ = false;
     bool initialized_ = false;
@@ -351,40 +399,45 @@ private:
     static Frustum extractFrustum(const glm::mat4& viewProjectionMatrix);
     static glm::vec4 normalizePlane(const glm::vec4& plane);
     glm::vec3 worldDirection(const glm::vec3& localDirection) const;
-    // 下面一组函数组成 CPU 可见性/LOD 流程。
+    // 下面一组函数组�?CPU 可见�?LOD 流程�?
     NodeBounds computeNodeBounds(const FaceBasis& face, const QuadtreeNode& node) const;
     bool isNodeOutsideFrustum(const Frustum& frustum, const NodeBounds& bounds) const;
     bool isNodeHiddenByHorizon(const FlyCamera& camera, const NodeBounds& bounds) const;
+    bool isSphereOutsideFrustum(const Frustum& frustum, const glm::vec3& worldCenter, float radius) const;
+    bool isSphereHiddenByHorizon(const FlyCamera& camera, const glm::vec3& worldCenter, float radius) const;
     PatchWaterCoverage analyzePatchWaterCoverage(int faceIndex, const glm::vec2& uvMin, const glm::vec2& uvSize) const;
     bool shouldSplitNode(const FlyCamera& camera, const NodeBounds& bounds, int nodeDepth, int framebufferHeight) const;
-    void updateAdaptiveLodBeforeCulling();
-    void updateEffectiveTessellationBudget(std::size_t visiblePatchCount, std::size_t oceanPatchCount);
+    void updateOceanTessellationBudget(std::size_t oceanPatchCount);
     std::size_t estimatePatchTriangles(std::size_t patchCount, float tessLevel) const;
 
-    void collectVisiblePatches(const FlyCamera& camera,
-                               const Frustum& frustum,
-                               int faceIndex,
-                               const QuadtreeNode& node,
-                               int framebufferHeight,
-                               CullingStats& stats,
-                               std::vector<RenderPatch>& outPatches) const;
+    void collectVisibleOceanPatches(const FlyCamera& camera,
+                                    const Frustum& frustum,
+                                    int faceIndex,
+                                    const QuadtreeNode& node,
+                                    int framebufferHeight,
+                                    CullingStats& stats,
+                                    std::vector<OceanPatch>& outPatches) const;
 
-    std::vector<RenderPatch> buildVisiblePatches(const FlyCamera& camera,
-                                                 const Frustum& frustum,
-                                                 int framebufferHeight);
-    std::vector<RenderPatch> buildVisibleOceanPatches() const;
-    bool patchHasOceanCoverage(const RenderPatch& patch) const;
+    std::vector<VisibleBakedChunk> buildVisibleBakedChunks(const FlyCamera& camera,
+                                                           const Frustum& frustum,
+                                                           int framebufferHeight,
+                                                           CullingStats& stats) const;
+    std::vector<OceanPatch> buildVisibleOceanPatches(const FlyCamera& camera,
+                                                     const Frustum& frustum,
+                                                     int framebufferHeight,
+                                                     CullingStats& stats) const;
+    bool patchHasOceanCoverage(const OceanPatch& patch) const;
 
-    // 给 terrain/ocean/wire shader 统一上传当前 patch 和全局渲染参数。
+    // �?terrain/ocean/wire shader 统一上传当前 patch 和全局渲染参数�?
     void applyCommonUniforms(const ShaderProgram& program,
                              const FlyCamera& camera,
                              const glm::mat4& viewMatrix,
                              const glm::mat4& projectionMatrix,
-                             const RenderPatch& patch) const;
+                             const OceanPatch& patch) const;
 
     float seaLevelRadius() const;
 
-    // 渲染 pass。反射/折射 pass 会复用 terrain pass 并启用裁剪平面。
+    // 渲染 pass。反�?折射 pass 会复�?terrain pass 并启用裁剪平面�?
     void drawTerrainPass(const FlyCamera& camera, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix);
     void drawTerrainPass(const FlyCamera& camera,
                          const glm::mat4& viewMatrix,
@@ -392,6 +445,12 @@ private:
                          bool useClipPlane,
                          float clipPlaneY,
                          bool keepAboveClipPlane);
+    void drawBakedTerrainPass(const FlyCamera& camera,
+                              const glm::mat4& viewMatrix,
+                              const glm::mat4& projectionMatrix,
+                              bool useClipPlane,
+                              float clipPlaneY,
+                              bool keepAboveClipPlane);
     void drawOceanPass(const FlyCamera& camera, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix);
     void drawAtmospherePass(const FlyCamera& camera, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix);
     void drawReflectionRefractionPasses(const FlyCamera& camera,
@@ -400,4 +459,5 @@ private:
                                         int framebufferWidth,
                                         int framebufferHeight);
     void drawWireOverlayPass(const FlyCamera& camera, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix);
+    void drawFeatureOverlayPass(const FlyCamera& camera, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix);
 };

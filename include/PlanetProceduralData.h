@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <vector>
 
@@ -25,8 +26,9 @@ public:
         Erosion = 4,
         FinalClimate = 5,
         FinalBiomes = 6,
-        Finalize = 7,
-        Count = 8
+        MeshPlanning = 7,
+        Finalize = 8,
+        Count = 9
     };
 
     // 后台生成线程向主线程报告的进度快照。
@@ -56,8 +58,95 @@ public:
         std::vector<float> depositionMask;
         std::vector<float> temperature;
         std::vector<float> moisture;
+        std::vector<float> regionId;
+        std::vector<float> featureMask;
+        std::vector<float> meshDensity;
+        std::vector<float> geometricError;
         std::vector<glm::vec4> biomeWeightA;
         std::vector<glm::vec4> biomeWeightB;
+        std::vector<glm::vec4> domainWeight;
+    };
+
+    struct TerrainChunkVertex {
+        glm::vec3 sphereDir{0.0f, 1.0f, 0.0f};
+        glm::vec3 normal{0.0f, 1.0f, 0.0f};
+        glm::vec2 uv{0.0f, 0.0f};
+        float height = 0.0f;
+        float featureWeight = 0.0f;
+    };
+
+    struct TerrainChunk {
+        int faceIndex = 0;
+        int depth = 0;
+        glm::vec2 uvMin{0.0f, 0.0f};
+        glm::vec2 uvSize{1.0f, 1.0f};
+        float minHeight = 0.0f;
+        float maxHeight = 0.0f;
+        float geometricError = 0.0f;
+        float meshDensity = 0.0f;
+        float featureMask = 0.0f;
+        bool hasWater = false;
+        bool hasShore = false;
+        int flippedDiagonalCount = 0;
+        int constrainedEdgeCount = 0;
+        int recoveredConstraintEdgeCount = 0;
+        std::vector<TerrainChunkVertex> vertices;
+        std::vector<std::uint32_t> indices;
+    };
+
+    enum class TerrainFeatureType : std::uint8_t {
+        River = 0,
+        Coast = 1,
+        Ridge = 2,
+        ErosionEdge = 3,
+        Count = 4
+    };
+
+    struct TerrainFeatureSegment {
+        TerrainFeatureType type = TerrainFeatureType::River;
+        int faceIndex = 0;
+        glm::vec2 uvA{0.0f, 0.0f};
+        glm::vec2 uvB{0.0f, 0.0f};
+        glm::vec3 sphereDirA{0.0f, 1.0f, 0.0f};
+        glm::vec3 sphereDirB{0.0f, 1.0f, 0.0f};
+        float strength = 0.0f;
+    };
+
+    enum class TerrainSkeletonType : std::uint8_t {
+        MountainBelt = 0,
+        Ridge = 1,
+        Valley = 2,
+        Massif = 3
+    };
+
+    struct TerrainSkeletonSegment {
+        TerrainSkeletonType type = TerrainSkeletonType::MountainBelt;
+        int faceIndex = 0;
+        glm::vec2 uvA{0.0f, 0.0f};
+        glm::vec2 uvB{0.0f, 0.0f};
+        glm::vec3 sphereDirA{0.0f, 1.0f, 0.0f};
+        glm::vec3 sphereDirB{0.0f, 1.0f, 0.0f};
+        float width = 0.1f;
+        float strength = 0.0f;
+        float falloff = 1.0f;
+        float variation = 0.0f;
+    };
+
+    enum class TerrainPeakType : std::uint8_t {
+        Massif = 0,
+        RidgePeak = 1,
+        Volcanic = 2
+    };
+
+    struct TerrainPeakNode {
+        TerrainPeakType type = TerrainPeakType::Massif;
+        int faceIndex = 0;
+        glm::vec2 uv{0.0f, 0.0f};
+        glm::vec3 sphereDir{0.0f, 1.0f, 0.0f};
+        float radius = 0.08f;
+        float height = 0.06f;
+        float sharpness = 1.4f;
+        float variation = 0.0f;
     };
 
     void generate(const PlanetRenderSettings& settings, int faceResolution);
@@ -71,6 +160,9 @@ public:
     int resolution() const { return resolution_; }
     const PlanetRenderSettings& settings() const { return settings_; }
     const std::array<FaceData, 6>& faces() const { return faces_; }
+    const std::vector<TerrainChunk>& terrainChunks() const { return terrainChunks_; }
+    const std::vector<TerrainFeatureSegment>& terrainFeatureSegments() const { return terrainFeatureSegments_; }
+    std::size_t terrainFeatureSegmentCount(TerrainFeatureType type) const;
     PlanetGlobalHeightField globalHeightField() const;
 
     float minHeight() const { return minHeight_; }
@@ -115,6 +207,10 @@ private:
     int resolution_ = 0;
     PlanetRenderSettings settings_{};
     std::array<FaceData, 6> faces_{};
+    std::vector<TerrainChunk> terrainChunks_;
+    std::vector<TerrainFeatureSegment> terrainFeatureSegments_;
+    std::vector<TerrainSkeletonSegment> terrainSkeletons_;
+    std::vector<TerrainPeakNode> terrainPeakNodes_;
     float minHeight_ = 0.0f;
     float maxHeight_ = 0.0f;
     float maxWaterDepth_ = 0.0f;
@@ -129,8 +225,11 @@ private:
     static CellRef neighborCell(int faceIndex, int x, int y, int resolution);
     static glm::vec3 hash3(const glm::vec3& p);
     static float gradientNoise(const glm::vec3& p);
+    static float perlinNoise(const glm::vec3& p);
+    static float perlinFbm(const glm::vec3& p, int octaves, float lacunarity, float gain);
     // fractal Brownian motion：多层 gradient noise 叠加。
     static float fbm(const glm::vec3& p, int octaves, float lacunarity, float gain);
+    static float ridgedFbm(const glm::vec3& p, int octaves, float lacunarity, float gain, float ridgeSharpness);
 
     static float altitudeBandWeight(float startAltitude, float endAltitude);
     // 基础地形高度函数：大陆、海盆、高地、山脉、峰顶和海沟都在这里合成。
@@ -138,11 +237,21 @@ private:
     static PlanetSample samplePlanetBase(const PlanetRenderSettings& settings, const glm::vec3& sphereDir);
     static PlanetSample samplePlanetBase(const PlanetRenderSettings& settings, const glm::vec3& sphereDir, float height);
     void computeWaterClimateFields(const PlanetRenderSettings& settings, const std::function<void(const char*)>& advanceProgress);
+    void applyHeightfieldNoiseLayers(const PlanetRenderSettings& settings, const std::function<void(const char*)>& advanceProgress);
+    void buildTerrainSkeletons(const PlanetRenderSettings& settings);
+    void buildTerrainPeakNodes(const PlanetRenderSettings& settings);
+    void applyTerrainSkeletons(const PlanetRenderSettings& settings, const std::function<void(const char*)>& advanceProgress);
+    void removeSmallTerrainSpikes(const PlanetRenderSettings& settings, int iterations, float threshold, float blend);
+    void smoothSmallTerrainBumps(const PlanetRenderSettings& settings, int iterations, float blend);
+    void relaxExtremeTerrainSlopes(const PlanetRenderSettings& settings, int iterations, float maxStep, float blend);
     void refineTerrainFromBiomeWeights(const PlanetRenderSettings& settings, const std::function<void(const char*)>& advanceProgress);
     void applyErosion(const PlanetRenderSettings& settings, const std::function<void(const char*)>& advanceProgress);
     void extractPrimaryRiver(const PlanetRenderSettings& settings, const std::function<void(const char*)>& advanceProgress);
     void updateHydrologyMoisture(const PlanetRenderSettings& settings);
     void computeBiomeWeights(const PlanetRenderSettings& settings, const std::function<void(const char*)>& advanceProgress);
+    void computeMeshPlanningFields(const PlanetRenderSettings& settings, const std::function<void(const char*)>& advanceProgress);
+    void buildTerrainFeatureSegments(const PlanetRenderSettings& settings);
+    void buildTerrainChunks(const PlanetRenderSettings& settings);
     void smoothBiomeWeights(int radius, float blend);
     void fixCubeFaceSeams();
     static float temperature(const PlanetRenderSettings& settings, const glm::vec3& sphereDir, float height);

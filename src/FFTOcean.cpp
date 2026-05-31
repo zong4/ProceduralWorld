@@ -6,6 +6,8 @@
 #include <iostream>
 #include <random>
 
+#include "Instumentor/InstrumentationTimer.hpp"
+
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
@@ -133,6 +135,7 @@ GLuint loadTextureFromFile(const std::filesystem::path& path, bool grayscale)
 
 void FFTOcean::initialize(const Settings& settings)
 {
+    PROFILE_SCOPE("FFT Ocean Initialize");
     release();
 
     settings_ = settings;
@@ -229,6 +232,7 @@ void FFTOcean::setCascadeCount(int cascadeCount)
 
 void FFTOcean::buildStaticDetailTextures()
 {
+    PROFILE_SCOPE("Build Ocean Detail Textures");
     const std::filesystem::path waterTextureRoot = "assets/textures/water";
 
     // 优先加载美术资源；缺失时程序生成可平铺 fallback，避免 shader 采样空纹理。
@@ -341,6 +345,7 @@ void FFTOcean::configureCascades()
 
 void FFTOcean::buildInitialSpectrum()
 {
+    PROFILE_SCOPE("Build FFT Initial Spectrum");
     // 初始谱只在初始化时生成；运行时只推进相位。
     for (int cascadeIndex = 0; cascadeIndex < settings_.cascadeCount; ++cascadeIndex) {
         buildInitialSpectrum(cascades_[cascadeIndex], cascadeIndex * 92821);
@@ -410,6 +415,7 @@ void FFTOcean::fft1D(std::vector<Complex>& data, bool inverse) const
 
 void FFTOcean::inverseFft2D(std::vector<Complex>& data) const
 {
+    PROFILE_SCOPE("Inverse FFT 2D");
     // 2D IFFT = 先对每行做 1D IFFT，再对每列做 1D IFFT。
     std::vector<Complex> line(static_cast<std::size_t>(resolution_));
 
@@ -436,6 +442,7 @@ void FFTOcean::inverseFft2D(std::vector<Complex>& data) const
 
 void FFTOcean::update(float timeSeconds)
 {
+    PROFILE_SCOPE("FFTOcean Update");
     if (!initialized_) {
         return;
     }
@@ -550,6 +557,7 @@ void FFTOcean::update(float timeSeconds)
 
 void FFTOcean::uploadTextures()
 {
+    PROFILE_SCOPE("Upload FFT Ocean Textures");
     // CPU FFT 完成后用 glTexSubImage2D 更新 GPU 纹理，避免每帧重建 texture object。
     glBindTexture(GL_TEXTURE_2D, heightTexture_);
     glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, resolution_, resolution_, GL_RED, GL_FLOAT, heightPixels_.data());

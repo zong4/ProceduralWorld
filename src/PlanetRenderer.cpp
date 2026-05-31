@@ -7,10 +7,11 @@
 
 #include <glm/gtc/matrix_transform.hpp>
 
+#include "Instumentor/InstrumentationTimer.hpp"
 #include "PlanetProceduralData.h"
 
-// 与 CPU 生成器一致的 6 个 cube face 坐标系。
-// 每个 patch 只需要 faceIndex + uv 范围，就能在 shader 里还原球面方向。
+// �?CPU 生成器一致的 6 �?cube face 坐标系�?
+// 每个 patch 只需�?faceIndex + uv 范围，就能在 shader 里还原球面方向�?
 const std::array<PlanetRenderer::FaceBasis, 6> PlanetRenderer::kPlanetFaces = {{
     {{ 1.0f,  0.0f,  0.0f}, { 0.0f,  0.0f, -1.0f}, { 0.0f,  1.0f,  0.0f}},
     {{-1.0f,  0.0f,  0.0f}, { 0.0f,  0.0f,  1.0f}, { 0.0f,  1.0f,  0.0f}},
@@ -46,6 +47,7 @@ void PlanetRenderer::RenderTarget::release()
 
 void PlanetRenderer::RenderTarget::create(int targetWidth, int targetHeight)
 {
+    PROFILE_SCOPE("RenderTarget Create");
     if (targetWidth <= 0 || targetHeight <= 0) {
         return;
     }
@@ -59,7 +61,7 @@ void PlanetRenderer::RenderTarget::create(int targetWidth, int targetHeight)
     width = targetWidth;
     height = targetHeight;
 
-    // 反射/折射 FBO：颜色使用 RGBA8，折射额外需要 depth texture 计算水柱厚度。
+    // 反射/折射 FBO：颜色使�?RGBA8，折射额外需�?depth texture 计算水柱厚度�?
     glGenFramebuffers(1, &framebufferObject);
     glBindFramebuffer(GL_FRAMEBUFFER, framebufferObject);
 
@@ -94,28 +96,23 @@ void PlanetRenderer::RenderTarget::create(int targetWidth, int targetHeight)
 
 void PlanetRenderer::initialize()
 {
+    PROFILE_SCOPE("PlanetRenderer Initialize");
     if (initialized_) return;
 
-    // 地形、海洋、线框和大气各自使用独立 shader program。
-    terrainProgram_ = ShaderProgram("shaders/terrain.vert",
-                                    "shaders/terrain.tesc",
-                                    "shaders/terrain.tese",
-                                    "shaders/terrain.frag");
+    // 地形、海洋、线框和大气各自使用独立 shader program�?
+    terrainChunkProgram_ = ShaderProgram("shaders/terrain_chunk.vert",
+                                         "shaders/terrain_chunk.frag");
+
+    bakedChunkBoundsProgram_ = ShaderProgram("shaders/baked_chunk_bounds.vert",
+                                             "shaders/baked_chunk_bounds.frag");
+
+    featureSegmentProgram_ = ShaderProgram("shaders/feature_segments.vert",
+                                           "shaders/feature_segments.frag");
 
     oceanProgram_ = ShaderProgram("shaders/ocean.vert",
                                   "shaders/ocean.tesc",
                                   "shaders/ocean.tese",
                                   "shaders/ocean.frag");
-
-    wireOverlayProgram_ = ShaderProgram("shaders/terrain.vert",
-                                        "shaders/terrain.tesc",
-                                        "shaders/terrain.tese",
-                                        "shaders/terrain_wire_fine.frag");
-
-    coarseGridProgram_ = ShaderProgram("shaders/terrain.vert",
-                                       "shaders/terrain.tesc",
-                                       "shaders/terrain.tese",
-                                       "shaders/terrain_wire_coarse.frag");
 
     oceanWireOverlayProgram_ = ShaderProgram("shaders/ocean.vert",
                                              "shaders/ocean.tesc",
@@ -133,7 +130,7 @@ void PlanetRenderer::initialize()
     terrainMesh_.buildGrid(kNodeGridResolution);
     atmosphereMesh_.buildSphere(96, 48);
     fftOcean_.initialize();
-    // terrain/ocean patch 都以 4 控制点 quad patch 输入 tessellation pipeline。
+    // terrain/ocean patch 都以 4 控制�?quad patch 输入 tessellation pipeline�?
     glPatchParameteri(GL_PATCH_VERTICES, 4);
 
     initialized_ = true;
@@ -145,7 +142,7 @@ void PlanetRenderer::setPlanetRotation(float yawDegrees, float pitchDegrees)
     planetPitchDegrees_ = pitchDegrees;
 
     glm::mat4 rotationMatrix(1.0f);
-    // 星球旋转只改变 modelMatrix，不改变相机轨道坐标。
+    // 星球旋转只改�?modelMatrix，不改变相机轨道坐标�?
     rotationMatrix = glm::rotate(rotationMatrix, glm::radians(planetYawDegrees_), glm::vec3(0.0f, 1.0f, 0.0f));
     rotationMatrix = glm::rotate(rotationMatrix, glm::radians(planetPitchDegrees_), glm::vec3(1.0f, 0.0f, 0.0f));
     modelMatrix_ = rotationMatrix;
@@ -163,17 +160,20 @@ const PlanetRenderSettings& PlanetRenderer::settings() const
 
 void PlanetRenderer::setProceduralData(const PlanetProceduralData& proceduralData)
 {
+    PROFILE_SCOPE("Upload Procedural Data");
     if (!proceduralData.isGenerated() || proceduralData.resolution() <= 0) {
         hasProceduralOceanData_ = false;
         proceduralWaterCoveragePrefixCpu_.clear();
         proceduralShoreCoverageLoosePrefixCpu_.clear();
         proceduralShoreCoverageStrictPrefixCpu_.clear();
+        bakedTerrainMesh_.release();
+        featureSegmentMesh_.release();
         return;
     }
 
     const int resolution = proceduralData.resolution();
     const std::size_t layerSize = static_cast<std::size_t>(resolution * resolution);
-    // OpenGL 2D texture array 的层顺序就是 6 个 cube face。
+    // OpenGL 2D texture array 的层顺序就是 6 �?cube face�?
     std::vector<float> height(layerSize * 6, 0.0f);
     std::vector<float> waterDepth(layerSize * 6, 0.0f);
     std::vector<float> shoreMask(layerSize * 6, 0.0f);
@@ -182,6 +182,7 @@ void PlanetRenderer::setProceduralData(const PlanetProceduralData& proceduralDat
     std::vector<float> moisture(layerSize * 6, 0.0f);
     std::vector<glm::vec4> biomeWeightA(layerSize * 6, glm::vec4(0.0f));
     std::vector<glm::vec4> biomeWeightB(layerSize * 6, glm::vec4(0.0f));
+    std::vector<glm::vec4> domainWeight(layerSize * 6, glm::vec4(0.0f));
 
     const auto& faces = proceduralData.faces();
     for (std::size_t faceIndex = 0; faceIndex < faces.size(); ++faceIndex) {
@@ -196,12 +197,19 @@ void PlanetRenderer::setProceduralData(const PlanetProceduralData& proceduralDat
             || face.depositionMask.size() != layerSize
             || face.temperature.size() != layerSize
             || face.moisture.size() != layerSize
+            || face.regionId.size() != layerSize
+            || face.featureMask.size() != layerSize
+            || face.meshDensity.size() != layerSize
+            || face.geometricError.size() != layerSize
             || face.biomeWeightA.size() != layerSize
-            || face.biomeWeightB.size() != layerSize) {
+            || face.biomeWeightB.size() != layerSize
+            || face.domainWeight.size() != layerSize) {
             hasProceduralOceanData_ = false;
             proceduralWaterCoveragePrefixCpu_.clear();
             proceduralShoreCoverageLoosePrefixCpu_.clear();
             proceduralShoreCoverageStrictPrefixCpu_.clear();
+            bakedTerrainMesh_.release();
+            featureSegmentMesh_.release();
             return;
         }
 
@@ -212,10 +220,11 @@ void PlanetRenderer::setProceduralData(const PlanetProceduralData& proceduralDat
         std::copy(face.moisture.begin(), face.moisture.end(), moisture.begin() + static_cast<std::ptrdiff_t>(layerSize * faceIndex));
         std::copy(face.biomeWeightA.begin(), face.biomeWeightA.end(), biomeWeightA.begin() + static_cast<std::ptrdiff_t>(layerSize * faceIndex));
         std::copy(face.biomeWeightB.begin(), face.biomeWeightB.end(), biomeWeightB.begin() + static_cast<std::ptrdiff_t>(layerSize * faceIndex));
+        std::copy(face.domainWeight.begin(), face.domainWeight.end(), domainWeight.begin() + static_cast<std::ptrdiff_t>(layerSize * faceIndex));
 
         const std::size_t layerOffset = layerSize * faceIndex;
         for (std::size_t i = 0; i < layerSize; ++i) {
-            // 侵蚀相关 4 个标量打包成一个 RGBA 纹理，减少 sampler 数量。
+            // 侵蚀相关 4 个标量打包成一�?RGBA 纹理，减�?sampler 数量�?
             erosionData[layerOffset + i] = glm::vec4(
                 face.channelMask[i],
                 face.flowMask[i],
@@ -281,9 +290,10 @@ void PlanetRenderer::setProceduralData(const PlanetProceduralData& proceduralDat
     uploadTextureArray(proceduralMoistureTexture_, moisture);
     uploadTextureArrayRgba(proceduralBiomeWeightATexture_, biomeWeightA);
     uploadTextureArrayRgba(proceduralBiomeWeightBTexture_, biomeWeightB);
+    uploadTextureArrayRgba(proceduralDomainWeightTexture_, domainWeight);
 
-    // CPU prefix sum 用于快速判断 patch 是否有水/海岸。
-    // 这避免每帧 LOD 时反复扫描 patch 内所有 texel。
+    // CPU prefix sum 用于快速判�?patch 是否有水/海岸�?
+    // 这避免每�?LOD 时反复扫�?patch 内所�?texel�?
     const int prefixStride = resolution + 1;
     const std::size_t prefixLayerSize = static_cast<std::size_t>(prefixStride * prefixStride);
     proceduralWaterCoveragePrefixCpu_.assign(prefixLayerSize * 6, 0);
@@ -319,6 +329,8 @@ void PlanetRenderer::setProceduralData(const PlanetProceduralData& proceduralDat
 
     proceduralDataResolution_ = resolution;
     hasProceduralOceanData_ = true;
+    bakedTerrainMesh_.upload(proceduralData, settings_.planetRadius, settings_.terrainHeightScale);
+    featureSegmentMesh_.upload(proceduralData, settings_.planetRadius, settings_.terrainHeightScale);
 }
 
 void PlanetRenderer::render(const FlyCamera& camera,
@@ -326,6 +338,7 @@ void PlanetRenderer::render(const FlyCamera& camera,
                             const glm::mat4& projectionMatrix,
                             float timeSeconds)
 {
+    PROFILE_SCOPE("PlanetRenderer Render");
     if (!initialized_) return;
     if (hasLastRenderTimeSeconds_) {
         currentDeltaSeconds_ = glm::clamp(timeSeconds - lastRenderTimeSeconds_, 1.0f / 240.0f, 0.10f);
@@ -347,25 +360,53 @@ void PlanetRenderer::render(const FlyCamera& camera,
     const int framebufferWidth = std::max(viewport[2], 1);
     const int framebufferHeight = std::max(viewport[3], 1);
 
-    // 1. CPU LOD/裁剪：生成本帧可见地形 patch 和海洋 patch。
+    // 1. CPU LOD/裁剪：生成本帧可见地�?patch 和海�?patch�?
     auto passStart = Clock::now();
-    updateAdaptiveLodBeforeCulling();
-    const Frustum frustum = extractFrustum(projectionMatrix * viewMatrix);
-    visiblePatches_ = buildVisiblePatches(camera, frustum, framebufferHeight);
-    visibleOceanPatches_ = buildVisibleOceanPatches();
-    updateEffectiveTessellationBudget(visiblePatches_.size(), visibleOceanPatches_.size());
+    {
+        PROFILE_SCOPE("LOD and Culling");
+        const Frustum frustum = extractFrustum(projectionMatrix * viewMatrix);
+
+        CullingStats oceanCullingStats;
+        if (settings_.renderOcean) {
+            visibleOceanPatches_ = buildVisibleOceanPatches(camera, frustum, framebufferHeight, oceanCullingStats);
+        } else {
+            visibleOceanPatches_.clear();
+        }
+
+        CullingStats bakedCullingStats;
+        if (settings_.renderTerrain) {
+            visibleBakedChunks_ = buildVisibleBakedChunks(camera, frustum, framebufferHeight, bakedCullingStats);
+        } else {
+            visibleBakedChunks_.clear();
+        }
+
+        updateOceanTessellationBudget(visibleOceanPatches_.size());
+        lastCullingStats_ = bakedCullingStats;
+        lastCullingStats_.visitedNodes += oceanCullingStats.visitedNodes;
+        lastCullingStats_.frustumCulledNodes += oceanCullingStats.frustumCulledNodes;
+        lastCullingStats_.horizonCulledNodes += oceanCullingStats.horizonCulledNodes;
+        lastCullingStats_.splitNodes += oceanCullingStats.splitNodes;
+        lastCullingStats_.emittedPatches += oceanCullingStats.emittedPatches;
+    }
     frameStats.cullingMs = elapsedMs(passStart, Clock::now());
     frameStats.oceanPatchCount = visibleOceanPatches_.size();
+    frameStats.bakedChunkCount = bakedTerrainMesh_.chunks.size();
+    frameStats.visibleBakedChunkCount = visibleBakedChunks_.size();
     frameStats.lodSplitPixelScale = lodSplitPixelScale_;
-    frameStats.effectiveLandTessMax = effectiveTessellationMax_;
     frameStats.effectiveOceanTessMax = effectiveOceanTessellationMax_;
-    frameStats.lodBudgetPressure = settings_.terrainPatchBudget > 0
-        ? static_cast<float>(visiblePatches_.size()) / static_cast<float>(settings_.terrainPatchBudget)
-        : 0.0f;
-    frameStats.estimatedTerrainTriangles = estimatePatchTriangles(visiblePatches_.size(), effectiveTessellationMax_);
+    std::size_t bakedTriangles = 0;
+    for (const VisibleBakedChunk& visibleChunk : visibleBakedChunks_) {
+        if (visibleChunk.chunkIndex < bakedTerrainMesh_.chunks.size()) {
+            const BakedTerrainMesh::ChunkDrawRange& chunk = bakedTerrainMesh_.chunks[visibleChunk.chunkIndex];
+            const std::size_t lodIndex = static_cast<std::size_t>(glm::clamp(static_cast<int>(visibleChunk.lod), 0, 2));
+            bakedTriangles += chunk.lods[lodIndex].triangleCount;
+            ++frameStats.visibleBakedChunkLodCount[lodIndex];
+        }
+    }
+    frameStats.estimatedTerrainTriangles = bakedTriangles;
     frameStats.estimatedOceanTriangles = estimatePatchTriangles(visibleOceanPatches_.size(), effectiveOceanTessellationMax_);
 
-    // 2. 更新 FFT 海浪纹理；可通过 frame stride 降低 CPU FFT/上传频率。
+    // 2. 更新 FFT 海浪纹理；可通过 frame stride 降低 CPU FFT/上传频率�?
     passStart = Clock::now();
     const int fftCascadeCount = std::clamp(settings_.oceanFftCascadeCount, 1, 3);
     const int fftFrameStride = std::max(settings_.oceanFftFrameStride, 1);
@@ -375,6 +416,7 @@ void PlanetRenderer::render(const FlyCamera& camera,
         fftOcean_.setCascadeCount(fftCascadeCount);
         frameStats.fftUpdated = (oceanFftFrameCounter_ % fftFrameStride) == 0;
         if (frameStats.fftUpdated) {
+            PROFILE_SCOPE("FFT Ocean Update");
             fftOcean_.update(timeSeconds);
         }
         ++oceanFftFrameCounter_;
@@ -383,7 +425,7 @@ void PlanetRenderer::render(const FlyCamera& camera,
     }
     frameStats.fftMs = elapsedMs(passStart, Clock::now());
 
-    // 3. 离屏渲染海面反射/折射目标。
+    // 3. 离屏渲染海面反射/折射目标�?
     passStart = Clock::now();
     drawReflectionRefractionPasses(camera, viewMatrix, projectionMatrix, framebufferWidth, framebufferHeight);
     frameStats.reflectionRefractionMs = elapsedMs(passStart, Clock::now());
@@ -396,7 +438,7 @@ void PlanetRenderer::render(const FlyCamera& camera,
     frameStats.reflectionWeight = oceanReflectionWeight_;
     frameStats.refractionWeight = oceanRefractionWeight_;
 
-    // 4. 主画面 pass：地形 -> 海洋 -> 大气 -> 可选线框。
+    // 4. 主画�?pass：地�?-> 海洋 -> 大气 -> 可选线框�?
     passStart = Clock::now();
     drawTerrainPass(camera, viewMatrix, projectionMatrix);
     frameStats.terrainMs = elapsedMs(passStart, Clock::now());
@@ -418,29 +460,22 @@ void PlanetRenderer::render(const FlyCamera& camera,
 
 const char* PlanetRenderer::currentModeLabel() const
 {
-    const char* wireLabel = "";
-    if (settings_.wireMode == PlanetWireMode::Terrain) {
-        wireLabel = "+LandMesh";
-    } else if (settings_.wireMode == PlanetWireMode::Ocean) {
-        wireLabel = "+WaterMesh";
-    }
-
     switch (settings_.renderMode) {
     case PlanetRenderMode::Unshaded:
-        return settings_.wireMode == PlanetWireMode::None ? "Unshaded" : wireLabel[1] == 'L' ? "Unshaded+LandMesh" : "Unshaded+WaterMesh";
+        return settings_.wireMode == PlanetWireMode::None ? "Unshaded" : settings_.wireMode == PlanetWireMode::Ocean ? "Unshaded+WaterMesh" : settings_.wireMode == PlanetWireMode::MountainMask ? "Unshaded+MountainMask" : "Unshaded+BakedLOD";
     case PlanetRenderMode::HeightMap:
-        return settings_.wireMode == PlanetWireMode::None ? "HeightMap" : wireLabel[1] == 'L' ? "Height+LandMesh" : "Height+WaterMesh";
+        return settings_.wireMode == PlanetWireMode::None ? "HeightMap" : settings_.wireMode == PlanetWireMode::Ocean ? "Height+WaterMesh" : settings_.wireMode == PlanetWireMode::MountainMask ? "Height+MountainMask" : "Height+BakedLOD";
     case PlanetRenderMode::Normals:
-        return settings_.wireMode == PlanetWireMode::None ? "Normals" : wireLabel[1] == 'L' ? "Normals+LandMesh" : "Normals+WaterMesh";
+        return settings_.wireMode == PlanetWireMode::None ? "Normals" : settings_.wireMode == PlanetWireMode::Ocean ? "Normals+WaterMesh" : settings_.wireMode == PlanetWireMode::MountainMask ? "Normals+MountainMask" : "Normals+BakedLOD";
     case PlanetRenderMode::Shaded:
     default:
-        return settings_.wireMode == PlanetWireMode::None ? "Shaded" : wireLabel[1] == 'L' ? "Shaded+LandMesh" : "Shaded+WaterMesh";
+        return settings_.wireMode == PlanetWireMode::None ? "Shaded" : settings_.wireMode == PlanetWireMode::Ocean ? "Shaded+WaterMesh" : settings_.wireMode == PlanetWireMode::MountainMask ? "Shaded+MountainMask" : "Shaded+BakedLOD";
     }
 }
 
-std::size_t PlanetRenderer::visiblePatchCount() const
+std::size_t PlanetRenderer::visibleOceanPatchCount() const
 {
-    return visiblePatches_.size();
+    return visibleOceanPatches_.size();
 }
 
 const PlanetRenderer::CullingStats& PlanetRenderer::cullingStats() const
@@ -453,24 +488,14 @@ const PlanetRenderer::PerformanceStats& PlanetRenderer::performanceStats() const
     return lastPerformanceStats_;
 }
 
-void PlanetRenderer::updateAdaptiveLodBeforeCulling()
+void PlanetRenderer::updateOceanTessellationBudget(std::size_t oceanPatchCount)
 {
-    if (!settings_.adaptiveTerrainLod) {
-        lodSplitPixelScale_ = 1.0f;
-        return;
-    }
-
-    const float budget = static_cast<float>(std::max(settings_.terrainPatchBudget, 64));
-    const float previousPatchCount = static_cast<float>(visiblePatches_.size());
-    if (previousPatchCount <= 0.0f) {
-        lodSplitPixelScale_ = glm::clamp(lodSplitPixelScale_, 0.85f, 2.35f);
-        return;
-    }
-
-    const float pressure = previousPatchCount / budget;
-    // patch 数超过预算时提高 split 阈值，低于预算时逐步恢复细节。
+    const float pressure = oceanPatchCount > 512
+        ? static_cast<float>(oceanPatchCount) / 512.0f
+        : 1.0f;
+    // patch 数超过预算时提高 split 阈值，低于预算时逐步恢复细节�?
     if (pressure > 1.12f) {
-        lodSplitPixelScale_ *= glm::mix(1.0f, 1.12f, glm::clamp((pressure - 1.0f) * 0.75f, 0.0f, 1.0f));
+        lodSplitPixelScale_ *= glm::mix(1.0f, 1.08f, glm::clamp((pressure - 1.0f) * 0.75f, 0.0f, 1.0f));
     } else if (pressure < 0.72f) {
         lodSplitPixelScale_ *= 0.96f;
     } else {
@@ -478,35 +503,6 @@ void PlanetRenderer::updateAdaptiveLodBeforeCulling()
     }
     lodSplitPixelScale_ = glm::clamp(lodSplitPixelScale_, 0.85f, 2.35f);
 }
-
-void PlanetRenderer::updateEffectiveTessellationBudget(std::size_t visiblePatchCount, std::size_t oceanPatchCount)
-{
-    const float landMin = glm::max(settings_.tessellationMin, 1.0f);
-    const float oceanMin = glm::max(settings_.oceanTessellationMin, 1.0f);
-    effectiveTessellationMax_ = glm::max(settings_.tessellationMax, landMin);
-    effectiveOceanTessellationMax_ = glm::max(settings_.oceanTessellationMax, oceanMin);
-
-    if (!settings_.adaptiveTerrainLod) {
-        return;
-    }
-
-    const float budget = static_cast<float>(std::max(settings_.terrainPatchBudget, 64));
-    const float patchPressure = static_cast<float>(visiblePatchCount) / budget;
-    if (patchPressure <= 1.0f) {
-        return;
-    }
-
-    const float tessScale = glm::clamp(1.0f / std::sqrt(patchPressure), 0.58f, 1.0f);
-    // patch 数已经偏高时，降低每个 patch 内部 tessellation，防止三角形数失控。
-    effectiveTessellationMax_ = glm::max(landMin, settings_.tessellationMax * tessScale);
-
-    const float oceanShare = visiblePatchCount > 0
-        ? static_cast<float>(oceanPatchCount) / static_cast<float>(visiblePatchCount)
-        : 0.0f;
-    const float oceanTessScale = glm::mix(1.0f, tessScale, glm::clamp(oceanShare, 0.0f, 1.0f));
-    effectiveOceanTessellationMax_ = glm::max(oceanMin, settings_.oceanTessellationMax * oceanTessScale);
-}
-
 std::size_t PlanetRenderer::estimatePatchTriangles(std::size_t patchCount, float tessLevel) const
 {
     const float tess = glm::max(tessLevel, 1.0f);
@@ -522,6 +518,7 @@ float PlanetRenderer::seaLevelRadius() const
 
 void PlanetRenderer::TerrainMesh::buildGrid(int patchResolution)
 {
+    PROFILE_SCOPE("Build Terrain Mesh");
     std::vector<float> vertices;
     std::vector<unsigned> indices;
 
@@ -563,7 +560,7 @@ void PlanetRenderer::TerrainMesh::buildGrid(int patchResolution)
         indices.push_back(topLeft);
     };
 
-    // 四边额外生成 skirt quad。TES 会把 skirt 顶点向下拉，遮盖不同 LOD 边界裂缝。
+    // 四边额外生成 skirt quad。TES 会把 skirt 顶点向下拉，遮盖不同 LOD 边界裂缝�?
     for (int column = 0; column < patchResolution; ++column) {
         const float u0 = static_cast<float>(column) * uvStep;
         const float u1 = static_cast<float>(column + 1) * uvStep;
@@ -627,8 +624,342 @@ void PlanetRenderer::TerrainMesh::draw() const
     glBindVertexArray(0);
 }
 
+void PlanetRenderer::BakedTerrainMesh::release()
+{
+    if (indexBufferObject != 0) {
+        glDeleteBuffers(1, &indexBufferObject);
+        indexBufferObject = 0;
+    }
+    if (vertexBufferObject != 0) {
+        glDeleteBuffers(1, &vertexBufferObject);
+        vertexBufferObject = 0;
+    }
+    if (vertexArrayObject != 0) {
+        glDeleteVertexArrays(1, &vertexArrayObject);
+        vertexArrayObject = 0;
+    }
+    if (lineVertexBufferObject != 0) {
+        glDeleteBuffers(1, &lineVertexBufferObject);
+        lineVertexBufferObject = 0;
+    }
+    if (lineVertexArrayObject != 0) {
+        glDeleteVertexArrays(1, &lineVertexArrayObject);
+        lineVertexArrayObject = 0;
+    }
+    indexCount = 0;
+    chunks.clear();
+}
+
+void PlanetRenderer::BakedTerrainMesh::upload(const PlanetProceduralData& proceduralData,
+                                              float planetRadius,
+                                              float heightScale)
+{
+    PROFILE_SCOPE("Upload Baked Terrain Mesh");
+    release();
+
+    struct GpuVertex {
+        glm::vec3 localPos;
+        glm::vec3 normal;
+        glm::vec3 sphereDir;
+        float height;
+    };
+
+    std::vector<GpuVertex> vertices;
+    std::vector<std::uint32_t> indices;
+    std::vector<glm::vec3> lineVertices;
+    chunks.reserve(proceduralData.terrainChunks().size());
+    std::size_t vertexCount = 0;
+    std::size_t indexTotal = 0;
+    for (const PlanetProceduralData::TerrainChunk& chunk : proceduralData.terrainChunks()) {
+        vertexCount += chunk.vertices.size();
+        indexTotal += chunk.indices.size();
+    }
+    vertices.reserve(vertexCount);
+    indices.reserve(indexTotal);
+
+    for (const PlanetProceduralData::TerrainChunk& chunk : proceduralData.terrainChunks()) {
+        const std::uint32_t baseVertex = static_cast<std::uint32_t>(vertices.size());
+        glm::vec3 localCenter(0.0f);
+        float minRadius = planetRadius + chunk.minHeight * heightScale;
+        float maxRadius = planetRadius + chunk.maxHeight * heightScale;
+        for (const PlanetProceduralData::TerrainChunkVertex& source : chunk.vertices) {
+            GpuVertex vertex;
+            vertex.localPos = source.sphereDir * (planetRadius + source.height * heightScale);
+            vertex.normal = source.normal;
+            vertex.sphereDir = source.sphereDir;
+            vertex.height = source.height;
+            localCenter += vertex.localPos;
+            vertices.push_back(vertex);
+        }
+        if (!chunk.vertices.empty()) {
+            localCenter /= static_cast<float>(chunk.vertices.size());
+        }
+
+        float radius = glm::abs(maxRadius - minRadius) * 0.5f;
+        for (std::size_t i = baseVertex; i < vertices.size(); ++i) {
+            radius = glm::max(radius, glm::length(vertices[i].localPos - localCenter));
+        }
+
+        ChunkDrawRange drawRange;
+        drawRange.localCenter = localCenter;
+        drawRange.radius = glm::max(radius + heightScale * 0.05f, 0.001f);
+
+        const auto appendRange = [&](int step, int lodIndex) {
+            BakedTerrainMesh::IndexRange range;
+            range.firstIndex = indices.size();
+            for (std::uint32_t index : chunk.indices) {
+                indices.push_back(baseVertex + index);
+            }
+            range.indexCount = static_cast<GLsizei>(indices.size() - range.firstIndex);
+            range.triangleCount = range.indexCount / 3;
+            drawRange.lods[static_cast<std::size_t>(lodIndex)] = range;
+        };
+        appendRange(1, 0);
+        appendRange(2, 1);
+        appendRange(4, 2);
+        chunks.push_back(drawRange);
+
+        if (!chunk.vertices.empty()) {
+            const auto localPosAtUvCorner = [&](const glm::vec2& cornerUv) {
+                const PlanetProceduralData::TerrainChunkVertex* bestVertex = &chunk.vertices.front();
+                float bestDistance = glm::dot(bestVertex->uv - cornerUv, bestVertex->uv - cornerUv);
+                for (const PlanetProceduralData::TerrainChunkVertex& vertex : chunk.vertices) {
+                    const float distance = glm::dot(vertex.uv - cornerUv, vertex.uv - cornerUv);
+                    if (distance < bestDistance) {
+                        bestDistance = distance;
+                        bestVertex = &vertex;
+                    }
+                }
+                return bestVertex->sphereDir * (planetRadius + bestVertex->height * heightScale);
+            };
+            const glm::vec3 corners[4] = {
+                localPosAtUvCorner(chunk.uvMin),
+                localPosAtUvCorner(chunk.uvMin + glm::vec2(chunk.uvSize.x, 0.0f)),
+                localPosAtUvCorner(chunk.uvMin + chunk.uvSize),
+                localPosAtUvCorner(chunk.uvMin + glm::vec2(0.0f, chunk.uvSize.y))
+            };
+            lineVertices.push_back(corners[0]);
+            lineVertices.push_back(corners[1]);
+            lineVertices.push_back(corners[1]);
+            lineVertices.push_back(corners[2]);
+            lineVertices.push_back(corners[2]);
+            lineVertices.push_back(corners[3]);
+            lineVertices.push_back(corners[3]);
+            lineVertices.push_back(corners[0]);
+        } else {
+            for (int i = 0; i < 8; ++i) {
+                lineVertices.push_back(localCenter);
+            }
+        }
+    }
+
+    if (vertices.empty() || indices.empty()) {
+        return;
+    }
+
+    indexCount = static_cast<GLsizei>(indices.size());
+    glGenVertexArrays(1, &vertexArrayObject);
+    glGenBuffers(1, &vertexBufferObject);
+    glGenBuffers(1, &indexBufferObject);
+
+    glBindVertexArray(vertexArrayObject);
+    glBindBuffer(GL_ARRAY_BUFFER, vertexBufferObject);
+    glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(GpuVertex), vertices.data(), GL_STATIC_DRAW);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indexBufferObject);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(std::uint32_t), indices.data(), GL_STATIC_DRAW);
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(GpuVertex), reinterpret_cast<void*>(offsetof(GpuVertex, localPos)));
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(GpuVertex), reinterpret_cast<void*>(offsetof(GpuVertex, normal)));
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(GpuVertex), reinterpret_cast<void*>(offsetof(GpuVertex, sphereDir)));
+    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, sizeof(GpuVertex), reinterpret_cast<void*>(offsetof(GpuVertex, height)));
+    glEnableVertexAttribArray(3);
+
+    glBindVertexArray(0);
+
+    glGenVertexArrays(1, &lineVertexArrayObject);
+    glGenBuffers(1, &lineVertexBufferObject);
+    glBindVertexArray(lineVertexArrayObject);
+    glBindBuffer(GL_ARRAY_BUFFER, lineVertexBufferObject);
+    glBufferData(GL_ARRAY_BUFFER, lineVertices.size() * sizeof(glm::vec3), lineVertices.data(), GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), nullptr);
+    glEnableVertexAttribArray(0);
+    glBindVertexArray(0);
+}
+
+void PlanetRenderer::BakedTerrainMesh::draw(const std::vector<VisibleBakedChunk>& visibleChunks) const
+{
+    if (indexCount <= 0 || visibleChunks.empty()) {
+        return;
+    }
+    glBindVertexArray(vertexArrayObject);
+    for (const VisibleBakedChunk& visibleChunk : visibleChunks) {
+        if (visibleChunk.chunkIndex >= chunks.size()) {
+            continue;
+        }
+        const ChunkDrawRange& chunk = chunks[visibleChunk.chunkIndex];
+        const IndexRange& range = chunk.lods[glm::clamp(static_cast<int>(visibleChunk.lod), 0, 2)];
+        glDrawElements(GL_TRIANGLES,
+                       range.indexCount,
+                       GL_UNSIGNED_INT,
+                       reinterpret_cast<const void*>(range.firstIndex * sizeof(std::uint32_t)));
+    }
+    glBindVertexArray(0);
+}
+
+void PlanetRenderer::BakedTerrainMesh::drawWire(const std::vector<VisibleBakedChunk>& visibleChunks) const
+{
+    if (indexCount <= 0 || visibleChunks.empty()) {
+        return;
+    }
+    glBindVertexArray(vertexArrayObject);
+    for (const VisibleBakedChunk& visibleChunk : visibleChunks) {
+        if (visibleChunk.chunkIndex >= chunks.size()) {
+            continue;
+        }
+        const ChunkDrawRange& chunk = chunks[visibleChunk.chunkIndex];
+        const IndexRange& range = chunk.lods[glm::clamp(static_cast<int>(visibleChunk.lod), 0, 2)];
+        glDrawElements(GL_TRIANGLES,
+                       range.indexCount,
+                       GL_UNSIGNED_INT,
+                       reinterpret_cast<const void*>(range.firstIndex * sizeof(std::uint32_t)));
+    }
+    glBindVertexArray(0);
+}
+
+void PlanetRenderer::BakedTerrainMesh::drawChunkBounds(const std::vector<VisibleBakedChunk>& visibleChunks) const
+{
+    if (lineVertexArrayObject == 0 || visibleChunks.empty()) {
+        return;
+    }
+    glBindVertexArray(lineVertexArrayObject);
+    for (const VisibleBakedChunk& visibleChunk : visibleChunks) {
+        if (visibleChunk.chunkIndex >= chunks.size()) {
+            continue;
+        }
+        glDrawArrays(GL_LINES, static_cast<GLint>(visibleChunk.chunkIndex * 8), 8);
+    }
+    glBindVertexArray(0);
+}
+
+void PlanetRenderer::FeatureSegmentMesh::release()
+{
+    if (vertexBufferObject != 0) {
+        glDeleteBuffers(1, &vertexBufferObject);
+        vertexBufferObject = 0;
+    }
+    if (vertexArrayObject != 0) {
+        glDeleteVertexArrays(1, &vertexArrayObject);
+        vertexArrayObject = 0;
+    }
+    vertexCount = 0;
+    ranges = {};
+}
+
+void PlanetRenderer::FeatureSegmentMesh::upload(const PlanetProceduralData& proceduralData,
+                                                float,
+                                                float)
+{
+    PROFILE_SCOPE("Upload Feature Segment Mesh");
+    release();
+
+    struct FeatureVertex {
+        glm::vec3 sphereDir;
+        float strength;
+    };
+
+    std::vector<FeatureVertex> vertices;
+    vertices.reserve(proceduralData.terrainFeatureSegments().size() * 2);
+
+    const auto appendType = [&](PlanetProceduralData::TerrainFeatureType type) {
+        const int typeIndex = static_cast<int>(type);
+        TypeRange& range = ranges[static_cast<std::size_t>(typeIndex)];
+        range.firstVertex = vertices.size();
+
+        for (const PlanetProceduralData::TerrainFeatureSegment& segment : proceduralData.terrainFeatureSegments()) {
+            if (segment.type != type) {
+                continue;
+            }
+
+            const float strength = glm::clamp(segment.strength, 0.0f, 1.0f);
+            vertices.push_back({glm::normalize(segment.sphereDirA), strength});
+            vertices.push_back({glm::normalize(segment.sphereDirB), strength});
+        }
+
+        range.vertexCount = static_cast<GLsizei>(vertices.size() - range.firstVertex);
+    };
+
+    appendType(PlanetProceduralData::TerrainFeatureType::River);
+    appendType(PlanetProceduralData::TerrainFeatureType::Coast);
+    appendType(PlanetProceduralData::TerrainFeatureType::Ridge);
+    appendType(PlanetProceduralData::TerrainFeatureType::ErosionEdge);
+
+    if (vertices.empty()) {
+        return;
+    }
+
+    vertexCount = static_cast<GLsizei>(vertices.size());
+    glGenVertexArrays(1, &vertexArrayObject);
+    glGenBuffers(1, &vertexBufferObject);
+
+    glBindVertexArray(vertexArrayObject);
+    glBindBuffer(GL_ARRAY_BUFFER, vertexBufferObject);
+    glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(FeatureVertex), vertices.data(), GL_STATIC_DRAW);
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(FeatureVertex), reinterpret_cast<void*>(offsetof(FeatureVertex, sphereDir)));
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, sizeof(FeatureVertex), reinterpret_cast<void*>(offsetof(FeatureVertex, strength)));
+    glEnableVertexAttribArray(1);
+
+    glBindVertexArray(0);
+}
+
+void PlanetRenderer::FeatureSegmentMesh::draw(TerrainFeatureOverlayMode mode) const
+{
+    if (vertexArrayObject == 0 || vertexCount <= 0 || mode == TerrainFeatureOverlayMode::None) {
+        return;
+    }
+
+    const auto drawType = [&](PlanetProceduralData::TerrainFeatureType type) {
+        const TypeRange& range = ranges[static_cast<std::size_t>(type)];
+        if (range.vertexCount <= 0) {
+            return;
+        }
+        glDrawArrays(GL_LINES, static_cast<GLint>(range.firstVertex), range.vertexCount);
+    };
+
+    glBindVertexArray(vertexArrayObject);
+    switch (mode) {
+    case TerrainFeatureOverlayMode::All:
+        drawType(PlanetProceduralData::TerrainFeatureType::River);
+        drawType(PlanetProceduralData::TerrainFeatureType::Coast);
+        drawType(PlanetProceduralData::TerrainFeatureType::Ridge);
+        drawType(PlanetProceduralData::TerrainFeatureType::ErosionEdge);
+        break;
+    case TerrainFeatureOverlayMode::Rivers:
+        drawType(PlanetProceduralData::TerrainFeatureType::River);
+        break;
+    case TerrainFeatureOverlayMode::Coast:
+        drawType(PlanetProceduralData::TerrainFeatureType::Coast);
+        break;
+    case TerrainFeatureOverlayMode::Ridges:
+        drawType(PlanetProceduralData::TerrainFeatureType::Ridge);
+        break;
+    case TerrainFeatureOverlayMode::Erosion:
+        drawType(PlanetProceduralData::TerrainFeatureType::ErosionEdge);
+        break;
+    case TerrainFeatureOverlayMode::None:
+    default:
+        break;
+    }
+    glBindVertexArray(0);
+}
+
 void PlanetRenderer::SphereMesh::buildSphere(int longitudeSegments, int latitudeSegments)
 {
+    PROFILE_SCOPE("Build Atmosphere Mesh");
     longitudeSegments = glm::max(longitudeSegments, 8);
     latitudeSegments = glm::max(latitudeSegments, 4);
 
@@ -733,7 +1064,7 @@ glm::vec3 PlanetRenderer::nodeCenterDirection(const FaceBasis& face, const Quadt
 
 PlanetRenderer::Frustum PlanetRenderer::extractFrustum(const glm::mat4& viewProjectionMatrix)
 {
-    // 从 OpenGL 列主序矩阵中取行，组合出左右上下近远 6 个裁剪平面。
+    // �?OpenGL 列主序矩阵中取行，组合出左右上下近远 6 个裁剪平面�?
     const glm::vec4 row0(viewProjectionMatrix[0][0], viewProjectionMatrix[1][0], viewProjectionMatrix[2][0], viewProjectionMatrix[3][0]);
     const glm::vec4 row1(viewProjectionMatrix[0][1], viewProjectionMatrix[1][1], viewProjectionMatrix[2][1], viewProjectionMatrix[3][1]);
     const glm::vec4 row2(viewProjectionMatrix[0][2], viewProjectionMatrix[1][2], viewProjectionMatrix[2][2], viewProjectionMatrix[3][2]);
@@ -765,7 +1096,7 @@ glm::vec3 PlanetRenderer::worldDirection(const glm::vec3& localDirection) const
 
 PlanetRenderer::NodeBounds PlanetRenderer::computeNodeBounds(const FaceBasis& face, const QuadtreeNode& node) const
 {
-    // 用 3x3 采样估算球面 patch 半径和 cube-sphere 畸变比例，供裁剪/LOD 使用。
+    // �?3x3 采样估算球面 patch 半径�?cube-sphere 畸变比例，供裁剪/LOD 使用�?
     const float sampleRadius = settings_.planetRadius + settings_.terrainHeightScale * 2.0f;
     const glm::vec3 centerDirection = nodeCenterDirection(face, node);
     const glm::vec3 center = centerDirection * sampleRadius;
@@ -822,10 +1153,39 @@ bool PlanetRenderer::isNodeHiddenByHorizon(const FlyCamera& camera,
     }
 
     const glm::vec3 cameraDirection = glm::normalize(camera.position);
-    // 球体地平线裁剪：背向且落在地平线之后的 patch 不需要递归。
+    // 球体地平线裁剪：背向且落在地平线之后�?patch 不需要递归�?
     const float horizonDot = settings_.planetRadius / cameraDistanceFromOrigin;
     const float safetyMargin = bounds.radius / settings_.planetRadius;
     return glm::dot(cameraDirection, bounds.worldDirection) < horizonDot - safetyMargin;
+}
+
+bool PlanetRenderer::isSphereOutsideFrustum(const Frustum& frustum, const glm::vec3& worldCenter, float radius) const
+{
+    for (const glm::vec4& plane : frustum.planes) {
+        const float signedDistance = glm::dot(glm::vec3(plane), worldCenter) + plane.w;
+        if (signedDistance < -radius) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool PlanetRenderer::isSphereHiddenByHorizon(const FlyCamera& camera, const glm::vec3& worldCenter, float radius) const
+{
+    const float cameraDistanceFromOrigin = glm::length(camera.position);
+    if (cameraDistanceFromOrigin <= settings_.planetRadius + settings_.terrainHeightScale * 2.0f) {
+        return false;
+    }
+    const float centerDistance = glm::length(worldCenter);
+    if (centerDistance <= 0.0001f) {
+        return false;
+    }
+
+    const glm::vec3 cameraDirection = glm::normalize(camera.position);
+    const glm::vec3 centerDirection = worldCenter / centerDistance;
+    const float horizonDot = settings_.planetRadius / cameraDistanceFromOrigin;
+    const float safetyMargin = radius / glm::max(settings_.planetRadius, 0.0001f);
+    return glm::dot(cameraDirection, centerDirection) < horizonDot - safetyMargin;
 }
 
 PlanetRenderer::PatchWaterCoverage PlanetRenderer::analyzePatchWaterCoverage(int faceIndex,
@@ -871,7 +1231,7 @@ PlanetRenderer::PatchWaterCoverage PlanetRenderer::analyzePatchWaterCoverage(int
     }
 
     const std::uint32_t coveredTexels = static_cast<std::uint32_t>((x1 - x0) * (y1 - y0));
-    // 前缀和 O(1) 查询 patch 矩形内水面/海岸 texel 数。
+    // 前缀�?O(1) 查询 patch 矩形内水�?海岸 texel 数�?
     const std::uint32_t waterTexels = queryPrefix(proceduralWaterCoveragePrefixCpu_, x0, y0, x1, y1);
     const std::uint32_t looseShoreTexels = queryPrefix(proceduralShoreCoverageLoosePrefixCpu_, x0, y0, x1, y1);
     const std::uint32_t strictShoreTexels = queryPrefix(proceduralShoreCoverageStrictPrefixCpu_, x0, y0, x1, y1);
@@ -897,18 +1257,18 @@ bool PlanetRenderer::shouldSplitNode(const FlyCamera& camera,
     const float distanceToCamera = glm::max(centerDistanceToCamera - bounds.radius, 0.001f);
     const float projectionScale = (0.5f * static_cast<float>(framebufferHeight))
                                 / glm::tan(glm::radians(camera.fieldOfView) * 0.5f);
-    // 屏幕投影半径越大，越需要继续四叉树细分。
+    // 屏幕投影半径越大，越需要继续四叉树细分�?
     const float projectedRadius = bounds.radius * bounds.lodScale * projectionScale / distanceToCamera;
     return projectedRadius > kLodSplitPixels * lodSplitPixelScale_;
 }
 
-void PlanetRenderer::collectVisiblePatches(const FlyCamera& camera,
-                                           const Frustum& frustum,
-                                           int faceIndex,
-                                           const QuadtreeNode& node,
-                                           int framebufferHeight,
-                                           CullingStats& stats,
-                                           std::vector<RenderPatch>& outPatches) const
+void PlanetRenderer::collectVisibleOceanPatches(const FlyCamera& camera,
+                                                const Frustum& frustum,
+                                                int faceIndex,
+                                                const QuadtreeNode& node,
+                                                int framebufferHeight,
+                                                CullingStats& stats,
+                                                std::vector<OceanPatch>& outPatches) const
 {
     const FaceBasis& face = kPlanetFaces[faceIndex];
     const NodeBounds bounds = computeNodeBounds(face, node);
@@ -924,7 +1284,7 @@ void PlanetRenderer::collectVisiblePatches(const FlyCamera& camera,
         return;
     }
 
-    // 海岸或水陆混合 patch 即使屏幕尺寸还不大，也强制细分到更深层。
+    // 海岸或水陆混�?patch 即使屏幕尺寸还不大，也强制细分到更深层�?
     PatchWaterCoverage nodeCoverage;
     bool hasNodeCoverage = false;
     bool forceShoreLod = false;
@@ -937,20 +1297,20 @@ void PlanetRenderer::collectVisiblePatches(const FlyCamera& camera,
         ++stats.splitNodes;
         const float childSize = node.uvSize * 0.5f;
 
-        // 标准四叉树拆分为 2x2 子节点。
+        // 标准四叉树拆分为 2x2 子节点�?
         for (int childY = 0; childY < 2; ++childY) {
             for (int childX = 0; childX < 2; ++childX) {
                 QuadtreeNode childNode;
                 childNode.uvMin = node.uvMin + glm::vec2(childX * childSize, childY * childSize);
                 childNode.uvSize = childSize;
                 childNode.depth = node.depth + 1;
-                collectVisiblePatches(camera, frustum, faceIndex, childNode, framebufferHeight, stats, outPatches);
+                collectVisibleOceanPatches(camera, frustum, faceIndex, childNode, framebufferHeight, stats, outPatches);
             }
         }
         return;
     }
 
-    RenderPatch patch;
+    OceanPatch patch;
     patch.faceIndex = faceIndex;
     patch.uvMin = node.uvMin;
     patch.uvSize = glm::vec2(node.uvSize);
@@ -962,37 +1322,75 @@ void PlanetRenderer::collectVisiblePatches(const FlyCamera& camera,
     outPatches.push_back(patch);
 }
 
-std::vector<PlanetRenderer::RenderPatch> PlanetRenderer::buildVisiblePatches(const FlyCamera& camera,
-                                                                             const Frustum& frustum,
-                                                                             int framebufferHeight)
+std::vector<PlanetRenderer::OceanPatch> PlanetRenderer::buildVisibleOceanPatches(const FlyCamera& camera,
+                                                                                 const Frustum& frustum,
+                                                                                 int framebufferHeight,
+                                                                                 CullingStats& stats) const
 {
-    std::vector<RenderPatch> patches;
+    PROFILE_SCOPE("Build Visible Terrain Patches");
+    std::vector<OceanPatch> patches;
     patches.reserve(256);
-    CullingStats stats;
 
     const QuadtreeNode rootNode;
     for (int faceIndex = 0; faceIndex < static_cast<int>(kPlanetFaces.size()); ++faceIndex) {
-        collectVisiblePatches(camera, frustum, faceIndex, rootNode, framebufferHeight, stats, patches);
+        collectVisibleOceanPatches(camera, frustum, faceIndex, rootNode, framebufferHeight, stats, patches);
     }
 
-    lastCullingStats_ = stats;
-    return patches;
-}
-
-std::vector<PlanetRenderer::RenderPatch> PlanetRenderer::buildVisibleOceanPatches() const
-{
-    // 海洋 pass 只画含水或近海岸 patch，减少无效透明绘制。
-    std::vector<RenderPatch> oceanPatches;
-    oceanPatches.reserve(visiblePatches_.size());
-    for (const RenderPatch& patch : visiblePatches_) {
+    std::vector<OceanPatch> oceanPatches;
+    oceanPatches.reserve(patches.size());
+    for (const OceanPatch& patch : patches) {
         if (patchHasOceanCoverage(patch)) {
             oceanPatches.push_back(patch);
         }
     }
+    stats.emittedPatches = oceanPatches.size();
     return oceanPatches;
 }
 
-bool PlanetRenderer::patchHasOceanCoverage(const RenderPatch& patch) const
+std::vector<PlanetRenderer::VisibleBakedChunk> PlanetRenderer::buildVisibleBakedChunks(const FlyCamera& camera,
+                                                                                       const Frustum& frustum,
+                                                                                       int framebufferHeight,
+                                                                                       CullingStats& stats) const
+{
+    PROFILE_SCOPE("Build Visible Baked Chunks");
+    std::vector<VisibleBakedChunk> visibleChunks;
+    visibleChunks.reserve(bakedTerrainMesh_.chunks.size());
+
+    const glm::mat3 modelRotation(modelMatrix_);
+    const float projectionScale = (0.5f * static_cast<float>(glm::max(framebufferHeight, 1)))
+                                / glm::tan(glm::radians(camera.fieldOfView) * 0.5f);
+    for (std::size_t chunkIndex = 0; chunkIndex < bakedTerrainMesh_.chunks.size(); ++chunkIndex) {
+        const BakedTerrainMesh::ChunkDrawRange& chunk = bakedTerrainMesh_.chunks[chunkIndex];
+        ++stats.visitedNodes;
+
+        const glm::vec3 worldCenter = modelRotation * chunk.localCenter;
+        if (isSphereOutsideFrustum(frustum, worldCenter, chunk.radius)) {
+            ++stats.frustumCulledNodes;
+            continue;
+        }
+        if (isSphereHiddenByHorizon(camera, worldCenter, chunk.radius)) {
+            ++stats.horizonCulledNodes;
+            continue;
+        }
+
+        const float distanceToCamera = glm::max(glm::length(camera.position - worldCenter) - chunk.radius, 0.001f);
+        const float projectedRadius = chunk.radius * projectionScale / distanceToCamera;
+        const std::uint8_t lod = projectedRadius > 90.0f
+            ? 0
+            : (projectedRadius > 35.0f ? 1 : 2);
+
+        visibleChunks.push_back(VisibleBakedChunk{
+            static_cast<std::uint32_t>(chunkIndex),
+            lod
+        });
+    }
+
+    stats.emittedPatches = visibleChunks.size();
+    return visibleChunks;
+}
+
+
+bool PlanetRenderer::patchHasOceanCoverage(const OceanPatch& patch) const
 {
     const PatchWaterCoverage& coverage = patch.waterCoverage;
     if (!coverage.hasData) {
@@ -1006,10 +1404,10 @@ void PlanetRenderer::applyCommonUniforms(const ShaderProgram& program,
                                          const FlyCamera& camera,
                                          const glm::mat4& viewMatrix,
                                          const glm::mat4& projectionMatrix,
-                                         const RenderPatch& patch) const
+                                         const OceanPatch& patch) const
 {
     const FaceBasis& face = kPlanetFaces[patch.faceIndex];
-    // cameraRelativeView 去掉平移，顶点阶段手动使用 worldPos-cameraPos，提升大尺度坐标稳定性。
+    // cameraRelativeView 去掉平移，顶点阶段手动使�?worldPos-cameraPos，提升大尺度坐标稳定性�?
     const glm::mat4 cameraRelativeView = glm::mat4(glm::mat3(viewMatrix));
     const float cameraAltitude = glm::max(glm::length(camera.position) - settings_.planetRadius, 0.0f);
 
@@ -1021,24 +1419,13 @@ void PlanetRenderer::applyCommonUniforms(const ShaderProgram& program,
     program.setVec3("cameraPos", camera.position);
     program.setVec3("lightDir", lightDirection_);
     program.setFloat("cameraAltitude", cameraAltitude);
-    program.setFloat("tessMin", settings_.tessellationMin);
-    program.setFloat("tessMax", effectiveTessellationMax_);
-    program.setFloat("tessMinDist", settings_.tessellationNearDistance);
-    program.setFloat("tessMaxDist", settings_.tessellationFarDistance);
+    program.setFloat("tessMin", settings_.oceanTessellationMin);
+    program.setFloat("tessMax", effectiveOceanTessellationMax_);
+    program.setFloat("tessMinDist", settings_.oceanTessellationNearDistance);
+    program.setFloat("tessMaxDist", settings_.oceanTessellationFarDistance);
     program.setFloat("planetRadius", settings_.planetRadius);
     program.setFloat("seaLevelRadius", seaLevelRadius());
     program.setFloat("heightScale", settings_.terrainHeightScale);
-    program.setFloat("terrainSkirtDepth", settings_.terrainSkirtDepth);
-    program.setFloat("noiseScale", settings_.terrainNoiseScale);
-    program.setFloat("mountainMaskStrength", settings_.mountainMaskStrength);
-    program.setFloat("mountainMaskScale", settings_.mountainMaskScale);
-    program.setFloat("mountainRidgeSharpness", settings_.mountainRidgeSharpness);
-    program.setFloat("regionalDetailStrength", settings_.regionalDetailStrength);
-    program.setFloat("microDetailStrength", settings_.microDetailStrength);
-    program.setFloat("regionalDetailStartAltitude", settings_.regionalDetailStartAltitude);
-    program.setFloat("regionalDetailEndAltitude", settings_.regionalDetailEndAltitude);
-    program.setFloat("microDetailStartAltitude", settings_.microDetailStartAltitude);
-    program.setFloat("microDetailEndAltitude", settings_.microDetailEndAltitude);
     program.setFloat("seaLevelOffset", settings_.seaLevelOffset);
     program.setVec3("terrainLowlandColor", settings_.terrainLowlandColor);
     program.setVec3("terrainForestColor", settings_.terrainForestColor);
@@ -1047,7 +1434,6 @@ void PlanetRenderer::applyCommonUniforms(const ShaderProgram& program,
     program.setVec3("terrainBeachColor", settings_.terrainBeachColor);
     program.setVec3("terrainSnowColor", settings_.terrainSnowColor);
     program.setFloat("terrainBeachWidth", settings_.terrainBeachWidth);
-    program.setFloat("terrainShoreLift", settings_.terrainShoreLift);
     program.setFloat("terrainRockSlopeStart", settings_.terrainRockSlopeStart);
     program.setFloat("terrainRockSlopeEnd", settings_.terrainRockSlopeEnd);
     program.setFloat("terrainSnowStart", settings_.terrainSnowStart);
@@ -1095,11 +1481,10 @@ void PlanetRenderer::applyCommonUniforms(const ShaderProgram& program,
     program.setFloat("oceanReflectionWeight", oceanReflectionWeight_);
     program.setFloat("oceanRefractionWeight", oceanRefractionWeight_);
     program.setInt("renderMode", static_cast<int>(settings_.renderMode));
-    program.setInt("terrainMaskDebugMode", settings_.terrainMaskDebugMode);
     program.setInt("useProceduralOceanData", hasProceduralOceanData_ ? 1 : 0);
     program.setInt("useProceduralData", hasProceduralOceanData_ ? 1 : 0);
     program.setFloat("proceduralDataTexelSize", proceduralDataResolution_ > 0 ? 1.0f / static_cast<float>(proceduralDataResolution_) : 0.0f);
-    // 每个 draw call 只改变当前 patch 的 face basis 和 node UV 范围。
+    // 每个 draw call 只改变当�?patch �?face basis �?node UV 范围�?
     program.setVec2("nodeUvMin", patch.uvMin);
     program.setVec2("nodeUvSize", patch.uvSize);
     program.setVec3("oceanShallowColor", settings_.oceanShallowColor);
@@ -1114,7 +1499,10 @@ void PlanetRenderer::drawTerrainPass(const FlyCamera& camera,
                                      const glm::mat4& viewMatrix,
                                      const glm::mat4& projectionMatrix)
 {
-    drawTerrainPass(camera, viewMatrix, projectionMatrix, false, 0.0f, true);
+    if (!settings_.renderTerrain || bakedTerrainMesh_.indexCount <= 0) {
+        return;
+    }
+    drawBakedTerrainPass(camera, viewMatrix, projectionMatrix, false, 0.0f, true);
 }
 
 void PlanetRenderer::drawTerrainPass(const FlyCamera& camera,
@@ -1124,20 +1512,28 @@ void PlanetRenderer::drawTerrainPass(const FlyCamera& camera,
                                      float clipPlaneY,
                                      bool keepAboveClipPlane)
 {
-    if (!settings_.renderTerrain) {
-        return;
+    if (settings_.renderTerrain && bakedTerrainMesh_.indexCount > 0) {
+        drawBakedTerrainPass(camera, viewMatrix, projectionMatrix, useClipPlane, clipPlaneY, keepAboveClipPlane);
     }
+}
+
+void PlanetRenderer::drawBakedTerrainPass(const FlyCamera& camera,
+                                          const glm::mat4& viewMatrix,
+                                          const glm::mat4& projectionMatrix,
+                                          bool useClipPlane,
+                                          float clipPlaneY,
+                                          bool keepAboveClipPlane)
+{
+    PROFILE_SCOPE(useClipPlane ? "Draw Baked Terrain Clip Pass" : "Draw Baked Terrain Pass");
 
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
     if (useClipPlane) {
-        // 反射/折射 pass 复用地形 shader，通过 clip plane 保留水面上/下部分。
         glEnable(GL_CLIP_DISTANCE0);
     } else {
         glDisable(GL_CLIP_DISTANCE0);
     }
 
     glActiveTexture(GL_TEXTURE0);
-    // terrain shader 需要所有程序化数据层来做位移、法线、材质和 debug 输出。
     glBindTexture(GL_TEXTURE_2D_ARRAY, proceduralWaterDepthTexture_);
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D_ARRAY, proceduralHeightTexture_);
@@ -1151,21 +1547,27 @@ void PlanetRenderer::drawTerrainPass(const FlyCamera& camera,
     glBindTexture(GL_TEXTURE_2D_ARRAY, proceduralBiomeWeightATexture_);
     glActiveTexture(GL_TEXTURE7);
     glBindTexture(GL_TEXTURE_2D_ARRAY, proceduralBiomeWeightBTexture_);
+    glActiveTexture(GL_TEXTURE8);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, proceduralDomainWeightTexture_);
 
-    for (const RenderPatch& patch : visiblePatches_) {
-        applyCommonUniforms(terrainProgram_, camera, viewMatrix, projectionMatrix, patch);
-        terrainProgram_.setInt("proceduralWaterDepthTexture", 0);
-        terrainProgram_.setInt("proceduralHeightTexture", 1);
-        terrainProgram_.setInt("proceduralTemperatureTexture", 2);
-        terrainProgram_.setInt("proceduralMoistureTexture", 3);
-        terrainProgram_.setInt("proceduralErosionMaskTexture", 5);
-        terrainProgram_.setInt("proceduralBiomeWeightATexture", 6);
-        terrainProgram_.setInt("proceduralBiomeWeightBTexture", 7);
-        terrainProgram_.setVec4("clipPlane", useClipPlane ? glm::vec4(0.0f, keepAboveClipPlane ? 1.0f : -1.0f, 0.0f, -clipPlaneY)
-                                                         : glm::vec4(0.0f, 0.0f, 0.0f, -1.0e9f));
-        terrainMesh_.draw();
-    }
-
+    OceanPatch dummyPatch;
+    dummyPatch.faceIndex = 0;
+    dummyPatch.uvMin = glm::vec2(0.0f);
+    dummyPatch.uvSize = glm::vec2(1.0f);
+    applyCommonUniforms(terrainChunkProgram_, camera, viewMatrix, projectionMatrix, dummyPatch);
+    terrainChunkProgram_.setInt("proceduralWaterDepthTexture", 0);
+    terrainChunkProgram_.setInt("proceduralHeightTexture", 1);
+    terrainChunkProgram_.setInt("proceduralTemperatureTexture", 2);
+    terrainChunkProgram_.setInt("proceduralMoistureTexture", 3);
+    terrainChunkProgram_.setInt("proceduralErosionMaskTexture", 5);
+    terrainChunkProgram_.setInt("proceduralBiomeWeightATexture", 6);
+    terrainChunkProgram_.setInt("proceduralBiomeWeightBTexture", 7);
+    terrainChunkProgram_.setInt("proceduralDomainWeightTexture", 8);
+    terrainChunkProgram_.setInt("terrainDebugOverlayMode",
+                                settings_.wireMode == PlanetWireMode::MountainMask ? 1 : 0);
+    terrainChunkProgram_.setVec4("clipPlane", useClipPlane ? glm::vec4(0.0f, keepAboveClipPlane ? 1.0f : -1.0f, 0.0f, -clipPlaneY)
+                                                           : glm::vec4(0.0f, 0.0f, 0.0f, -1.0e9f));
+    bakedTerrainMesh_.draw(visibleBakedChunks_);
     glDisable(GL_CLIP_DISTANCE0);
 }
 
@@ -1173,6 +1575,7 @@ void PlanetRenderer::drawOceanPass(const FlyCamera& camera,
                                    const glm::mat4& viewMatrix,
                                    const glm::mat4& projectionMatrix)
 {
+    PROFILE_SCOPE("Draw Ocean Pass");
     if (!settings_.renderOcean) {
         return;
     }
@@ -1182,12 +1585,12 @@ void PlanetRenderer::drawOceanPass(const FlyCamera& camera,
 
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    // 水面透明混合但不写深度，避免挡住后续大气；地形深度仍参与测试。
+    // 水面透明混合但不写深度，避免挡住后续大气；地形深度仍参与测试�?
     glDepthMask(GL_FALSE);
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
     glActiveTexture(GL_TEXTURE0);
-    // ocean shader 同时采样反射/折射 FBO、FFT 波浪纹理和程序化水深。
+    // ocean shader 同时采样反射/折射 FBO、FFT 波浪纹理和程序化水深�?
     glBindTexture(GL_TEXTURE_2D, reflectionTarget_.colorTexture);
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, refractionTarget_.colorTexture);
@@ -1208,7 +1611,7 @@ void PlanetRenderer::drawOceanPass(const FlyCamera& camera,
     glActiveTexture(GL_TEXTURE10);
     glBindTexture(GL_TEXTURE_2D_ARRAY, proceduralWaterDepthTexture_);
 
-    for (const RenderPatch& patch : visibleOceanPatches_) {
+    for (const OceanPatch& patch : visibleOceanPatches_) {
         applyCommonUniforms(oceanProgram_, camera, viewMatrix, projectionMatrix, patch);
         oceanProgram_.setFloat("tessMin", settings_.oceanTessellationMin);
         oceanProgram_.setFloat("tessMax", effectiveOceanTessellationMax_);
@@ -1235,6 +1638,7 @@ void PlanetRenderer::drawAtmospherePass(const FlyCamera& camera,
                                         const glm::mat4& viewMatrix,
                                         const glm::mat4& projectionMatrix)
 {
+    PROFILE_SCOPE("Draw Atmosphere Pass");
     if (!settings_.renderAtmosphere || settings_.atmosphereHeight <= 0.001f) {
         return;
     }
@@ -1249,7 +1653,7 @@ void PlanetRenderer::drawAtmospherePass(const FlyCamera& camera,
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glEnable(GL_CULL_FACE);
-    // 从外壳内部/外部观察时绘制背面，形成包住星球的透明大气层。
+    // 从外壳内�?外部观察时绘制背面，形成包住星球的透明大气层�?
     glCullFace(GL_FRONT);
     glDepthFunc(GL_LEQUAL);
     glDepthMask(GL_FALSE);
@@ -1293,6 +1697,7 @@ void PlanetRenderer::drawReflectionRefractionPasses(const FlyCamera& camera,
                                                     int framebufferWidth,
                                                     int framebufferHeight)
 {
+    PROFILE_SCOPE("Reflection Refraction Passes");
     lastReflectionUpdated_ = false;
     lastRefractionUpdated_ = false;
     lastReflectionEnabled_ = false;
@@ -1326,7 +1731,7 @@ void PlanetRenderer::drawReflectionRefractionPasses(const FlyCamera& camera,
         ? distanceWeight(settings_.oceanRefractionMaxAltitude, settings_.oceanAutoDistanceLod)
         : 0.0f;
     const float blendSpeed = 1.0f - std::exp(-currentDeltaSeconds_ * 6.0f);
-    // 权重平滑可避免自动距离 LOD 开关反射/折射时画面突变。
+    // 权重平滑可避免自动距�?LOD 开关反�?折射时画面突变�?
     oceanReflectionWeight_ = glm::mix(oceanReflectionWeight_, targetReflectionWeight, blendSpeed);
     oceanRefractionWeight_ = glm::mix(oceanRefractionWeight_, targetRefractionWeight, blendSpeed);
 
@@ -1339,7 +1744,7 @@ void PlanetRenderer::drawReflectionRefractionPasses(const FlyCamera& camera,
         1.0f
     );
     const float targetScale = glm::clamp(std::round(rawTargetScale * 8.0f) / 8.0f, 0.25f, 1.0f);
-    // 反射/折射 target 根据相机高度和用户 scale 降采样，降低离屏渲染成本。
+    // 反射/折射 target 根据相机高度和用�?scale 降采样，降低离屏渲染成本�?
     const int targetWidth = std::max(static_cast<int>(std::round(static_cast<float>(framebufferWidth) * targetScale)), 1);
     const int targetHeight = std::max(static_cast<int>(std::round(static_cast<float>(framebufferHeight) * targetScale)), 1);
     const bool reflectionEnabled = reflectionUserEnabled && oceanReflectionWeight_ > 0.02f;
@@ -1399,7 +1804,7 @@ void PlanetRenderer::drawReflectionRefractionPasses(const FlyCamera& camera,
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         FlyCamera reflectedCamera = camera;
-        // 平面反射近似：把相机和朝向沿海平面 Y=seaLevelRadius 镜像。
+        // 平面反射近似：把相机和朝向沿海平�?Y=seaLevelRadius 镜像�?
         reflectedCamera.position = glm::vec3(
             camera.position.x,
             2.0f * seaLevelY - camera.position.y,
@@ -1439,7 +1844,7 @@ void PlanetRenderer::drawReflectionRefractionPasses(const FlyCamera& camera,
         glClearColor(settings_.skyColor.r, settings_.skyColor.g, settings_.skyColor.b, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        // 折射 pass 保留水面以下/水后的地形，同时保存深度供 ocean.frag 计算水柱厚度。
+        // 折射 pass 保留水面以下/水后的地形，同时保存深度�?ocean.frag 计算水柱厚度�?
         drawTerrainPass(camera, viewMatrix, projectionMatrix, true, refractionPlaneY, true);
         lastRefractionUpdated_ = true;
     } else if (!refractionEnabled && !refractionWasReady) {
@@ -1468,106 +1873,165 @@ void PlanetRenderer::drawWireOverlayPass(const FlyCamera& camera,
                                          const glm::mat4& viewMatrix,
                                          const glm::mat4& projectionMatrix)
 {
+    PROFILE_SCOPE("Draw Wire Overlay Pass");
     if (settings_.wireMode == PlanetWireMode::None) {
         return;
     }
 
-    const bool drawOceanWire = settings_.wireMode == PlanetWireMode::Ocean;
-    if (drawOceanWire && !settings_.renderOcean) {
-        return;
-    }
-    if (!drawOceanWire && !settings_.renderTerrain) {
+    if (settings_.wireMode == PlanetWireMode::BakedLod) {
+        if (!settings_.renderTerrain || visibleBakedChunks_.empty()) {
+            return;
+        }
+
+        const glm::mat4 cameraRelativeView = glm::mat4(glm::mat3(viewMatrix));
+        bakedChunkBoundsProgram_.use();
+        bakedChunkBoundsProgram_.setMat4("model", modelMatrix_);
+        bakedChunkBoundsProgram_.setMat4("cameraRelativeView", cameraRelativeView);
+        bakedChunkBoundsProgram_.setMat4("projection", projectionMatrix);
+        bakedChunkBoundsProgram_.setVec3("cameraPos", camera.position);
+
+        glDepthFunc(GL_LEQUAL);
+        glDepthMask(GL_FALSE);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glEnable(GL_POLYGON_OFFSET_LINE);
+        glPolygonOffset(-1.0f, -1.0f);
+        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+        glLineWidth(1.0f);
+
+        bakedChunkBoundsProgram_.setVec4("lineColor", glm::vec4(0.06f, 0.95f, 0.80f, 0.78f));
+        bakedTerrainMesh_.drawWire(visibleBakedChunks_);
+
+        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+        glDisable(GL_POLYGON_OFFSET_LINE);
+        glLineWidth(1.0f);
+        glDepthMask(GL_TRUE);
+        glDepthFunc(GL_LESS);
+        glDisable(GL_BLEND);
         return;
     }
 
-    ShaderProgram& fineProgram = drawOceanWire ? oceanWireOverlayProgram_ : wireOverlayProgram_;
-    ShaderProgram& coarseProgram = drawOceanWire ? oceanCoarseGridProgram_ : coarseGridProgram_;
-    const std::vector<RenderPatch>& wirePatches = drawOceanWire ? visibleOceanPatches_ : visiblePatches_;
-    if (wirePatches.empty()) {
+    if (settings_.wireMode != PlanetWireMode::Ocean || !settings_.renderOcean || visibleOceanPatches_.empty()) {
         return;
     }
 
-    if (drawOceanWire) {
-        // 海洋线框需要同样的 FFT 位移，保证线框贴合实际波面。
-        glActiveTexture(GL_TEXTURE3);
-        glBindTexture(GL_TEXTURE_2D, fftOcean_.heightTexture());
-        glActiveTexture(GL_TEXTURE4);
-        glBindTexture(GL_TEXTURE_2D, fftOcean_.normalTexture());
-        glActiveTexture(GL_TEXTURE8);
-        glBindTexture(GL_TEXTURE_2D, fftOcean_.displacementTexture());
-        glActiveTexture(GL_TEXTURE9);
-        glBindTexture(GL_TEXTURE_2D_ARRAY, proceduralHeightTexture_);
-        glActiveTexture(GL_TEXTURE10);
-        glBindTexture(GL_TEXTURE_2D_ARRAY, proceduralWaterDepthTexture_);
-    } else {
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D_ARRAY, proceduralWaterDepthTexture_);
-        glActiveTexture(GL_TEXTURE5);
-        glBindTexture(GL_TEXTURE_2D_ARRAY, proceduralErosionMaskTexture_);
-        glActiveTexture(GL_TEXTURE6);
-        glBindTexture(GL_TEXTURE_2D_ARRAY, proceduralBiomeWeightATexture_);
-        glActiveTexture(GL_TEXTURE7);
-        glBindTexture(GL_TEXTURE_2D_ARRAY, proceduralBiomeWeightBTexture_);
-        glActiveTexture(GL_TEXTURE12);
-        glBindTexture(GL_TEXTURE_2D_ARRAY, proceduralHeightTexture_);
-    }
+    glActiveTexture(GL_TEXTURE3);
+    glBindTexture(GL_TEXTURE_2D, fftOcean_.heightTexture());
+    glActiveTexture(GL_TEXTURE4);
+    glBindTexture(GL_TEXTURE_2D, fftOcean_.normalTexture());
+    glActiveTexture(GL_TEXTURE8);
+    glBindTexture(GL_TEXTURE_2D, fftOcean_.displacementTexture());
+    glActiveTexture(GL_TEXTURE9);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, proceduralHeightTexture_);
+    glActiveTexture(GL_TEXTURE10);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, proceduralWaterDepthTexture_);
 
     glEnable(GL_POLYGON_OFFSET_LINE);
     glPolygonOffset(-1.0f, -1.0f);
-    // 第一遍画细 tessellation 线。
     glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
-    for (const RenderPatch& patch : wirePatches) {
-        applyCommonUniforms(fineProgram, camera, viewMatrix, projectionMatrix, patch);
-        if (drawOceanWire) {
-            fineProgram.setFloat("tessMin", settings_.oceanTessellationMin);
-            fineProgram.setFloat("tessMax", effectiveOceanTessellationMax_);
-            fineProgram.setFloat("tessMinDist", settings_.oceanTessellationNearDistance);
-            fineProgram.setFloat("tessMaxDist", settings_.oceanTessellationFarDistance);
-            fineProgram.setInt("oceanHeightTexture", 3);
-            fineProgram.setInt("oceanNormalTexture", 4);
-            fineProgram.setInt("oceanDisplacementTexture", 8);
-            fineProgram.setInt("proceduralHeightTexture", 9);
-            fineProgram.setInt("proceduralWaterDepthTexture", 10);
-        } else {
-            fineProgram.setInt("proceduralWaterDepthTexture", 0);
-            fineProgram.setInt("proceduralErosionMaskTexture", 5);
-            fineProgram.setInt("proceduralBiomeWeightATexture", 6);
-            fineProgram.setInt("proceduralBiomeWeightBTexture", 7);
-            fineProgram.setInt("proceduralHeightTexture", 12);
-        }
+    for (const OceanPatch& patch : visibleOceanPatches_) {
+        applyCommonUniforms(oceanWireOverlayProgram_, camera, viewMatrix, projectionMatrix, patch);
+        oceanWireOverlayProgram_.setFloat("tessMin", settings_.oceanTessellationMin);
+        oceanWireOverlayProgram_.setFloat("tessMax", effectiveOceanTessellationMax_);
+        oceanWireOverlayProgram_.setFloat("tessMinDist", settings_.oceanTessellationNearDistance);
+        oceanWireOverlayProgram_.setFloat("tessMaxDist", settings_.oceanTessellationFarDistance);
+        oceanWireOverlayProgram_.setInt("oceanHeightTexture", 3);
+        oceanWireOverlayProgram_.setInt("oceanNormalTexture", 4);
+        oceanWireOverlayProgram_.setInt("oceanDisplacementTexture", 8);
+        oceanWireOverlayProgram_.setInt("proceduralHeightTexture", 9);
+        oceanWireOverlayProgram_.setInt("proceduralWaterDepthTexture", 10);
         terrainMesh_.draw();
     }
 
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
     glDisable(GL_POLYGON_OFFSET_LINE);
-
     glDepthFunc(GL_LEQUAL);
     glDepthMask(GL_FALSE);
 
-    // 第二遍用 fragment shader 画粗 quadtree 网格，辅助观察 CPU LOD patch。
-    for (const RenderPatch& patch : wirePatches) {
-        applyCommonUniforms(coarseProgram, camera, viewMatrix, projectionMatrix, patch);
-        if (drawOceanWire) {
-            coarseProgram.setFloat("tessMin", settings_.oceanTessellationMin);
-            coarseProgram.setFloat("tessMax", effectiveOceanTessellationMax_);
-            coarseProgram.setFloat("tessMinDist", settings_.oceanTessellationNearDistance);
-            coarseProgram.setFloat("tessMaxDist", settings_.oceanTessellationFarDistance);
-            coarseProgram.setInt("oceanHeightTexture", 3);
-            coarseProgram.setInt("oceanNormalTexture", 4);
-            coarseProgram.setInt("oceanDisplacementTexture", 8);
-            coarseProgram.setInt("proceduralHeightTexture", 9);
-            coarseProgram.setInt("proceduralWaterDepthTexture", 10);
-        } else {
-            coarseProgram.setInt("proceduralWaterDepthTexture", 0);
-            coarseProgram.setInt("proceduralErosionMaskTexture", 5);
-            coarseProgram.setInt("proceduralBiomeWeightATexture", 6);
-            coarseProgram.setInt("proceduralBiomeWeightBTexture", 7);
-            coarseProgram.setInt("proceduralHeightTexture", 12);
-        }
+    for (const OceanPatch& patch : visibleOceanPatches_) {
+        applyCommonUniforms(oceanCoarseGridProgram_, camera, viewMatrix, projectionMatrix, patch);
+        oceanCoarseGridProgram_.setFloat("tessMin", settings_.oceanTessellationMin);
+        oceanCoarseGridProgram_.setFloat("tessMax", effectiveOceanTessellationMax_);
+        oceanCoarseGridProgram_.setFloat("tessMinDist", settings_.oceanTessellationNearDistance);
+        oceanCoarseGridProgram_.setFloat("tessMaxDist", settings_.oceanTessellationFarDistance);
+        oceanCoarseGridProgram_.setInt("oceanHeightTexture", 3);
+        oceanCoarseGridProgram_.setInt("oceanNormalTexture", 4);
+        oceanCoarseGridProgram_.setInt("oceanDisplacementTexture", 8);
+        oceanCoarseGridProgram_.setInt("proceduralHeightTexture", 9);
+        oceanCoarseGridProgram_.setInt("proceduralWaterDepthTexture", 10);
         terrainMesh_.draw();
     }
 
     glDepthMask(GL_TRUE);
     glDepthFunc(GL_LESS);
+    return;
+}
+
+void PlanetRenderer::drawFeatureOverlayPass(const FlyCamera& camera,
+                                            const glm::mat4& viewMatrix,
+                                            const glm::mat4& projectionMatrix)
+{
+    PROFILE_SCOPE("Draw Feature Overlay Pass");
+    if (settings_.featureOverlayMode == TerrainFeatureOverlayMode::None
+        || featureSegmentMesh_.vertexCount <= 0
+        || proceduralHeightTexture_ == 0) {
+        return;
+    }
+
+    const GLboolean wasBlendEnabled = glIsEnabled(GL_BLEND);
+    GLint previousDepthFunc = GL_LESS;
+    glGetIntegerv(GL_DEPTH_FUNC, &previousDepthFunc);
+
+    const glm::mat4 cameraRelativeView = glm::mat4(glm::mat3(viewMatrix));
+
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, proceduralHeightTexture_);
+
+    featureSegmentProgram_.use();
+    featureSegmentProgram_.setMat4("model", modelMatrix_);
+    featureSegmentProgram_.setMat4("cameraRelativeView", cameraRelativeView);
+    featureSegmentProgram_.setMat4("projection", projectionMatrix);
+    featureSegmentProgram_.setVec3("cameraPos", camera.position);
+    featureSegmentProgram_.setFloat("planetRadius", settings_.planetRadius);
+    featureSegmentProgram_.setFloat("heightScale", settings_.terrainHeightScale);
+    featureSegmentProgram_.setFloat("lineLift", glm::max(settings_.terrainHeightScale * 0.012f, 0.08f));
+    featureSegmentProgram_.setFloat("proceduralDataTexelSize",
+                                    proceduralDataResolution_ > 0 ? 1.0f / static_cast<float>(proceduralDataResolution_) : 0.0f);
+    featureSegmentProgram_.setInt("proceduralHeightTexture", 1);
+
+    glDepthFunc(GL_LEQUAL);
+    glDepthMask(GL_FALSE);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glLineWidth(2.5f);
+
+    const auto drawType = [&](TerrainFeatureOverlayMode mode, const glm::vec4& color) {
+        featureSegmentProgram_.setVec4("lineColor", color);
+        featureSegmentMesh_.draw(mode);
+    };
+
+    if (settings_.featureOverlayMode == TerrainFeatureOverlayMode::All
+        || settings_.featureOverlayMode == TerrainFeatureOverlayMode::Rivers) {
+        drawType(TerrainFeatureOverlayMode::Rivers, glm::vec4(0.04f, 0.82f, 1.00f, 0.90f));
+    }
+    if (settings_.featureOverlayMode == TerrainFeatureOverlayMode::All
+        || settings_.featureOverlayMode == TerrainFeatureOverlayMode::Coast) {
+        drawType(TerrainFeatureOverlayMode::Coast, glm::vec4(1.00f, 0.78f, 0.32f, 0.86f));
+    }
+    if (settings_.featureOverlayMode == TerrainFeatureOverlayMode::All
+        || settings_.featureOverlayMode == TerrainFeatureOverlayMode::Ridges) {
+        drawType(TerrainFeatureOverlayMode::Ridges, glm::vec4(1.00f, 0.26f, 0.72f, 0.88f));
+    }
+    if (settings_.featureOverlayMode == TerrainFeatureOverlayMode::All
+        || settings_.featureOverlayMode == TerrainFeatureOverlayMode::Erosion) {
+        drawType(TerrainFeatureOverlayMode::Erosion, glm::vec4(1.00f, 0.26f, 0.08f, 0.84f));
+    }
+
+    glLineWidth(1.0f);
+    glDepthMask(GL_TRUE);
+    glDepthFunc(static_cast<GLenum>(previousDepthFunc));
+    if (!wasBlendEnabled) {
+        glDisable(GL_BLEND);
+    }
 }

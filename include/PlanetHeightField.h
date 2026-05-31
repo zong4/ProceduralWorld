@@ -21,6 +21,10 @@ enum class PlanetScalarLayer : std::uint8_t {
     DepositionMask,
     Temperature,
     Moisture,
+    RegionId,
+    FeatureMask,
+    MeshDensity,
+    GeometricError,
     Count
 };
 
@@ -28,6 +32,7 @@ enum class PlanetScalarLayer : std::uint8_t {
 enum class PlanetVectorLayer : std::uint8_t {
     BiomeWeightA = 0,
     BiomeWeightB,
+    DomainWeight,
     Count
 };
 
@@ -51,7 +56,11 @@ inline constexpr std::array<PlanetHeightFieldLayerInfo, static_cast<std::size_t>
     { PlanetScalarLayer::WearMask, "wearMask", 0.0f, false, true, true },
     { PlanetScalarLayer::DepositionMask, "depositionMask", 0.0f, false, true, true },
     { PlanetScalarLayer::Temperature, "temperature", 0.0f, false, true, false },
-    { PlanetScalarLayer::Moisture, "moisture", 0.0f, false, true, false }
+    { PlanetScalarLayer::Moisture, "moisture", 0.0f, false, true, false },
+    { PlanetScalarLayer::RegionId, "regionId", 0.0f, false, true, true },
+    { PlanetScalarLayer::FeatureMask, "featureMask", 0.0f, false, true, true },
+    { PlanetScalarLayer::MeshDensity, "meshDensity", 0.0f, false, false, true },
+    { PlanetScalarLayer::GeometricError, "geometricError", 0.0f, false, false, true }
 }};
 
 // 单点采样结果，聚合所有当前项目会用到的地形/水文/材质字段。
@@ -66,8 +75,13 @@ struct PlanetHeightFieldSample {
     float depositionMask = 0.0f;
     float temperature = 0.0f;
     float moisture = 0.0f;
+    float regionId = 0.0f;
+    float featureMask = 0.0f;
+    float meshDensity = 0.0f;
+    float geometricError = 0.0f;
     glm::vec4 biomeWeightA = glm::vec4(0.0f);
     glm::vec4 biomeWeightB = glm::vec4(0.0f);
+    glm::vec4 domainWeight = glm::vec4(0.0f);
 };
 
 // 单个 cube face 的完整层数据。

@@ -14,6 +14,7 @@
 #include <mutex>
 #include <sstream>
 #include <string>
+#include <cstdlib>
 #include <unordered_map>
 
 #include <glad/glad.h>
@@ -25,6 +26,8 @@
 #include <backends/imgui_impl_opengl3.h>
 
 #include "FlyCamera.h"
+#include "Instumentor/InstrumentationTimer.hpp"
+#include "Instumentor/Instrumentor.hpp"
 #include "PlanetProceduralData.h"
 #include "PlanetRenderer.h"
 
@@ -43,18 +46,19 @@ constexpr float kLockedCameraFov = 50.0f;
 constexpr float kOrbitAngularSpeedDegrees = 42.0f;
 constexpr const char* kSessionFilePath = "config/last_session.ini";
 constexpr const char* kProceduralCacheFilePath = "config/last_procedural_cache.bin";
+constexpr const char* kProfileTraceFilePath = "profile_trace.json";
 constexpr float kReferencePlanetRadius = 200.0f;
 constexpr int kGenerationModuleCount = static_cast<int>(PlanetProceduralData::GenerationModule::Count);
 
-// 应用级工作流：
-// ProceduralSetup 负责调生成参数；Generating 后台烘焙数据；Render 实时渲染。
+// 应用级工作流�?
+// ProceduralSetup 负责调生成参数；Generating 后台烘焙数据；Render 实时渲染�?
 enum class WorkflowStage {
     ProceduralSetup,
     Generating,
     Render
 };
 
-// 主程序的所有可变状态集中在这里，避免 GLFW/ImGui 回调之间传递大量全局变量。
+// 主程序的所有可变状态集中在这里，避�?GLFW/ImGui 回调之间传递大量全局变量�?
 struct ApplicationState {
     FlyCamera camera{glm::vec3(0.0f, 90.0f, 420.0f)};
     PlanetRenderer renderer;
@@ -87,7 +91,6 @@ struct ApplicationState {
     bool showPerformancePanel = false;
     bool showProceduralTerrainFeature = false;
     bool showProceduralErosionFeature = false;
-    bool showProceduralDetailFeature = false;
     bool showProceduralMaterialFeature = false;
     bool showRenderModeFeature = false;
     bool showVisibilityFeature = false;
@@ -118,7 +121,6 @@ void collapseFeaturePanels(ApplicationState& state)
 {
     state.showProceduralTerrainFeature = false;
     state.showProceduralErosionFeature = false;
-    state.showProceduralDetailFeature = false;
     state.showProceduralMaterialFeature = false;
     state.showRenderModeFeature = false;
     state.showVisibilityFeature = false;
@@ -141,29 +143,22 @@ void selectFeaturePanel(ApplicationState& state, bool& panelOpen)
     panelOpen = openTarget;
 }
 
-// 复制会影响“重新生成星球”或生成后地表显示的参数。
-// 海水反射、大气、相机、LOD 等纯运行时参数保留当前 renderSettings。
+// 复制会影响“重新生成星球”或生成后地表显示的参数�?
+// 海水反射、大气、相机、LOD 等纯运行时参数保留当�?renderSettings�?
 void copyProceduralSettings(PlanetRenderSettings& destination, const PlanetRenderSettings& source)
 {
     destination.planetRadius = source.planetRadius;
     destination.seaLevelOffset = source.seaLevelOffset;
     destination.terrainHeightScale = source.terrainHeightScale;
-    destination.terrainSkirtDepth = source.terrainSkirtDepth;
     destination.terrainNoiseScale = source.terrainNoiseScale;
     destination.mountainMaskStrength = source.mountainMaskStrength;
     destination.mountainMaskScale = source.mountainMaskScale;
     destination.mountainRidgeSharpness = source.mountainRidgeSharpness;
-    destination.erosionIterations = source.erosionIterations;
-    destination.erosionStrength = source.erosionStrength;
+    destination.erosionIterations = 0;
+    destination.erosionStrength = 0.0f;
     destination.erosionTalus = source.erosionTalus;
     destination.erosionSediment = source.erosionSediment;
-    destination.erosionThermalStrength = source.erosionThermalStrength;
-    destination.regionalDetailStrength = source.regionalDetailStrength;
-    destination.microDetailStrength = source.microDetailStrength;
-    destination.regionalDetailStartAltitude = source.regionalDetailStartAltitude;
-    destination.regionalDetailEndAltitude = source.regionalDetailEndAltitude;
-    destination.microDetailStartAltitude = source.microDetailStartAltitude;
-    destination.microDetailEndAltitude = source.microDetailEndAltitude;
+    destination.erosionThermalStrength = 0.0f;
     destination.terrainLowlandColor = source.terrainLowlandColor;
     destination.terrainForestColor = source.terrainForestColor;
     destination.terrainDesertColor = source.terrainDesertColor;
@@ -171,13 +166,12 @@ void copyProceduralSettings(PlanetRenderSettings& destination, const PlanetRende
     destination.terrainBeachColor = source.terrainBeachColor;
     destination.terrainSnowColor = source.terrainSnowColor;
     destination.terrainBeachWidth = source.terrainBeachWidth;
-    destination.terrainShoreLift = source.terrainShoreLift;
     destination.terrainRockSlopeStart = source.terrainRockSlopeStart;
     destination.terrainRockSlopeEnd = source.terrainRockSlopeEnd;
     destination.terrainSnowStart = source.terrainSnowStart;
     destination.terrainSnowEnd = source.terrainSnowEnd;
     destination.terrainMaterialNoiseScale = source.terrainMaterialNoiseScale;
-    destination.terrainMaterialNoiseStrength = source.terrainMaterialNoiseStrength;
+    destination.terrainMaterialNoiseStrength = 0.0f;
     destination.renderRivers = source.renderRivers;
     destination.riverVisibility = source.riverVisibility;
     destination.riverWidth = source.riverWidth;
@@ -191,7 +185,7 @@ float minCameraOrbitDistance(const PlanetRenderSettings& settings)
     return settings.planetRadius + glm::max(settings.terrainHeightScale, 1.0f) + 4.0f;
 }
 
-// 相机轨道半径随星球半径缩放，保证小星球/大星球都能被观察。
+// 相机轨道半径随星球半径缩放，保证小星�?大星球都能被观察�?
 float maxCameraOrbitDistance(const PlanetRenderSettings& settings)
 {
     return glm::max(settings.planetRadius * 8.0f, minCameraOrbitDistance(settings) + 10.0f);
@@ -223,7 +217,7 @@ void updateOrbitMetadata(ApplicationState& state)
     state.cameraOrbitYawDegrees = wrapDegrees(glm::degrees(std::atan2(direction.x, direction.z)));
 }
 
-// 将相机朝向锁定到星球中心，同时尽量保留用户期望的上方向。
+// 将相机朝向锁定到星球中心，同时尽量保留用户期望的上方向�?
 void orientCameraToPlanet(ApplicationState& state, const glm::vec3& preferredUp)
 {
     glm::vec3 radialDirection = glm::normalize(state.camera.position);
@@ -240,7 +234,7 @@ void orientCameraToPlanet(ApplicationState& state, const glm::vec3& preferredUp)
     state.camera.up = glm::normalize(glm::cross(state.camera.right, state.camera.front));
 }
 
-// 统一维护轨道相机约束：FOV 固定、距离裁剪、朝向星球中心。
+// 统一维护轨道相机约束：FOV 固定、距离裁剪、朝向星球中心�?
 void updateOrbitCamera(ApplicationState& state, const PlanetRenderSettings& settings)
 {
     state.camera.fieldOfView = kLockedCameraFov;
@@ -258,7 +252,7 @@ void updateOrbitCamera(ApplicationState& state, const PlanetRenderSettings& sett
     updateOrbitMetadata(state);
 }
 
-// 从已有相机位置恢复轨道相机元数据，常用于加载 session 或生成完成后重定位。
+// 从已有相机位置恢复轨道相机元数据，常用于加载 session 或生成完成后重定位�?
 void setOrbitFromCameraPosition(ApplicationState& state, const PlanetRenderSettings& settings)
 {
     state.cameraOrbitDistance = glm::clamp(
@@ -277,7 +271,7 @@ void setOrbitFromCameraPosition(ApplicationState& state, const PlanetRenderSetti
 
 using SessionValues = std::unordered_map<std::string, std::string>;
 
-// session 文件使用简单 key=value 格式，下面这些 helper 负责读写和类型转换。
+// session 文件使用简�?key=value 格式，下面这�?helper 负责读写和类型转换�?
 std::string trimString(const std::string& value)
 {
     const std::size_t first = value.find_first_not_of(" \t\r\n");
@@ -288,7 +282,6 @@ std::string trimString(const std::string& value)
     const std::size_t last = value.find_last_not_of(" \t\r\n");
     return value.substr(first, last - first + 1);
 }
-
 std::string sessionKey(const std::string& prefix, const char* name)
 {
     return prefix + "." + name;
@@ -414,20 +407,15 @@ bool readVec3(const SessionValues& values, const std::string& key, glm::vec3& ou
     return false;
 }
 
-// 用宏列出所有需要保存/加载的设置字段，避免 writeSettings/readSettings 漏字段。
+// 用宏列出所有需要保�?加载的设置字段，避免 writeSettings/readSettings 漏字段�?
 #define PLANET_SETTING_FLOAT_FIELDS(X) \
     X(planetRadius) \
     X(seaLevelOffset) \
-    X(tessellationMax) \
-    X(tessellationMin) \
-    X(tessellationNearDistance) \
-    X(tessellationFarDistance) \
     X(oceanTessellationMax) \
     X(oceanTessellationMin) \
     X(oceanTessellationNearDistance) \
     X(oceanTessellationFarDistance) \
     X(terrainHeightScale) \
-    X(terrainSkirtDepth) \
     X(terrainNoiseScale) \
     X(mountainMaskStrength) \
     X(mountainMaskScale) \
@@ -436,14 +424,7 @@ bool readVec3(const SessionValues& values, const std::string& key, glm::vec3& ou
     X(erosionTalus) \
     X(erosionSediment) \
     X(erosionThermalStrength) \
-    X(regionalDetailStrength) \
-    X(microDetailStrength) \
-    X(regionalDetailStartAltitude) \
-    X(regionalDetailEndAltitude) \
-    X(microDetailStartAltitude) \
-    X(microDetailEndAltitude) \
     X(terrainBeachWidth) \
-    X(terrainShoreLift) \
     X(terrainRockSlopeStart) \
     X(terrainRockSlopeEnd) \
     X(terrainSnowStart) \
@@ -492,15 +473,12 @@ bool readVec3(const SessionValues& values, const std::string& key, glm::vec3& ou
 
 #define PLANET_SETTING_INT_FIELDS(X) \
     X(erosionIterations) \
-    X(terrainPatchBudget) \
     X(oceanReflectionFrameStride) \
     X(oceanRefractionFrameStride) \
     X(oceanFftCascadeCount) \
-    X(oceanFftFrameStride) \
-    X(terrainMaskDebugMode)
+    X(oceanFftFrameStride)
 
 #define PLANET_SETTING_BOOL_FIELDS(X) \
-    X(adaptiveTerrainLod) \
     X(renderAtmosphere) \
     X(renderOceanReflectionRefraction) \
     X(renderOceanReflection) \
@@ -546,7 +524,7 @@ void writeSettings(std::ostream& out, const std::string& prefix, const PlanetRen
     writeInt(out, sessionKey(prefix, "wireMode"), static_cast<int>(settings.wireMode));
 }
 
-// 读取 session 后会对部分字段做 clamp，防止旧配置或手改文件产生非法范围。
+// 读取 session 后会对部分字段做 clamp，防止旧配置或手改文件产生非法范围�?
 void readSettings(const SessionValues& values, const std::string& prefix, PlanetRenderSettings& settings)
 {
 #define READ_FLOAT_FIELD(name) readFloat(values, sessionKey(prefix, #name), settings.name);
@@ -569,20 +547,22 @@ void readSettings(const SessionValues& values, const std::string& prefix, Planet
 
     int wireMode = static_cast<int>(settings.wireMode);
     if (readInt(values, sessionKey(prefix, "wireMode"), wireMode)) {
-        settings.wireMode = static_cast<PlanetWireMode>(glm::clamp(wireMode, 0, 2));
+        settings.wireMode = static_cast<PlanetWireMode>(glm::clamp(wireMode, 0, 4));
     }
 
-    settings.erosionIterations = glm::clamp(settings.erosionIterations, 0, 512);
-    settings.terrainPatchBudget = glm::clamp(settings.terrainPatchBudget, 64, 4000);
-    settings.tessellationMax = glm::clamp(settings.tessellationMax, 1.0f, 12.0f);
-    settings.terrainMaskDebugMode = glm::clamp(settings.terrainMaskDebugMode, 0, 11);
+    settings.featureOverlayMode = TerrainFeatureOverlayMode::None;
+
+    settings.erosionIterations = 0;
+    settings.erosionStrength = 0.0f;
+    settings.erosionThermalStrength = 0.0f;
+    settings.terrainMaterialNoiseStrength = 0.0f;
     settings.oceanFftCascadeCount = glm::clamp(settings.oceanFftCascadeCount, 1, 3);
     settings.oceanFftFrameStride = glm::max(settings.oceanFftFrameStride, 1);
     settings.oceanReflectionFrameStride = glm::max(settings.oceanReflectionFrameStride, 1);
     settings.oceanRefractionFrameStride = glm::max(settings.oceanRefractionFrameStride, 1);
 }
 
-// 保存 UI/session 参数；如果当前已有生成数据，同时保存一份二进制缓存。
+// 保存 UI/session 参数；如果当前已有生成数据，同时保存一份二进制缓存�?
 bool saveSession(ApplicationState& state, const char* path = kSessionFilePath)
 {
     if (state.workflowStage == WorkflowStage::Render) {
@@ -613,7 +593,6 @@ bool saveSession(ApplicationState& state, const char* path = kSessionFilePath)
     writeBool(file, "showPerformancePanel", state.showPerformancePanel);
     writeBool(file, "showProceduralTerrainFeature", state.showProceduralTerrainFeature);
     writeBool(file, "showProceduralErosionFeature", state.showProceduralErosionFeature);
-    writeBool(file, "showProceduralDetailFeature", state.showProceduralDetailFeature);
     writeBool(file, "showProceduralMaterialFeature", state.showProceduralMaterialFeature);
     writeBool(file, "showRenderModeFeature", state.showRenderModeFeature);
     writeBool(file, "showVisibilityFeature", state.showVisibilityFeature);
@@ -641,8 +620,8 @@ bool saveSession(ApplicationState& state, const char* path = kSessionFilePath)
     return true;
 }
 
-// 读取 session，并尝试恢复上次生成的星球缓存。
-// 缓存加载成功后会立即上传到 renderer，用户可以直接进入 Render 阶段。
+// 读取 session，并尝试恢复上次生成的星球缓存�?
+// 缓存加载成功后会立即上传�?renderer，用户可以直接进�?Render 阶段�?
 bool loadSession(ApplicationState& state, const char* path = kSessionFilePath, bool reportMissing = true)
 {
     SessionValues values;
@@ -666,7 +645,6 @@ bool loadSession(ApplicationState& state, const char* path = kSessionFilePath, b
     readBool(values, "showPerformancePanel", state.showPerformancePanel);
     readBool(values, "showProceduralTerrainFeature", state.showProceduralTerrainFeature);
     readBool(values, "showProceduralErosionFeature", state.showProceduralErosionFeature);
-    readBool(values, "showProceduralDetailFeature", state.showProceduralDetailFeature);
     readBool(values, "showProceduralMaterialFeature", state.showProceduralMaterialFeature);
     readBool(values, "showRenderModeFeature", state.showRenderModeFeature);
     readBool(values, "showVisibilityFeature", state.showVisibilityFeature);
@@ -797,7 +775,7 @@ float planetDistanceScale(float planetRadius)
     return glm::max(planetRadius / kReferencePlanetRadius, 0.25f);
 }
 
-// 生成模块名只用于 UI 进度显示，顺序必须与 GenerationModule 枚举一致。
+// 生成模块名只用于 UI 进度显示，顺序必须与 GenerationModule 枚举一致�?
 const char* generationModuleLabel(int moduleIndex)
 {
     static const char* kLabels[kGenerationModuleCount] = {
@@ -808,6 +786,7 @@ const char* generationModuleLabel(int moduleIndex)
         "Erosion",
         "Final Climate",
         "Final Biomes",
+        "Mesh Planning",
         "Finalize"
     };
     if (moduleIndex < 0 || moduleIndex >= kGenerationModuleCount) {
@@ -818,7 +797,7 @@ const char* generationModuleLabel(int moduleIndex)
 
 void startPlanetGeneration(ApplicationState& state)
 {
-    // 如果已有后台生成任务还没完成，忽略重复点击。
+    // 如果已有后台生成任务还没完成，忽略重复点击�?
     if (state.generationFuture.valid()
         && state.generationFuture.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
         return;
@@ -843,7 +822,7 @@ void startPlanetGeneration(ApplicationState& state)
     state.pendingGenerationSettings = generatedSettings;
     const int faceResolution = state.generationFaceResolution;
     const int clampedResolution = glm::clamp(faceResolution, 16, 512);
-    // 主线程先估算各模块总步数，UI 可以在后台任务第一次回调前显示合理进度。
+    // 主线程先估算各模块总步数，UI 可以在后台任务第一次回调前显示合理进度�?
     const int erosionIterations = glm::clamp(generatedSettings.erosionIterations, 0, 256);
     const float erosionStrength = glm::max(generatedSettings.erosionStrength, 0.0f);
     const float thermalStrength = glm::max(generatedSettings.erosionThermalStrength, 0.0f);
@@ -859,6 +838,7 @@ void startPlanetGeneration(ApplicationState& state)
         erosionActive ? erosionIterations + thermalIterations + 8 : 0,
         clampedResolution * 6 + 3,
         clampedResolution * 6 + 2,
+        clampedResolution * 6 + 1,
         1 + 6
     };
     for (int i = 0; i < kGenerationModuleCount; ++i) {
@@ -875,7 +855,7 @@ void startPlanetGeneration(ApplicationState& state)
     auto* moduleTotalSteps = &state.generationModuleTotalSteps;
     std::mutex* statusMutex = &state.generationStatusMutex;
     std::string* statusText = &state.generationStatusText;
-    // 后台线程只负责 CPU 数据生成，不碰 OpenGL 资源；GPU 上传留给主线程完成。
+    // 后台线程只负�?CPU 数据生成，不�?OpenGL 资源；GPU 上传留给主线程完成�?
     state.generationFuture = std::async(
         std::launch::async,
         [generatedSettings,
@@ -894,7 +874,7 @@ void startPlanetGeneration(ApplicationState& state)
                 [completedSteps, totalSteps, activeModule, moduleCompletedSteps, moduleTotalSteps, statusMutex, statusText](
                     const PlanetProceduralData::GenerationProgress& progress
                 ) {
-                    // 进度字段用 atomic 写入，状态文本用 mutex 保护。
+                    // 进度字段�?atomic 写入，状态文本用 mutex 保护�?
                     const int moduleIndex = glm::clamp(static_cast<int>(progress.module), 0, kGenerationModuleCount - 1);
                     completedSteps->store(progress.completedSteps, std::memory_order_relaxed);
                     totalSteps->store(std::max(progress.totalSteps, 1), std::memory_order_relaxed);
@@ -927,7 +907,7 @@ void finishPlanetGeneration(ApplicationState& state, std::unique_ptr<PlanetProce
     const PlanetRenderSettings generatedSettings = state.pendingGenerationSettings;
     state.generatedPlanet = std::move(*generatedPlanet);
     state.renderer.settings() = generatedSettings;
-    // OpenGL 纹理上传必须发生在拥有 context 的主线程。
+    // OpenGL 纹理上传必须发生在拥�?context 的主线程�?
     state.renderer.setProceduralData(state.generatedPlanet);
     state.renderSettings = generatedSettings;
     state.hasGeneratedPlanet = true;
@@ -938,7 +918,7 @@ void finishPlanetGeneration(ApplicationState& state, std::unique_ptr<PlanetProce
     saveSession(state);
 }
 
-// 从渲染阶段回到生成参数界面时，把当前 renderer 设置同步回 UI。
+// 从渲染阶段回到生成参数界面时，把当前 renderer 设置同步�?UI�?
 void returnToProceduralSetup(ApplicationState& state)
 {
     if (state.hasGeneratedPlanet) {
@@ -963,7 +943,7 @@ void onMouseScrolled(GLFWwindow* window, double, double yOffset)
     }
 
     const PlanetRenderSettings& settings = state->renderer.settings();
-    // 滚轮不是改 FOV，而是沿轨道半径推近/拉远，保持星球观察视角稳定。
+    // 滚轮不是�?FOV，而是沿轨道半径推�?拉远，保持星球观察视角稳定�?
     const float scrollStep = glm::max(state->cameraOrbitDistance * 0.09f, settings.planetRadius * 0.035f);
     state->cameraOrbitDistance -= static_cast<float>(yOffset) * scrollStep;
     updateOrbitCamera(*state, settings);
@@ -1050,18 +1030,20 @@ void onKeyPressed(GLFWwindow* window, int key, int, int action, int modifiers)
 
     PlanetRenderSettings& settings = state->renderer.settings();
 
-    // 快捷键主要循环 debug/render mode，具体连续参数仍由 ImGui 控件调整。
+    // 快捷键主要循�?debug/render mode，具体连续参数仍�?ImGui 控件调整�?
     if (key == GLFW_KEY_ESCAPE) glfwSetWindowShouldClose(window, true);
     if (key == GLFW_KEY_1) {
         const int nextMode = (static_cast<int>(settings.renderMode) + 1) % 4;
         settings.renderMode = static_cast<PlanetRenderMode>(nextMode);
     }
     if (key == GLFW_KEY_2) {
-        const int nextWireMode = (static_cast<int>(settings.wireMode) + 1) % 3;
+        const int nextWireMode = (static_cast<int>(settings.wireMode) + 1) % 4;
         settings.wireMode = static_cast<PlanetWireMode>(nextWireMode);
     }
     if (key == GLFW_KEY_3) {
-        settings.terrainMaskDebugMode = (settings.terrainMaskDebugMode + 1) % 12;
+        settings.wireMode = settings.wireMode == PlanetWireMode::MountainMask
+            ? PlanetWireMode::None
+            : PlanetWireMode::MountainMask;
     }
     if (key == GLFW_KEY_4) {
         if (settings.renderTerrain && settings.renderOcean) {
@@ -1125,7 +1107,6 @@ void printControls()
     std::cout << "  Scroll    : dolly camera toward/away from planet\n";
     std::cout << "  1         : cycle render mode\n";
     std::cout << "  2         : cycle wire overlay\n";
-    std::cout << "  3         : cycle terrain mask debug\n";
     std::cout << "  4         : cycle land/ocean visibility\n";
     std::cout << "  Ctrl+1    : toggle performance monitor\n";
     std::cout << "  Tab       : toggle ImGui panel\n";
@@ -1142,7 +1123,7 @@ void drawProceduralPanel(ApplicationState& state)
     ImGui::Separator();
 
     if (state.workflowStage == WorkflowStage::Generating) {
-        // 生成期间只显示进度，不允许同时修改输入参数。
+        // 生成期间只显示进度，不允许同时修改输入参数�?
         const int completedSteps = state.generationCompletedSteps.load(std::memory_order_relaxed);
         const int totalSteps = std::max(state.generationTotalSteps.load(std::memory_order_relaxed), 1);
         const float progress = glm::clamp(
@@ -1182,30 +1163,24 @@ void drawProceduralPanel(ApplicationState& state)
     const float proceduralDistanceScale = planetDistanceScale(settings.planetRadius);
     ImGui::Text("Feature Panels");
     drawFeatureToggleRow(state, "Terrain Bake", state.showProceduralTerrainFeature, "Erosion Bake", state.showProceduralErosionFeature);
-    drawFeatureToggleRow(state, "Detail Bands", state.showProceduralDetailFeature, "Terrain Materials", state.showProceduralMaterialFeature);
     if (ImGui::Button("Preset: Rugged Rivers", ImVec2(-1.0f, 28.0f))) {
-        settings.terrainHeightScale = 34.0f * proceduralDistanceScale;
-        settings.terrainNoiseScale = 0.78f;
-        settings.mountainMaskStrength = 1.90f;
-        settings.mountainMaskScale = 3.35f;
-        settings.mountainRidgeSharpness = 3.80f;
-        settings.tessellationMax = 6.0f;
-        settings.terrainPatchBudget = 960;
-        settings.erosionIterations = 128;
-        settings.erosionStrength = 0.090f;
+        settings.terrainHeightScale = 24.0f * proceduralDistanceScale;
+        settings.terrainNoiseScale = 0.58f;
+        settings.mountainMaskStrength = 0.55f;
+        settings.mountainMaskScale = 1.95f;
+        settings.mountainRidgeSharpness = 2.85f;
+        settings.erosionIterations = 0;
+        settings.erosionStrength = 0.0f;
         settings.erosionSediment = 0.72f;
-        settings.erosionThermalStrength = 0.020f;
-        settings.regionalDetailStrength = 1.18f;
-        settings.microDetailStrength = 0.38f;
-        settings.terrainMaterialNoiseStrength = 0.24f;
-        settings.renderRivers = true;
+        settings.erosionThermalStrength = 0.0f;
+        settings.terrainMaterialNoiseStrength = 0.0f;
         settings.riverVisibility = 1.70f;
         settings.riverWidth = 0.72f;
         settings.riverShine = 1.05f;
         settings.riverRefractionStrength = 0.55f;
     }
     ImGui::Separator();
-    // 下面是会影响 CPU 烘焙的参数：地形高度、山脉、侵蚀、材质权重等。
+    // 下面是会影响 CPU 烘焙的参数：地形高度、山脉、侵蚀、材质权重等�?
     if (state.showProceduralTerrainFeature) {
         drawFeatureBodyBegin();
         ImGui::Text("Terrain Bake");
@@ -1216,7 +1191,6 @@ void drawProceduralPanel(ApplicationState& state)
         ImGui::SliderFloat("Mountain Mask", &settings.mountainMaskStrength, 0.0f, 2.4f, "%.2f");
         ImGui::SliderFloat("Mountain Scale", &settings.mountainMaskScale, 0.5f, 8.0f, "%.2f");
         ImGui::SliderFloat("Ridge Sharpness", &settings.mountainRidgeSharpness, 1.0f, 6.0f, "%.2f");
-        ImGui::SliderFloat("Skirt Depth", &settings.terrainSkirtDepth, 0.0f, 3.0f, "%.2f");
         ImGui::SliderInt("Face Resolution", &state.generationFaceResolution, 256, 512);
         drawFeatureBodyEnd();
     }
@@ -1231,19 +1205,6 @@ void drawProceduralPanel(ApplicationState& state)
         drawFeatureBodyEnd();
     }
 
-    if (state.showProceduralDetailFeature) {
-        drawFeatureBodyBegin();
-        ImGui::Text("Detail Bands");
-        ImGui::SliderFloat("Regional Detail", &settings.regionalDetailStrength, 0.0f, 1.2f, "%.2f");
-        ImGui::SliderFloat("Micro Detail", &settings.microDetailStrength, 0.0f, 0.8f, "%.2f");
-        ImGui::TextDisabled("Distance scale: %.2fx from radius %.0f", proceduralDistanceScale, kReferencePlanetRadius);
-        ImGui::SliderFloat("Regional Start", &settings.regionalDetailStartAltitude, 0.0f, 1800.0f * proceduralDistanceScale, "%.1f");
-        ImGui::SliderFloat("Regional End", &settings.regionalDetailEndAltitude, settings.regionalDetailStartAltitude + 10.0f, 5000.0f * proceduralDistanceScale, "%.1f");
-        ImGui::SliderFloat("Micro Start", &settings.microDetailStartAltitude, 0.0f, 800.0f * proceduralDistanceScale, "%.1f");
-        ImGui::SliderFloat("Micro End", &settings.microDetailEndAltitude, settings.microDetailStartAltitude + 10.0f, 2000.0f * proceduralDistanceScale, "%.1f");
-        drawFeatureBodyEnd();
-    }
-
     if (state.showProceduralMaterialFeature) {
         drawFeatureBodyBegin();
         ImGui::Text("Terrain Materials");
@@ -1254,12 +1215,10 @@ void drawProceduralPanel(ApplicationState& state)
         ImGui::ColorEdit3("Beach Color", &settings.terrainBeachColor.x);
         ImGui::ColorEdit3("Snow Color", &settings.terrainSnowColor.x);
         ImGui::SliderFloat("Beach Width", &settings.terrainBeachWidth, 0.005f, 0.20f, "%.3f");
-        ImGui::SliderFloat("Shore Lift", &settings.terrainShoreLift, 0.0f, 0.12f, "%.3f");
         ImGui::SliderFloat("Rock Slope Start", &settings.terrainRockSlopeStart, 0.0f, 0.8f, "%.2f");
         ImGui::SliderFloat("Rock Slope End", &settings.terrainRockSlopeEnd, settings.terrainRockSlopeStart + 0.01f, 1.0f, "%.2f");
         ImGui::SliderFloat("Snow Start", &settings.terrainSnowStart, 0.2f, 1.0f, "%.2f");
         ImGui::SliderFloat("Snow End", &settings.terrainSnowEnd, settings.terrainSnowStart + 0.01f, 1.2f, "%.2f");
-        ImGui::SliderFloat("Material Noise Scale", &settings.terrainMaterialNoiseScale, 0.002f, 0.20f, "%.3f");
         ImGui::SliderFloat("Material Noise", &settings.terrainMaterialNoiseStrength, 0.0f, 0.4f, "%.2f");
         drawFeatureBodyEnd();
     }
@@ -1281,21 +1240,6 @@ void drawProceduralPanel(ApplicationState& state)
 
 void drawRenderModeControls(PlanetRenderSettings& settings)
 {
-    static const char* kTerrainMaskDebugLabels[] = {
-        "Off",
-        "Channel",
-        "Flow",
-        "Wear",
-        "Deposition",
-        "Shore",
-        "Water Depth",
-        "Temperature",
-        "Moisture",
-        "Land",
-        "Biome",
-        "Hydrology RGB"
-    };
-
     ImGui::Text("Render Mode");
     int renderModeIndex = 1;
     if (settings.renderMode == PlanetRenderMode::Unshaded) renderModeIndex = 0;
@@ -1313,26 +1257,11 @@ void drawRenderModeControls(PlanetRenderSettings& settings)
     int wireModeIndex = static_cast<int>(settings.wireMode);
     if (ImGui::RadioButton("No Wire", wireModeIndex == 0)) settings.wireMode = PlanetWireMode::None;
     ImGui::SameLine();
-    if (ImGui::RadioButton("Land Mesh", wireModeIndex == 1)) settings.wireMode = PlanetWireMode::Terrain;
+    if (ImGui::RadioButton("Water Mesh", wireModeIndex == 1)) settings.wireMode = PlanetWireMode::Ocean;
     ImGui::SameLine();
-    if (ImGui::RadioButton("Water Mesh", wireModeIndex == 2)) settings.wireMode = PlanetWireMode::Ocean;
+    if (ImGui::RadioButton("Baked LOD", wireModeIndex == 2)) settings.wireMode = PlanetWireMode::BakedLod;
+    ImGui::SameLine();
 
-    ImGui::Separator();
-    ImGui::Text("Terrain Mask Debug");
-    // terrainMaskDebugMode 直接驱动 terrain.frag 中的调试输出分支。
-    settings.terrainMaskDebugMode = glm::clamp(settings.terrainMaskDebugMode, 0, 11);
-    if (ImGui::BeginCombo("Mask", kTerrainMaskDebugLabels[settings.terrainMaskDebugMode])) {
-        for (int i = 0; i < 12; ++i) {
-            const bool selected = settings.terrainMaskDebugMode == i;
-            if (ImGui::Selectable(kTerrainMaskDebugLabels[i], selected)) {
-                settings.terrainMaskDebugMode = i;
-            }
-            if (selected) {
-                ImGui::SetItemDefaultFocus();
-            }
-        }
-        ImGui::EndCombo();
-    }
 }
 
 void drawRenderPanel(ApplicationState& state)
@@ -1349,6 +1278,12 @@ void drawRenderPanel(ApplicationState& state)
     ImGui::Separator();
     if (state.generatedPlanet.isGenerated()) {
         ImGui::Text("Generated data: %d face resolution", state.generatedPlanet.resolution());
+        ImGui::Text("Offline terrain chunks: %zu", state.generatedPlanet.terrainChunks().size());
+        ImGui::Text("Feature segments: river %zu | coast %zu | ridge %zu | erosion %zu",
+                    state.generatedPlanet.terrainFeatureSegmentCount(PlanetProceduralData::TerrainFeatureType::River),
+                    state.generatedPlanet.terrainFeatureSegmentCount(PlanetProceduralData::TerrainFeatureType::Coast),
+                    state.generatedPlanet.terrainFeatureSegmentCount(PlanetProceduralData::TerrainFeatureType::Ridge),
+                    state.generatedPlanet.terrainFeatureSegmentCount(PlanetProceduralData::TerrainFeatureType::ErosionEdge));
         ImGui::Text("Water %.1f%% | Shore %.1f%% | Max depth %.2f",
                     state.generatedPlanet.waterCoverage() * 100.0f,
                     state.generatedPlanet.shoreCoverage() * 100.0f,
@@ -1393,39 +1328,12 @@ void drawRenderPanel(ApplicationState& state)
         ImGui::TextDisabled("Immediate shader controls; bake-only terrain, biome, erosion need Generate Planet.");
         ImGui::SliderFloat("Height Scale", &settings.terrainHeightScale, 0.0f, 120.0f * renderDistanceScale, "%.2f");
         ImGui::SliderFloat("Sea Level", &settings.seaLevelOffset, -1.5f, 1.5f, "%.2f");
-        ImGui::SliderFloat("Noise Scale", &settings.terrainNoiseScale, 0.2f, 10.0f, "%.2f");
-        ImGui::SliderFloat("Mountain Mask", &settings.mountainMaskStrength, 0.0f, 2.8f, "%.2f");
-        ImGui::SliderFloat("Mountain Scale", &settings.mountainMaskScale, 0.5f, 8.0f, "%.2f");
-        ImGui::SliderFloat("Ridge Sharpness", &settings.mountainRidgeSharpness, 1.0f, 7.0f, "%.2f");
-        ImGui::SliderFloat("Regional Detail", &settings.regionalDetailStrength, 0.0f, 1.6f, "%.2f");
-        ImGui::SliderFloat("Micro Detail", &settings.microDetailStrength, 0.0f, 1.0f, "%.2f");
-        ImGui::SliderFloat("Regional Start", &settings.regionalDetailStartAltitude, 0.0f, 1800.0f * renderDistanceScale, "%.1f");
-        ImGui::SliderFloat("Regional End", &settings.regionalDetailEndAltitude, settings.regionalDetailStartAltitude + 10.0f, 5000.0f * renderDistanceScale, "%.1f");
-        ImGui::SliderFloat("Micro Start", &settings.microDetailStartAltitude, 0.0f, 800.0f * renderDistanceScale, "%.1f");
-        ImGui::SliderFloat("Micro End", &settings.microDetailEndAltitude, settings.microDetailStartAltitude + 10.0f, 2000.0f * renderDistanceScale, "%.1f");
-        ImGui::SliderFloat("Shore Lift", &settings.terrainShoreLift, 0.0f, 0.18f, "%.3f");
         ImGui::SliderFloat("Beach Width", &settings.terrainBeachWidth, 0.005f, 0.25f, "%.3f");
         ImGui::SliderFloat("Rock Slope Start", &settings.terrainRockSlopeStart, 0.0f, 0.8f, "%.2f");
         ImGui::SliderFloat("Rock Slope End", &settings.terrainRockSlopeEnd, settings.terrainRockSlopeStart + 0.01f, 1.0f, "%.2f");
         ImGui::SliderFloat("Snow Start", &settings.terrainSnowStart, 0.2f, 1.0f, "%.2f");
         ImGui::SliderFloat("Snow End", &settings.terrainSnowEnd, settings.terrainSnowStart + 0.01f, 1.2f, "%.2f");
-        ImGui::SliderFloat("Material Noise Scale", &settings.terrainMaterialNoiseScale, 0.002f, 0.20f, "%.3f");
         ImGui::SliderFloat("Material Noise", &settings.terrainMaterialNoiseStrength, 0.0f, 0.4f, "%.2f");
-        if (ImGui::Button("Runtime Rugged Boost", ImVec2(-1.0f, 26.0f))) {
-            settings.terrainHeightScale = 42.0f * renderDistanceScale;
-            settings.terrainNoiseScale = 0.88f;
-            settings.mountainMaskStrength = 2.10f;
-            settings.mountainMaskScale = 3.70f;
-            settings.mountainRidgeSharpness = 4.30f;
-            settings.regionalDetailStrength = 1.35f;
-            settings.microDetailStrength = 0.38f;
-            settings.terrainShoreLift = 0.055f;
-            settings.riverVisibility = 1.85f;
-            settings.riverWidth = 0.78f;
-            settings.riverShine = 1.15f;
-            settings.riverRefractionStrength = 0.60f;
-            settings.renderRivers = true;
-        }
         drawFeatureBodyEnd();
     }
 
@@ -1520,7 +1428,7 @@ void drawRenderPanel(ApplicationState& state)
         ImGui::Text("Ocean Reflection");
         ImGui::Checkbox("Ocean Enabled", &settings.renderOcean);
         ImGui::Checkbox("Planar Targets Enabled", &settings.renderOceanReflectionRefraction);
-        // 反射/折射 target 支持降采样和隔帧更新，减少水面效果的额外 draw cost。
+        // 反射/折射 target 支持降采样和隔帧更新，减少水面效果的额外 draw cost�?
         ImGui::Checkbox("Reflection", &settings.renderOceanReflection);
         ImGui::Checkbox("Refraction", &settings.renderOceanRefraction);
         ImGui::SliderFloat("Target Scale", &settings.oceanReflectionResolutionScale, 0.25f, 1.0f, "%.2f");
@@ -1536,12 +1444,6 @@ void drawRenderPanel(ApplicationState& state)
         drawFeatureBodyBegin();
         ImGui::Text("Advanced Render");
         ImGui::TextDisabled("Distance scale: %.2fx from radius %.0f", renderDistanceScale, kReferencePlanetRadius);
-        ImGui::Checkbox("Adaptive Terrain LOD", &settings.adaptiveTerrainLod);
-        ImGui::SliderInt("Patch Budget", &settings.terrainPatchBudget, 160, 1200);
-        ImGui::SliderFloat("Land Tess Max", &settings.tessellationMax, 1.0f, 12.0f, "%.1f");
-        ImGui::SliderFloat("Land Tess Min", &settings.tessellationMin, 1.0f, settings.tessellationMax, "%.1f");
-        ImGui::SliderFloat("Land Tess Near", &settings.tessellationNearDistance, 10.0f, 600.0f * renderDistanceScale, "%.1f");
-        ImGui::SliderFloat("Land Tess Far", &settings.tessellationFarDistance, settings.tessellationNearDistance + 10.0f, 2000.0f * renderDistanceScale, "%.1f");
         ImGui::SliderFloat("Ocean Tess Max", &settings.oceanTessellationMax, 1.0f, 4.0f, "%.1f");
         ImGui::SliderFloat("Ocean Tess Min", &settings.oceanTessellationMin, 1.0f, settings.oceanTessellationMax, "%.1f");
         ImGui::SliderFloat("Ocean Tess Near", &settings.oceanTessellationNearDistance, 10.0f, 400.0f * renderDistanceScale, "%.1f");
@@ -1596,7 +1498,7 @@ void drawPerformancePanel(ApplicationState& state)
         const PlanetRenderer::PerformanceStats& perf = state.renderer.performanceStats();
         const PlanetRenderer::CullingStats& cullingStats = state.renderer.cullingStats();
 
-        // 这些时间是 CPU 提交侧统计，不包含 glFinish 等 GPU 阻塞等待。
+        // 这些时间�?CPU 提交侧统计，不包�?glFinish �?GPU 阻塞等待�?
         ImGui::PushStyleColor(ImGuiCol_Text, gold);
         ImGui::Text("CPU Submit Timings");
         ImGui::PopStyleColor();
@@ -1614,12 +1516,16 @@ void drawPerformancePanel(ApplicationState& state)
         ImGui::Text("Atmosphere: %.2f ms | Wire: %.2f ms", perf.atmosphereMs, perf.wireMs);
 
         ImGui::Separator();
-        ImGui::Text("Visible patches: %zu", state.renderer.visiblePatchCount());
-        ImGui::Text("Ocean patches: %zu / %zu", perf.oceanPatchCount, state.renderer.visiblePatchCount());
+        ImGui::Text("Terrain path: Baked chunks");
+        ImGui::Text("Baked chunks: %zu / %zu", perf.visibleBakedChunkCount, perf.bakedChunkCount);
+        ImGui::Text("Baked LOD: full %zu | mid %zu | low %zu",
+                    perf.visibleBakedChunkLodCount[0],
+                    perf.visibleBakedChunkLodCount[1],
+                    perf.visibleBakedChunkLodCount[2]);
+        ImGui::Text("Ocean patches: %zu", perf.oceanPatchCount);
         ImGui::Text("LOD nodes: %zu | Split: %zu", cullingStats.visitedNodes, cullingStats.splitNodes);
         ImGui::Text("Culled: %zu frustum | %zu horizon", cullingStats.frustumCulledNodes, cullingStats.horizonCulledNodes);
-        ImGui::Text("LOD budget: %.2fx | split scale: %.2f", perf.lodBudgetPressure, perf.lodSplitPixelScale);
-        ImGui::Text("Effective tess: land %.2f | water %.2f", perf.effectiveLandTessMax, perf.effectiveOceanTessMax);
+        ImGui::Text("Ocean tess: %.2f", perf.effectiveOceanTessMax);
         ImGui::Text("Est triangles: land %zu | water %zu", perf.estimatedTerrainTriangles, perf.estimatedOceanTriangles);
 
         ImGui::Separator();
@@ -1646,7 +1552,7 @@ void drawDebugPanel(ApplicationState& state)
         ? "Render Controls"
         : "Procedural Generation";
 
-    // 调试面板使用单独配色，不影响 ImGui 全局主题。
+    // 调试面板使用单独配色，不影响 ImGui 全局主题�?
     const ImVec4 deepNavy(0.018f, 0.035f, 0.070f, 0.96f);
     const ImVec4 panelBlue(0.045f, 0.105f, 0.180f, 0.98f);
     const ImVec4 activeBlue(0.070f, 0.210f, 0.360f, 1.0f);
@@ -1720,16 +1626,40 @@ void configureImGuiFonts()
         }
     }
 
-    // 找不到中文字体时退回默认字体；UI 文本仍以英文为主。
+    // 找不到中文字体时退回默认字体；UI 文本仍以英文为主�?
     io.Fonts->AddFontDefault();
 }
 } // namespace
 
-int main()
+int main(int argc, char** argv)
 {
-    // 1. 创建窗口和 OpenGL context。
+    bool profileEnabled = false;
+    int profileFrameLimit = 0;
+    for (int i = 1; i < argc; ++i) {
+        const std::string argument = argv[i] != nullptr ? argv[i] : "";
+        if (argument == "--profile") {
+            profileEnabled = true;
+        } else if (argument == "--profile-frames" && i + 1 < argc) {
+            profileFrameLimit = std::max(std::atoi(argv[++i]), 0);
+        }
+    }
+    if (const char* envProfile = std::getenv("PROW_PROFILE")) {
+        profileEnabled = std::string(envProfile) == "1";
+    }
+    if (profileEnabled) {
+        Engine::Instrumentor::GetInstance().BeginSession(kProfileTraceFilePath);
+        std::cout << "[Profiler] Writing trace to " << kProfileTraceFilePath << "\n";
+        if (profileFrameLimit > 0) {
+            std::cout << "[Profiler] Auto-exit after " << profileFrameLimit << " frames\n";
+        }
+    }
+
+    // 1. 创建窗口�?OpenGL context�?
     if (!glfwInit()) {
         std::cerr << "Failed to initialize GLFW\n";
+        if (profileEnabled) {
+            Engine::Instrumentor::GetInstance().EndSession();
+        }
         return -1;
     }
 
@@ -1745,13 +1675,16 @@ int main()
     if (window == nullptr) {
         std::cerr << "Failed to create GLFW window\n";
         glfwTerminate();
+        if (profileEnabled) {
+            Engine::Instrumentor::GetInstance().EndSession();
+        }
         return -1;
     }
 
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1);
 
-    // 2. 注册输入回调。ApplicationState 挂到 GLFW user pointer 供回调访问。
+    // 2. 注册输入回调。ApplicationState 挂到 GLFW user pointer 供回调访问�?
     ApplicationState appState;
     glfwSetWindowUserPointer(window, &appState);
     glfwSetFramebufferSizeCallback(window, onFramebufferSizeChanged);
@@ -1764,6 +1697,9 @@ int main()
     if (!gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress))) {
         std::cerr << "Failed to initialize GLAD\n";
         glfwTerminate();
+        if (profileEnabled) {
+            Engine::Instrumentor::GetInstance().EndSession();
+        }
         return -1;
     }
 
@@ -1774,7 +1710,7 @@ int main()
     std::cout << "OpenGL vendor: " << glGetString(GL_VENDOR) << "\n";
     std::cout << "OpenGL renderer: " << glGetString(GL_RENDERER) << "\n";
 
-    // 3. 初始化 ImGui 和渲染器资源。
+    // 3. 初始�?ImGui 和渲染器资源�?
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGui::StyleColorsDark();
@@ -1785,7 +1721,7 @@ int main()
     appState.renderer.initialize();
     appState.renderSettings = appState.renderer.settings();
     appState.proceduralSettings = appState.renderer.settings();
-    // 4. 尝试恢复本地 session/cache；成功时可直接进入渲染阶段。
+    // 4. 尝试恢复本地 session/cache；成功时可直接进入渲染阶段�?
     loadSession(appState, kSessionFilePath, false);
     appState.renderer.setPlanetRotation(appState.planetYawDegrees, appState.planetPitchDegrees);
 
@@ -1796,19 +1732,22 @@ int main()
 
     printControls();
 
+    int profiledFrameCount = 0;
     while (!glfwWindowShouldClose(window))
     {
-        // 帧时间用于相机、自动旋转、反射权重平滑和 FFT 更新节流。
+        PROFILE_SCOPE("MainLoop Frame");
+        // 帧时间用于相机、自动旋转、反射权重平滑和 FFT 更新节流�?
         const float currentTime = static_cast<float>(glfwGetTime());
         appState.deltaSeconds = currentTime - appState.previousFrameTime;
         appState.previousFrameTime = currentTime;
 
         if (appState.workflowStage == WorkflowStage::Generating) {
-            // 后台生成完成后，在主线程取出结果并上传 GPU 资源。
+            // 后台生成完成后，在主线程取出结果并上�?GPU 资源�?
             appState.generationTimer += appState.deltaSeconds;
             if (appState.generationFuture.valid()
                 && appState.generationFuture.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
                 try {
+                    PROFILE_SCOPE("Finish Planet Generation");
                     finishPlanetGeneration(appState, appState.generationFuture.get());
                 } catch (const std::exception& exception) {
                     appState.workflowStage = WorkflowStage::ProceduralSetup;
@@ -1817,9 +1756,12 @@ int main()
             }
         }
 
-        handleKeyboardMovement(window, appState);
+        {
+            PROFILE_SCOPE("Input Update");
+            handleKeyboardMovement(window, appState);
+        }
         if (appState.workflowStage == WorkflowStage::Render) {
-            // Render 阶段保持星球静止，方便观察河流、LOD 和材质 debug；需要旋转时用左键拖拽。
+            // Render 阶段保持星球静止，方便观察河流、LOD 和材�?debug；需要旋转时用左键拖拽�?
             appState.renderer.setPlanetRotation(appState.planetYawDegrees, appState.planetPitchDegrees);
             updateOrbitCamera(appState, appState.renderer.settings());
         }
@@ -1834,7 +1776,7 @@ int main()
             ? appState.renderer.settings()
             : appState.renderSettings;
 
-        // 投影矩阵使用当前设置里的 near/far，支持大半径星球的远裁剪面。
+        // 投影矩阵使用当前设置里的 near/far，支持大半径星球的远裁剪面�?
         const glm::mat4 projectionMatrix = glm::perspective(
             glm::radians(appState.camera.fieldOfView),
             static_cast<float>(framebufferWidth) / static_cast<float>(framebufferHeight),
@@ -1846,21 +1788,33 @@ int main()
         const glm::vec3 skyColor = appState.workflowStage == WorkflowStage::Render
             ? appState.renderer.settings().skyColor
             : glm::vec3(0.018f, 0.035f, 0.070f);
-        glClearColor(skyColor.r, skyColor.g, skyColor.b, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        {
+            PROFILE_SCOPE("GL Clear");
+            glClearColor(skyColor.r, skyColor.g, skyColor.b, 1.0f);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        }
 
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplGlfw_NewFrame();
-        ImGui::NewFrame();
+        {
+            PROFILE_SCOPE("ImGui NewFrame");
+            ImGui_ImplOpenGL3_NewFrame();
+            ImGui_ImplGlfw_NewFrame();
+            ImGui::NewFrame();
+        }
 
-        // UI 先生成 draw data，星球渲染后再提交 ImGui，保证面板覆盖在画面上方。
-        drawDebugPanel(appState);
-        drawPerformancePanel(appState);
+        // UI 先生�?draw data，星球渲染后再提�?ImGui，保证面板覆盖在画面上方�?
+        {
+            PROFILE_SCOPE("ImGui Build Panels");
+            drawDebugPanel(appState);
+            drawPerformancePanel(appState);
+        }
         if (appState.workflowStage == WorkflowStage::Render) {
             appState.renderer.render(appState.camera, viewMatrix, projectionMatrix, currentTime);
         }
-        ImGui::Render();
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        {
+            PROFILE_SCOPE("ImGui Render");
+            ImGui::Render();
+            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        }
 
         static double titleUpdateTimer = 0.0;
         titleUpdateTimer += appState.deltaSeconds;
@@ -1870,26 +1824,39 @@ int main()
             snprintf(
                 titleBuffer,
                 sizeof(titleBuffer),
-                "%s | R=%.0f | Patches=%zu | %.1f FPS",
+                "%s | R=%.0f | Ocean=%zu | %.1f FPS",
                 appState.workflowStage == WorkflowStage::Render ? "Render" : "Procedural",
                 appState.workflowStage == WorkflowStage::Render
                     ? appState.renderer.settings().planetRadius
                     : appState.proceduralSettings.planetRadius,
                 appState.workflowStage == WorkflowStage::Render
-                    ? appState.renderer.visiblePatchCount()
+                    ? appState.renderer.visibleOceanPatchCount()
                     : static_cast<std::size_t>(0),
                 1.0f / glm::max(appState.deltaSeconds, 0.0001f)
             );
             glfwSetWindowTitle(window, titleBuffer);
         }
 
-        glfwSwapBuffers(window);
-        glfwPollEvents();
+        {
+            PROFILE_SCOPE("Swap Buffers");
+            glfwSwapBuffers(window);
+        }
+        {
+            PROFILE_SCOPE("Poll Events");
+            glfwPollEvents();
+        }
+
+        if (profileEnabled && profileFrameLimit > 0 && ++profiledFrameCount >= profileFrameLimit) {
+            glfwSetWindowShouldClose(window, true);
+        }
     }
 
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
     glfwTerminate();
+    if (profileEnabled) {
+        Engine::Instrumentor::GetInstance().EndSession();
+    }
     return 0;
 }
