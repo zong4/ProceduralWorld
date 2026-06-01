@@ -47,6 +47,7 @@ target("ProceduralWorld")
 
 target("TerrainHeightDiagnostics")
     set_kind("binary")
+    set_default(false)
     add_files("tools/TerrainHeightDiagnostics.cpp")
     add_files("src/PlanetProceduralData.cpp")
     add_files("src/Instumentor/*.cpp")

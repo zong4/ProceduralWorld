@@ -21,10 +21,11 @@ namespace
 {
 // 缓存文件版本号和 magic 用来拒绝旧格式/损坏文件。
 constexpr char kProceduralCacheMagic[8] = { 'P', 'W', 'C', 'A', 'C', 'H', 'E', '9' };
-constexpr std::uint32_t kProceduralCacheVersion = 75;
+constexpr std::uint32_t kProceduralCacheVersion = 116;
 constexpr int kTerrainChunkMeshResolution = 16;
 constexpr int kTerrainChunkMinDepth = 2;
 constexpr int kTerrainChunkMaxDepth = 6;
+constexpr int kFinalizeChunkProgressSteps = 256;
 constexpr std::uint32_t kTerrainFeatureCacheVersion = 1;
 
 template <typename T>
@@ -666,6 +667,7 @@ void PlanetProceduralData::clear()
     terrainFeatureSegments_.clear();
     terrainSkeletons_.clear();
     terrainPeakNodes_.clear();
+    terrainNodes_.clear();
     minHeight_ = 0.0f;
     maxHeight_ = 0.0f;
     maxWaterDepth_ = 0.0f;
@@ -709,7 +711,7 @@ void PlanetProceduralData::generate(const PlanetRenderSettings& settings,
     moduleTotals[static_cast<std::size_t>(GenerationModule::FinalClimate)] = resolution_ * 6 + 3;
     moduleTotals[static_cast<std::size_t>(GenerationModule::FinalBiomes)] = resolution_ * 6 + 2;
     moduleTotals[static_cast<std::size_t>(GenerationModule::MeshPlanning)] = resolution_ * 6 + 1;
-    moduleTotals[static_cast<std::size_t>(GenerationModule::Finalize)] = 1 + 6;
+    moduleTotals[static_cast<std::size_t>(GenerationModule::Finalize)] = 1 + 6 + 1 + kFinalizeChunkProgressSteps + 1;
 
     int totalSteps = 0;
     for (int moduleTotal : moduleTotals) {
@@ -739,6 +741,14 @@ void PlanetProceduralData::generate(const PlanetRenderSettings& settings,
     };
     const auto advanceErosionProgress = [&](const char* status) {
         advanceModuleProgress(GenerationModule::Erosion, status);
+    };
+    const auto finishModuleProgress = [&](GenerationModule module, const char* status) {
+        activeModule = module;
+        const std::size_t moduleIndex = static_cast<std::size_t>(module);
+        const int remainingModuleSteps = std::max(moduleTotals[moduleIndex] - moduleCompleted[moduleIndex], 0);
+        completedSteps = std::min(completedSteps + remainingModuleSteps, totalSteps);
+        moduleCompleted[moduleIndex] = moduleTotals[moduleIndex];
+        reportProgress(status);
     };
 
     reportProgress("Preparing terrain buffers");
@@ -880,8 +890,13 @@ void PlanetProceduralData::generate(const PlanetRenderSettings& settings,
         shoreCoverage_ = 0.0f;
     }
 
-    buildTerrainFeatureSegments(settings);
-    buildTerrainChunks(settings);
+    buildTerrainFeatureSegments(settings, [&](const char* status) {
+        advanceModuleProgress(GenerationModule::Finalize, status);
+    });
+    buildTerrainChunks(settings, [&](const char* status) {
+        advanceModuleProgress(GenerationModule::Finalize, status);
+    });
+    finishModuleProgress(GenerationModule::Finalize, "Generation complete");
     generated_ = true;
     reportProgress("Generation complete");
 }
@@ -1086,12 +1101,17 @@ std::size_t PlanetProceduralData::terrainFeatureSegmentCount(TerrainFeatureType 
     ));
 }
 
-void PlanetProceduralData::buildTerrainFeatureSegments(const PlanetRenderSettings& settings)
+void PlanetProceduralData::buildTerrainFeatureSegments(const PlanetRenderSettings& settings,
+                                                       const std::function<void(const char*)>& advanceProgress)
 {
     PROFILE_SCOPE("Build Terrain Feature Segments");
     terrainFeatureSegments_.clear();
     if (resolution_ <= 2) {
         return;
+    }
+
+    if (advanceProgress) {
+        advanceProgress("Building terrain feature segments");
     }
 
     const auto appendSegment = [&](TerrainFeatureType type,
@@ -1229,7 +1249,8 @@ void PlanetProceduralData::buildTerrainFeatureSegments(const PlanetRenderSetting
     }
 }
 
-void PlanetProceduralData::buildTerrainChunks(const PlanetRenderSettings& settings)
+void PlanetProceduralData::buildTerrainChunks(const PlanetRenderSettings& settings,
+                                              const std::function<void(const char*)>& advanceProgress)
 {
     PROFILE_SCOPE("Build Offline Terrain Chunks");
     terrainChunks_.clear();
@@ -1774,9 +1795,32 @@ void PlanetProceduralData::buildTerrainChunks(const PlanetRenderSettings& settin
         stack.push_back(PendingNode{faceIndex, 0, glm::vec2(0.0f), glm::vec2(1.0f)});
     }
 
+    int chunkProgressTicks = 0;
+    int processedNodes = 0;
+    const int maxQuadtreeNodes =
+        6 * ((1 << ((kTerrainChunkMaxDepth + 1) * 2)) - 1) / 3;
+    const auto reportChunkProgress = [&]() {
+        if (!advanceProgress || maxQuadtreeNodes <= 0) {
+            return;
+        }
+
+        const int targetTicks = glm::clamp(
+            static_cast<int>(
+                (static_cast<long long>(processedNodes) * kFinalizeChunkProgressSteps) / maxQuadtreeNodes
+            ),
+            0,
+            kFinalizeChunkProgressSteps
+        );
+        while (chunkProgressTicks < targetTicks) {
+            ++chunkProgressTicks;
+            advanceProgress("Building offline terrain chunks");
+        }
+    };
+
     while (!stack.empty()) {
         const PendingNode node = stack.back();
         stack.pop_back();
+        ++processedNodes;
 
         float meshDensity = 0.0f;
         float geometricError = 0.0f;
@@ -1792,8 +1836,9 @@ void PlanetProceduralData::buildTerrainChunks(const PlanetRenderSettings& settin
                                + featureMask * 0.75f
                                + (hasShore ? 0.35f : 0.0f);
         const float depthBias = static_cast<float>(node.depth) * 0.13f;
+        const bool deepOcean = hasWater && !hasShore && maxHeight < settings.seaLevelOffset - 0.03f;
         const bool forceBase = node.depth < kTerrainChunkMinDepth;
-        const bool adaptiveSplit = splitScore > (0.86f + depthBias);
+        const bool adaptiveSplit = !deepOcean && splitScore > (0.86f + depthBias);
         if ((forceBase || adaptiveSplit) && node.depth < kTerrainChunkMaxDepth) {
             const glm::vec2 childSize = node.uvSize * 0.5f;
             for (int childY = 0; childY < 2; ++childY) {
@@ -1806,10 +1851,17 @@ void PlanetProceduralData::buildTerrainChunks(const PlanetRenderSettings& settin
                     stack.push_back(child);
                 }
             }
+            reportChunkProgress();
             continue;
         }
 
         emitChunk(node, meshDensity, geometricError, featureMask, minHeight, maxHeight, hasWater, hasShore);
+        reportChunkProgress();
+    }
+
+    while (advanceProgress && chunkProgressTicks < kFinalizeChunkProgressSteps) {
+        ++chunkProgressTicks;
+        advanceProgress("Building offline terrain chunks");
     }
 }
 
@@ -1860,7 +1912,7 @@ void PlanetProceduralData::buildTerrainSkeletons(const PlanetRenderSettings& set
             const glm::vec2 normal(-axis.y, axis.x);
             const float halfLength = glm::mix(0.28f, 0.48f, n2);
             const float width = glm::mix(broadMassif ? 0.185f : 0.145f, broadMassif ? 0.260f : 0.205f, n0);
-            const float strength = settings.mountainMaskStrength * glm::mix(broadMassif ? 0.050f : 0.058f, broadMassif ? 0.078f : 0.090f, n1);
+            const float strength = settings.mountainMaskStrength * glm::mix(broadMassif ? 0.092f : 0.105f, broadMassif ? 0.145f : 0.168f, n1);
             const glm::vec2 bend = normal * glm::mix(-0.18f, 0.18f, fbm(seedOffset + glm::vec3(15.1f, 3.4f, bandSeed), 3, 2.0f, 0.5f) * 0.5f + 0.5f);
             const glm::vec2 beltA = center - axis * halfLength;
             const glm::vec2 beltB = center + axis * halfLength;
@@ -1905,17 +1957,18 @@ void PlanetProceduralData::buildTerrainPeakNodes(const PlanetRenderSettings& set
 {
     PROFILE_SCOPE("Build Terrain Peak Nodes");
     terrainPeakNodes_.clear();
+    terrainNodes_.clear();
     if (terrainSkeletons_.empty()) {
         return;
     }
 
-    const auto addPeak = [&](TerrainPeakType type,
-                             int faceIndex,
-                             const glm::vec2& uv,
-                             float radius,
-                             float height,
-                             float sharpness,
-                             float variation) {
+    const auto addMesaNode = [&](TerrainPeakType type,
+                                 int faceIndex,
+                                 const glm::vec2& uv,
+                                 float radius,
+                                 float height,
+                                 float sharpness,
+                                 float variation) {
         TerrainPeakNode node;
         node.type = type;
         node.faceIndex = faceIndex;
@@ -1926,10 +1979,105 @@ void PlanetProceduralData::buildTerrainPeakNodes(const PlanetRenderSettings& set
         node.sharpness = glm::max(sharpness, 0.1f);
         node.variation = variation;
         terrainPeakNodes_.push_back(node);
+
+        TerrainNode terrainNode;
+        terrainNode.type = type == TerrainPeakType::Volcanic ? TerrainNodeType::Volcano : TerrainNodeType::Mesa;
+        terrainNode.faceIndex = node.faceIndex;
+        terrainNode.uv = node.uv;
+        terrainNode.sphereDir = node.sphereDir;
+        const float shapeNoise = perlinNoise(glm::vec3(
+            variation * 17.3f + static_cast<float>(faceIndex) * 2.1f,
+            uv.x * 11.7f,
+            uv.y * 13.9f
+        )) * 0.5f + 0.5f;
+        if (terrainNode.type == TerrainNodeType::Volcano) {
+            terrainNode.radius = node.radius * glm::mix(0.92f, 1.22f, shapeNoise);
+            terrainNode.height = node.height * glm::mix(0.54f, 0.74f, variation);
+            terrainNode.topRadius = glm::mix(0.16f, 0.26f, shapeNoise);
+            terrainNode.cliffRadius = glm::mix(0.58f, 0.74f, variation);
+            terrainNode.erosion = glm::mix(0.20f, 0.38f, shapeNoise);
+        } else {
+            terrainNode.radius = node.radius * glm::mix(0.46f, 0.62f, shapeNoise);
+            terrainNode.height = node.height * glm::mix(0.76f, 0.95f, variation);
+            terrainNode.topRadius = glm::mix(0.22f, 0.40f, shapeNoise);
+            terrainNode.cliffRadius = terrainNode.topRadius + glm::mix(0.24f, 0.42f, variation);
+            terrainNode.erosion = glm::mix(0.05f, 0.16f, shapeNoise);
+        }
+        terrainNode.variation = variation;
+        terrainNode.orientation = perlinNoise(glm::vec3(
+            uv.x * 5.9f + variation * 8.7f,
+            uv.y * 6.3f,
+            static_cast<float>(faceIndex) * 4.2f
+        )) * 3.14159265f;
+        terrainNode.aspectRatio = glm::mix(1.20f, 2.20f, perlinNoise(glm::vec3(
+            variation * 11.1f,
+            uv.x * 9.4f,
+            uv.y * 7.6f + static_cast<float>(faceIndex)
+        )) * 0.5f + 0.5f);
+        if (terrainNode.type == TerrainNodeType::Mesa) {
+            const float clusterStyle = glm::smoothstep(0.74f, 0.96f, shapeNoise);
+            terrainNode.lobeSpread = glm::mix(glm::mix(0.10f, 0.24f, shapeNoise), glm::mix(0.18f, 0.34f, shapeNoise), clusterStyle);
+            terrainNode.lobeStrength = glm::mix(glm::mix(0.14f, 0.26f, variation), glm::mix(0.22f, 0.38f, variation), clusterStyle);
+            terrainNode.edgeRoughness = glm::mix(glm::mix(0.14f, 0.26f, shapeNoise), glm::mix(0.18f, 0.30f, shapeNoise), clusterStyle);
+        } else {
+            terrainNode.lobeSpread = glm::mix(0.18f, 0.40f, shapeNoise);
+            terrainNode.lobeStrength = glm::mix(0.22f, 0.48f, variation);
+            terrainNode.edgeRoughness = glm::mix(0.12f, 0.28f, shapeNoise);
+        }
+        terrainNodes_.push_back(terrainNode);
+    };
+
+    std::vector<int> claimedVolcanicRegionKeys;
+    claimedVolcanicRegionKeys.reserve(16);
+    const auto volcanicRegionKey = [&](int faceIndex, const glm::vec2& uv, const glm::vec3& sphereDir) {
+        const int regionX = glm::clamp(static_cast<int>(std::floor(uv.x * 3.0f)), 0, 2);
+        const int regionY = glm::clamp(static_cast<int>(std::floor(uv.y * 3.0f)), 0, 2);
+        const float provinceNoise = perlinNoise(sphereDir * 1.18f + glm::vec3(17.4f, 6.2f, 29.8f)) * 0.5f + 0.5f;
+        const int provinceBand = glm::clamp(static_cast<int>(std::floor(provinceNoise * 3.0f)), 0, 2);
+        return faceIndex * 100 + regionY * 30 + regionX * 10 + provinceBand;
+    };
+    const auto tryClaimVolcanicRegion = [&](int faceIndex, const glm::vec2& uv, const glm::vec3& sphereDir) {
+        const int key = volcanicRegionKey(faceIndex, uv, sphereDir);
+        if (std::find(claimedVolcanicRegionKeys.begin(), claimedVolcanicRegionKeys.end(), key) != claimedVolcanicRegionKeys.end()) {
+            return false;
+        }
+        claimedVolcanicRegionKeys.push_back(key);
+        return true;
     };
 
     for (const TerrainSkeletonSegment& skeleton : terrainSkeletons_) {
-        if (skeleton.type == TerrainSkeletonType::Valley) {
+        if (skeleton.type == TerrainSkeletonType::Ridge) {
+            const glm::vec2 segment = skeleton.uvB - skeleton.uvA;
+            const float length = glm::length(segment);
+            if (length <= 0.001f) {
+                continue;
+            }
+
+            const glm::vec2 uv = glm::clamp(glm::mix(skeleton.uvA, skeleton.uvB, 0.5f), glm::vec2(0.02f), glm::vec2(0.98f));
+            const glm::vec3 candidateDir = cubeSphereDirection(kFaces[static_cast<std::size_t>(skeleton.faceIndex)], uv);
+            const PlanetSample baseSample = samplePlanetBase(settings, candidateDir);
+            const float relativeLandHeight = baseSample.height - settings.seaLevelOffset;
+            if (relativeLandHeight < 0.035f || baseSample.shoreMask > 0.58f) {
+                continue;
+            }
+
+            TerrainNode ridgeNode;
+            ridgeNode.type = TerrainNodeType::RidgeChain;
+            ridgeNode.faceIndex = skeleton.faceIndex;
+            ridgeNode.uv = uv;
+            ridgeNode.sphereDir = candidateDir;
+            ridgeNode.radius = glm::max(skeleton.width * 1.85f, 0.018f);
+            ridgeNode.height = skeleton.strength * glm::mix(0.68f, 1.02f, skeleton.variation);
+            ridgeNode.erosion = glm::mix(0.30f, 0.52f, skeleton.variation);
+            ridgeNode.variation = skeleton.variation;
+            ridgeNode.orientation = std::atan2(segment.y, segment.x);
+            ridgeNode.aspectRatio = glm::clamp(length / glm::max(skeleton.width * 2.10f, 0.001f), 1.75f, 4.80f);
+            ridgeNode.edgeRoughness = glm::mix(0.18f, 0.34f, skeleton.variation);
+            terrainNodes_.push_back(ridgeNode);
+            continue;
+        }
+
+        if (skeleton.type == TerrainSkeletonType::Valley || skeleton.type == TerrainSkeletonType::Ridge) {
             continue;
         }
 
@@ -1939,9 +2087,7 @@ void PlanetProceduralData::buildTerrainPeakNodes(const PlanetRenderSettings& set
             continue;
         }
 
-        const int peakCount = skeleton.type == TerrainSkeletonType::Massif
-            ? 1
-            : (skeleton.type == TerrainSkeletonType::Ridge ? 2 : 2);
+        const int peakCount = 1;
         for (int i = 0; i < peakCount; ++i) {
             const float tBase = (static_cast<float>(i) + 0.5f) / static_cast<float>(peakCount);
             const float tNoise = perlinNoise(glm::vec3(
@@ -1963,21 +2109,176 @@ void PlanetProceduralData::buildTerrainPeakNodes(const PlanetRenderSettings& set
                 13.2f,
                 static_cast<float>(skeleton.faceIndex) * 4.1f
             )) * 0.5f + 0.5f;
-            const bool volcanic = skeleton.type == TerrainSkeletonType::Massif && sizeNoise > 0.82f;
+            const glm::vec3 candidateDir = cubeSphereDirection(
+                kFaces[static_cast<std::size_t>(skeleton.faceIndex)],
+                glm::clamp(uv, glm::vec2(0.02f), glm::vec2(0.98f))
+            );
+            const PlanetSample baseSample = samplePlanetBase(settings, candidateDir);
+            const float relativeLandHeight = baseSample.height - settings.seaLevelOffset;
+            const float lowIslandLand = glm::smoothstep(-0.010f, 0.045f, relativeLandHeight)
+                                      * (1.0f - glm::smoothstep(0.060f, 0.220f, relativeLandHeight));
+            const float islandVolcanoBias = glm::clamp(glm::max(baseSample.shoreMask, lowIslandLand), 0.0f, 1.0f);
+            const float volcanoNoise = perlinNoise(glm::vec3(
+                skeleton.variation * 17.6f + static_cast<float>(i) * 5.1f,
+                uv.x * 10.4f + static_cast<float>(skeleton.faceIndex),
+                uv.y * 12.8f
+            )) * 0.5f + 0.5f;
+            const float volcanoThreshold = glm::mix(0.82f, 0.70f, islandVolcanoBias);
+            bool volcanic =
+                skeleton.type == TerrainSkeletonType::Massif && volcanoNoise > volcanoThreshold;
+            if (volcanic && !tryClaimVolcanicRegion(skeleton.faceIndex, uv, candidateDir)) {
+                volcanic = false;
+            }
+            const float coastalMesaReject = baseSample.shoreMask
+                * (1.0f - glm::smoothstep(0.035f, 0.120f, relativeLandHeight));
+            if (!volcanic && coastalMesaReject > 0.38f) {
+                continue;
+            }
             const TerrainPeakType type = volcanic
                 ? TerrainPeakType::Volcanic
                 : (skeleton.type == TerrainSkeletonType::Ridge ? TerrainPeakType::RidgePeak : TerrainPeakType::Massif);
-            const float radiusScale = type == TerrainPeakType::Massif ? 0.54f : (type == TerrainPeakType::RidgePeak ? 0.30f : 0.38f);
-            const float heightScale = type == TerrainPeakType::Volcanic ? 1.16f : (type == TerrainPeakType::RidgePeak ? 0.92f : 1.0f);
-            addPeak(
+            const float radiusScale = type == TerrainPeakType::Massif ? 0.62f : (type == TerrainPeakType::RidgePeak ? 0.38f : 0.48f);
+            const float heightScale = type == TerrainPeakType::Volcanic ? 1.08f : (type == TerrainPeakType::RidgePeak ? 0.82f : 0.96f);
+            const float baseRadius = skeleton.width * glm::mix(radiusScale * 0.78f, radiusScale * 1.28f, sizeNoise);
+            const float clusterNoise = perlinNoise(glm::vec3(
+                skeleton.variation * 14.2f + static_cast<float>(i) * 3.7f,
+                static_cast<float>(skeleton.faceIndex) * 8.8f,
+                length * 5.6f
+            )) * 0.5f + 0.5f;
+            const int satelliteCount = volcanic ? 0 : (clusterNoise > 0.94f ? 2 : (clusterNoise > 0.64f ? 1 : 0));
+            const float mesaClusterHeightScale = glm::mix(0.54f, 0.75f, static_cast<float>(satelliteCount) / 2.0f) * 0.60f;
+            const float flatTopHeightScale = type == TerrainPeakType::Volcanic ? 1.0f : mesaClusterHeightScale;
+            const float baseHeight = settings.mountainMaskStrength
+                * glm::mix(0.150f, 0.255f, sizeNoise)
+                * heightScale
+                * flatTopHeightScale;
+            addMesaNode(
                 type,
                 skeleton.faceIndex,
                 uv,
-                skeleton.width * glm::mix(radiusScale * 0.78f, radiusScale * 1.28f, sizeNoise),
-                settings.mountainMaskStrength * glm::mix(0.078f, 0.138f, sizeNoise) * heightScale,
-                type == TerrainPeakType::Massif ? 1.30f : (type == TerrainPeakType::RidgePeak ? 1.85f : 1.55f),
+                baseRadius,
+                baseHeight,
+                type == TerrainPeakType::Massif ? 0.92f : (type == TerrainPeakType::RidgePeak ? 1.25f : 1.10f),
                 sizeNoise
             );
+
+            for (int satellite = 0; satellite < satelliteCount; ++satellite) {
+                const float satelliteSeed = skeleton.variation * 21.4f
+                    + static_cast<float>(satellite) * 6.7f
+                    + static_cast<float>(skeleton.faceIndex) * 2.9f;
+                const float offsetAlongNoise = perlinNoise(glm::vec3(satelliteSeed, 4.2f, length * 9.1f));
+                const float offsetSideNoise = perlinNoise(glm::vec3(8.3f, satelliteSeed, length * 6.4f));
+                const float offsetAlong = baseRadius * glm::mix(0.12f, 0.30f, std::abs(offsetAlongNoise))
+                    * (offsetAlongNoise >= 0.0f ? 1.0f : -1.0f);
+                const float offsetSide = baseRadius * glm::mix(0.035f, 0.13f, std::abs(offsetSideNoise))
+                    * (offsetSideNoise >= 0.0f ? 1.0f : -1.0f);
+                const glm::vec2 satelliteUv = uv + axis * offsetAlong + normal * offsetSide;
+                const float satelliteSizeNoise = perlinNoise(glm::vec3(satelliteSeed, uv.x * 7.3f, uv.y * 9.5f)) * 0.5f + 0.5f;
+                addMesaNode(
+                    type,
+                    skeleton.faceIndex,
+                    satelliteUv,
+                    baseRadius * glm::mix(0.46f, 0.70f, satelliteSizeNoise),
+                    baseHeight * glm::mix(0.46f, 0.68f, satelliteSizeNoise),
+                    type == TerrainPeakType::Massif ? 0.74f : (type == TerrainPeakType::RidgePeak ? 1.02f : 0.92f),
+                    glm::fract(sizeNoise + satelliteSizeNoise * 0.73f + static_cast<float>(satellite) * 0.19f)
+                );
+            }
+        }
+    }
+
+    struct IslandVolcanoCandidate {
+        int faceIndex = 0;
+        glm::vec2 uv{0.0f, 0.0f};
+        glm::vec3 sphereDir{0.0f, 1.0f, 0.0f};
+        float score = 0.0f;
+        float volcanoNoise = 0.0f;
+        float radiusNoise = 0.0f;
+    };
+    std::vector<IslandVolcanoCandidate> islandVolcanoCandidates;
+    for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
+        for (int y = 0; y < 18; ++y) {
+            for (int x = 0; x < 18; ++x) {
+                const glm::vec2 uv(
+                    (static_cast<float>(x) + 0.5f) / 18.0f,
+                    (static_cast<float>(y) + 0.5f) / 18.0f
+                );
+                const glm::vec3 candidateDir = cubeSphereDirection(kFaces[static_cast<std::size_t>(faceIndex)], uv);
+                const PlanetSample baseSample = samplePlanetBase(settings, candidateDir);
+                const float relativeLandHeight = baseSample.height - settings.seaLevelOffset;
+                const float shallowIslandBase = glm::smoothstep(-0.045f, 0.020f, relativeLandHeight)
+                                              * (1.0f - glm::smoothstep(0.055f, 0.170f, relativeLandHeight));
+                const float nearSeaBand = 1.0f - glm::smoothstep(0.035f, 0.145f, std::abs(relativeLandHeight));
+                const float attemptSeed = static_cast<float>(faceIndex) * 17.0f
+                    + static_cast<float>(x) * 2.1f
+                    + static_cast<float>(y) * 3.7f;
+                const float volcanoNoise = perlinNoise(glm::vec3(
+                    attemptSeed,
+                    uv.x * 12.9f,
+                    uv.y * 15.4f
+                )) * 0.5f + 0.5f;
+                const float islandScore = shallowIslandBase
+                    * glm::mix(0.35f, 1.0f, glm::max(baseSample.shoreMask, nearSeaBand))
+                    * glm::mix(0.72f, 1.15f, volcanoNoise);
+                if (islandScore < 0.040f) {
+                    continue;
+                }
+
+                IslandVolcanoCandidate candidate;
+                candidate.faceIndex = faceIndex;
+                candidate.uv = uv;
+                candidate.sphereDir = candidateDir;
+                candidate.score = islandScore;
+                candidate.volcanoNoise = volcanoNoise;
+                candidate.radiusNoise = perlinNoise(glm::vec3(attemptSeed, 21.6f, 7.2f)) * 0.5f + 0.5f;
+                islandVolcanoCandidates.push_back(candidate);
+            }
+        }
+    }
+    std::sort(
+        islandVolcanoCandidates.begin(),
+        islandVolcanoCandidates.end(),
+        [](const IslandVolcanoCandidate& a, const IslandVolcanoCandidate& b) {
+            return a.score > b.score;
+        }
+    );
+    std::vector<glm::vec3> selectedIslandVolcanoDirs;
+    selectedIslandVolcanoDirs.reserve(3);
+    for (const TerrainNode& node : terrainNodes_) {
+        if (node.type == TerrainNodeType::Volcano) {
+            selectedIslandVolcanoDirs.push_back(node.sphereDir);
+        }
+    }
+    constexpr float kMinIslandVolcanoAngularDistance = 0.34f;
+    int islandVolcanoCount = 0;
+    for (const IslandVolcanoCandidate& candidate : islandVolcanoCandidates) {
+        bool tooClose = false;
+        for (const glm::vec3& existingDir : selectedIslandVolcanoDirs) {
+            const float angularDistance = std::acos(glm::clamp(glm::dot(candidate.sphereDir, existingDir), -1.0f, 1.0f));
+            if (angularDistance < kMinIslandVolcanoAngularDistance) {
+                tooClose = true;
+                break;
+            }
+        }
+        if (tooClose) {
+            continue;
+        }
+        if (!tryClaimVolcanicRegion(candidate.faceIndex, candidate.uv, candidate.sphereDir)) {
+            continue;
+        }
+        addMesaNode(
+            TerrainPeakType::Volcanic,
+            candidate.faceIndex,
+            candidate.uv,
+            glm::mix(0.088f, 0.145f, candidate.radiusNoise),
+            settings.mountainMaskStrength * glm::mix(0.070f, 0.118f, candidate.volcanoNoise),
+            1.08f,
+            glm::fract(candidate.volcanoNoise + candidate.radiusNoise * 0.37f)
+        );
+        selectedIslandVolcanoDirs.push_back(candidate.sphereDir);
+        ++islandVolcanoCount;
+        if (islandVolcanoCount >= 3) {
+            break;
         }
     }
 }
@@ -2069,6 +2370,425 @@ void PlanetProceduralData::applyTerrainSkeletons(const PlanetRenderSettings& set
     }
 }
 
+PlanetProceduralData::TerrainNodeResult PlanetProceduralData::applyTerrainNode(const TerrainNode& node,
+                                                                               const glm::vec3& sphereDir)
+{
+    switch (node.type) {
+    case TerrainNodeType::Mesa:
+        return applyMesaNode(node, sphereDir);
+    case TerrainNodeType::Volcano:
+        return applyVolcanoNode(node, sphereDir);
+    case TerrainNodeType::RidgeChain:
+        return applyRidgeChainNode(node, sphereDir);
+    case TerrainNodeType::Massif:
+    case TerrainNodeType::Hill:
+    default:
+        return TerrainNodeResult{};
+    }
+}
+
+PlanetProceduralData::TerrainNodeResult PlanetProceduralData::applyMesaNode(const TerrainNode& node,
+                                                                            const glm::vec3& sphereDir)
+{
+    TerrainNodeResult result;
+    if (node.type != TerrainNodeType::Mesa) {
+        return result;
+    }
+
+    const float angularDistance = std::acos(glm::clamp(glm::dot(sphereDir, node.sphereDir), -1.0f, 1.0f));
+    const float angularRadius = glm::max(node.radius * 1.57079637f, 0.001f);
+    const float radialD = angularDistance / angularRadius;
+    if (radialD >= 1.46f) {
+        return result;
+    }
+
+    const glm::vec3 referenceUp = std::abs(node.sphereDir.y) > 0.92f
+        ? glm::vec3(1.0f, 0.0f, 0.0f)
+        : glm::vec3(0.0f, 1.0f, 0.0f);
+    const glm::vec3 tangentU = glm::normalize(glm::cross(referenceUp, node.sphereDir));
+    const glm::vec3 tangentV = glm::normalize(glm::cross(node.sphereDir, tangentU));
+    const glm::vec3 tangentDelta = sphereDir - node.sphereDir * glm::dot(sphereDir, node.sphereDir);
+    const glm::vec2 localPoint(
+        glm::dot(tangentDelta, tangentU) / angularRadius,
+        glm::dot(tangentDelta, tangentV) / angularRadius
+    );
+    const float orientation = node.orientation;
+    const float sinO = std::sin(orientation);
+    const float cosO = std::cos(orientation);
+    const glm::vec2 p(
+        localPoint.x * cosO + localPoint.y * sinO,
+        -localPoint.x * sinO + localPoint.y * cosO
+    );
+    const float aspect = glm::clamp(node.aspectRatio, 0.72f, 2.55f);
+    const float baseD = glm::length(glm::vec2(p.x / aspect, p.y * aspect));
+    float shapeD = baseD;
+    float lobeMask = 0.0f;
+    for (int lobe = 0; lobe < 3; ++lobe) {
+        const float lobeSeed = node.variation * 19.7f + static_cast<float>(lobe) * 5.3f;
+        const float lobeAngle = lobeSeed
+            + perlinNoise(glm::vec3(lobeSeed, node.variation * 3.1f, 4.7f)) * 1.35f;
+        const float lobeDistance = node.lobeSpread * glm::mix(
+            0.62f,
+            1.16f,
+            perlinNoise(glm::vec3(lobeSeed, 8.1f, node.variation * 6.4f)) * 0.5f + 0.5f
+        );
+        const glm::vec2 lobeCenter(std::cos(lobeAngle) * lobeDistance, std::sin(lobeAngle) * lobeDistance);
+        const float lobeAspect = glm::mix(0.78f, 1.36f, perlinNoise(glm::vec3(3.4f, lobeSeed, 17.2f)) * 0.5f + 0.5f);
+        const float lobeRadius = glm::mix(0.50f, 0.78f, perlinNoise(glm::vec3(9.2f, 12.5f, lobeSeed)) * 0.5f + 0.5f);
+        const glm::vec2 lobeP = p - lobeCenter;
+        const float lobeD = glm::length(glm::vec2(lobeP.x / lobeAspect, lobeP.y * lobeAspect)) / lobeRadius;
+        const float lobeInfluence = (1.0f - glm::smoothstep(0.32f, 1.14f, lobeD)) * node.lobeStrength;
+        shapeD = glm::mix(shapeD, glm::min(shapeD, lobeD), lobeInfluence);
+        lobeMask = glm::max(lobeMask, lobeInfluence);
+    }
+    const float angle = std::atan2(p.y, p.x);
+    const float edgeNoiseA = perlinNoise(glm::vec3(
+        std::cos(angle) * 1.8f + node.variation * 7.1f,
+        std::sin(angle) * 1.8f + node.variation * 3.7f,
+        11.3f
+    ));
+    const float edgeNoiseB = perlinNoise(glm::vec3(
+        std::cos(angle * 2.7f + node.variation) * 2.6f + node.variation * 5.3f,
+        std::sin(angle * 2.7f + node.variation) * 2.6f + node.variation * 8.1f,
+        19.7f
+    ));
+    const float edgeNoiseC = perlinNoise(glm::vec3(
+        std::cos(angle * 5.1f - node.variation) * 3.4f + node.variation * 11.6f,
+        std::sin(angle * 5.1f - node.variation) * 3.4f + node.variation * 2.9f,
+        31.2f
+    ));
+    const float edgeNoise = glm::clamp(edgeNoiseA * 0.62f + edgeNoiseB * 0.28f + edgeNoiseC * 0.10f, -1.0f, 1.0f);
+    const float bodyNoise = glm::clamp(edgeNoiseA * 0.74f + edgeNoiseB * 0.26f, -1.0f, 1.0f);
+    const float bodyInfluence = glm::smoothstep(0.18f, 0.86f, shapeD);
+    const float blockAxis = glm::dot(
+        glm::normalize(glm::vec2(std::cos(node.variation * 6.2831853f + 1.7f),
+                                 std::sin(node.variation * 6.2831853f + 1.7f))),
+        p
+    );
+    const float bodyBias = glm::clamp(blockAxis, -1.0f, 1.0f) * 0.055f * bodyInfluence;
+    shapeD /= glm::max(1.0f + bodyNoise * node.edgeRoughness * 0.42f * bodyInfluence + bodyBias, 0.001f);
+    const float edgeInfluence = glm::smoothstep(0.34f, 1.04f, shapeD);
+    const float notchNoise = perlinNoise(glm::vec3(
+        std::cos(angle * 7.4f + node.variation) * 2.2f + node.variation * 4.6f,
+        std::sin(angle * 7.4f + node.variation) * 2.2f + node.variation * 10.9f,
+        43.5f
+    )) * 0.5f + 0.5f;
+    const float notchMask = glm::smoothstep(0.58f, 0.88f, notchNoise) * edgeInfluence;
+    const float edgeWarp = 1.0f + edgeNoise * node.edgeRoughness * 1.18f * edgeInfluence
+                          - notchMask * node.edgeRoughness * 0.42f;
+    const float warpedD = shapeD / glm::max(edgeWarp, 0.001f);
+
+    const float topRadius = glm::clamp(node.topRadius, 0.14f, 0.48f);
+    const float cliffRadius = glm::max(node.cliffRadius, topRadius + 0.16f);
+    const float footRadius = 1.0f;
+    const float topEdgeNoiseA = perlinNoise(glm::vec3(
+        std::cos(angle * 2.1f + node.variation * 0.8f) * 1.9f + node.variation * 5.4f,
+        std::sin(angle * 2.1f + node.variation * 0.8f) * 1.9f + node.variation * 8.7f,
+        72.3f
+    ));
+    const float topEdgeNoiseB = perlinNoise(glm::vec3(
+        std::cos(angle * 4.6f - node.variation) * 2.8f + node.variation * 11.2f,
+        std::sin(angle * 4.6f - node.variation) * 2.8f + node.variation * 3.9f,
+        81.6f
+    ));
+    const float topEdgeNoiseC = perlinNoise(glm::vec3(
+        std::cos(angle * 7.2f + node.variation * 1.6f) * 3.1f + node.variation * 4.4f,
+        std::sin(angle * 7.2f + node.variation * 1.6f) * 3.1f + node.variation * 12.3f,
+        88.2f
+    ));
+    const float topEdgeNoise = glm::clamp(topEdgeNoiseA * 0.56f + topEdgeNoiseB * 0.31f + topEdgeNoiseC * 0.13f, -1.0f, 1.0f);
+    const float topBias = glm::dot(glm::normalize(glm::vec2(std::cos(node.variation * 6.2831853f),
+                                                            std::sin(node.variation * 6.2831853f))), p);
+    const float irregularTopRadius = topRadius * glm::clamp(
+        1.0f
+            + topEdgeNoise * glm::mix(0.16f, 0.28f, node.edgeRoughness / 0.30f)
+            + glm::clamp(topBias, -1.0f, 1.0f) * 0.12f
+            + (lobeMask - 0.18f) * 0.12f,
+        0.68f,
+        1.34f
+    );
+    const float topWarp = 1.0f
+        + topEdgeNoise * glm::mix(0.22f, 0.34f, node.edgeRoughness / 0.30f)
+        + glm::clamp(topBias, -1.0f, 1.0f) * 0.085f
+        + (lobeMask - 0.18f) * 0.10f;
+    const float topD = warpedD / glm::max(topWarp, 0.001f);
+    const float topMask = 1.0f - glm::smoothstep(irregularTopRadius * 0.70f, irregularTopRadius * 1.12f, topD);
+    const float cliffT = glm::smoothstep(topRadius * 0.72f, cliffRadius * 1.08f, warpedD);
+    const float footT = glm::smoothstep(cliffRadius * 0.82f, footRadius, warpedD);
+    const float talusMask = glm::smoothstep(cliffRadius * 0.78f, cliffRadius * 1.10f, warpedD)
+                          * (1.0f - glm::smoothstep(0.92f, 1.18f, warpedD));
+    const float plateauHeight = node.height * glm::mix(0.58f, 0.72f, node.variation) * glm::mix(0.96f, 1.04f, lobeMask);
+    const float cliffBaseHeight = node.height * glm::mix(0.22f, 0.32f, 1.0f - node.variation);
+    const float softenedCliff = glm::mix(plateauHeight, cliffBaseHeight, cliffT);
+    const float footFade = (1.0f - footT) * (1.0f - footT * 0.45f);
+    float mesaHeight = softenedCliff * footFade;
+    mesaHeight = glm::mix(mesaHeight, plateauHeight, topMask * 0.72f);
+
+    const float topUndulationA = perlinNoise(glm::vec3(
+        p.x * 1.35f + node.variation * 6.1f,
+        p.y * 1.35f + node.variation * 2.8f,
+        52.4f
+    ));
+    const float topUndulationB = perlinNoise(glm::vec3(
+        p.x * 2.45f + node.variation * 3.7f,
+        p.y * 2.45f + node.variation * 7.9f,
+        61.8f
+    ));
+    const float topUndulationC = perlinNoise(glm::vec3(
+        p.x * 4.20f + node.variation * 9.1f,
+        p.y * 3.60f + node.variation * 5.4f,
+        68.7f
+    ));
+    const float topInterior = topMask * (1.0f - glm::smoothstep(irregularTopRadius * 0.72f, irregularTopRadius * 1.06f, topD));
+    const float topUndulation = (topUndulationA * 0.55f + topUndulationB * 0.30f + topUndulationC * 0.15f)
+                              * node.height
+                              * 0.095f
+                              * topInterior;
+    mesaHeight += topUndulation;
+
+    const float cliffChip = notchMask
+                          * glm::smoothstep(topRadius * 0.90f, cliffRadius * 0.98f, warpedD)
+                          * (1.0f - glm::smoothstep(cliffRadius * 0.96f, footRadius, warpedD));
+    mesaHeight -= cliffChip * node.height * 0.080f;
+    mesaHeight += talusMask * node.height * glm::mix(0.045f, 0.082f, notchNoise) * (1.0f - topMask * 0.65f);
+
+    const float slopeMask = glm::smoothstep(topRadius * 0.92f, cliffRadius, warpedD)
+                          * (1.0f - glm::smoothstep(0.90f, 1.05f, warpedD));
+    const float sideLayerNoise = perlinNoise(glm::vec3(
+        p.x * 3.4f + node.variation * 12.6f,
+        warpedD * 8.2f + p.y * 1.1f,
+        91.4f
+    ));
+    const float sideRib = (0.5f + 0.5f * std::sin((p.x * 4.4f + p.y * 1.2f + node.variation * 5.7f) * 3.14159265f))
+                        * (sideLayerNoise * 0.5f + 0.5f);
+    const float sideRelief = (sideRib - 0.42f) * slopeMask * node.height * 0.082f * (1.0f - topMask * 0.70f);
+    mesaHeight += sideRelief;
+    const float grooveNoise = 1.0f - std::abs(perlinNoise(glm::vec3(
+        angle * 1.7f + node.variation * 9.2f,
+        warpedD * 4.6f,
+        24.8f
+    )));
+    const float grooveMask = std::pow(glm::clamp(grooveNoise, 0.0f, 1.0f), 5.8f) * slopeMask * node.erosion;
+    mesaHeight -= grooveMask * node.height * 0.075f;
+
+    const float mesaFootprint = glm::clamp(1.0f - glm::smoothstep(0.96f, 1.12f, warpedD), 0.0f, 1.0f);
+    result.heightDelta = mesaHeight * mesaFootprint;
+    result.footprint = mesaFootprint;
+    result.materialMask = glm::clamp(slopeMask * 0.42f + grooveMask * 0.86f + talusMask * 0.52f + cliffChip * 0.62f, 0.0f, 1.0f);
+    result.cliffMask = glm::clamp(slopeMask + cliffChip * 0.76f + talusMask * 0.18f, 0.0f, 1.0f);
+    result.topMask = topMask * mesaFootprint;
+    result.grooveMask = grooveMask;
+    result.foundationMask = glm::clamp(1.0f - glm::smoothstep(1.06f, 1.46f, warpedD), 0.0f, 1.0f);
+    return result;
+}
+
+PlanetProceduralData::TerrainNodeResult PlanetProceduralData::applyVolcanoNode(const TerrainNode& node,
+                                                                               const glm::vec3& sphereDir)
+{
+    TerrainNodeResult result;
+    if (node.type != TerrainNodeType::Volcano) {
+        return result;
+    }
+
+    const float angularDistance = std::acos(glm::clamp(glm::dot(sphereDir, node.sphereDir), -1.0f, 1.0f));
+    const float angularRadius = glm::max(node.radius * 1.57079637f, 0.001f);
+    const float d = angularDistance / angularRadius;
+    if (d >= 1.55f) {
+        return result;
+    }
+
+    const glm::vec3 referenceUp = std::abs(node.sphereDir.y) > 0.92f
+        ? glm::vec3(1.0f, 0.0f, 0.0f)
+        : glm::vec3(0.0f, 1.0f, 0.0f);
+    const glm::vec3 tangentU = glm::normalize(glm::cross(referenceUp, node.sphereDir));
+    const glm::vec3 tangentV = glm::normalize(glm::cross(node.sphereDir, tangentU));
+    const glm::vec3 tangentDelta = sphereDir - node.sphereDir * glm::dot(sphereDir, node.sphereDir);
+    const glm::vec2 localPoint(
+        glm::dot(tangentDelta, tangentU) / angularRadius,
+        glm::dot(tangentDelta, tangentV) / angularRadius
+    );
+    const float angle = std::atan2(localPoint.y, localPoint.x);
+    const float radialNoise = perlinNoise(glm::vec3(
+        std::cos(angle * 3.0f + node.variation) * 2.1f + node.variation * 4.2f,
+        std::sin(angle * 3.0f + node.variation) * 2.1f + node.variation * 7.8f,
+        91.4f
+    ));
+    const float warpedD = d / glm::max(1.0f + radialNoise * node.edgeRoughness * 0.36f, 0.001f);
+
+    const float cone = std::pow(glm::clamp(1.0f - warpedD * 0.78f, 0.0f, 1.0f), glm::mix(2.05f, 2.65f, node.variation)) * 0.74f;
+    const float lowerSlope = std::pow(glm::clamp(1.0f - warpedD * 0.54f, 0.0f, 1.0f), 2.0f) * 0.34f;
+    const float craterRadius = glm::clamp(node.topRadius, 0.10f, 0.26f);
+    const float craterBowl = 1.0f - glm::smoothstep(craterRadius * 0.42f, craterRadius, warpedD);
+    const float craterRim = glm::smoothstep(craterRadius * 0.78f, craterRadius * 1.08f, warpedD)
+                          * (1.0f - glm::smoothstep(craterRadius * 1.08f, craterRadius * 1.42f, warpedD));
+    const float footprint = glm::clamp(1.0f - glm::smoothstep(0.96f, 1.18f, warpedD), 0.0f, 1.0f);
+    float volcanoHeight = node.height * (cone + lowerSlope) * footprint;
+    volcanoHeight += craterRim * node.height * 0.15f;
+    volcanoHeight -= craterBowl * node.height * 0.26f;
+
+    const float radialGrooveNoise = 1.0f - std::abs(perlinNoise(glm::vec3(
+        angle * 2.8f + node.variation * 8.4f,
+        warpedD * 4.9f,
+        103.7f
+    )));
+    const float slopeBand = glm::smoothstep(craterRadius * 1.20f, 0.36f, warpedD)
+                          * (1.0f - glm::smoothstep(0.84f, 1.12f, warpedD));
+    const float grooveMask = std::pow(glm::clamp(radialGrooveNoise, 0.0f, 1.0f), 4.4f)
+                           * slopeBand
+                           * node.erosion;
+    volcanoHeight -= grooveMask * node.height * 0.095f;
+
+    result.heightDelta = glm::max(volcanoHeight, 0.0f) * footprint;
+    result.footprint = footprint;
+    result.materialMask = glm::clamp(slopeBand * 0.62f + craterRim * 0.54f + grooveMask * 0.85f, 0.0f, 1.0f);
+    result.cliffMask = glm::clamp(slopeBand * 0.55f + craterRim * 0.82f, 0.0f, 1.0f);
+    result.topMask = craterBowl * footprint;
+    result.grooveMask = grooveMask;
+    result.volcanoMask = footprint;
+    result.foundationMask = glm::clamp(1.0f - glm::smoothstep(1.10f, 1.55f, warpedD), 0.0f, 1.0f);
+    return result;
+}
+
+PlanetProceduralData::TerrainNodeResult PlanetProceduralData::applyRidgeChainNode(const TerrainNode& node,
+                                                                                  const glm::vec3& sphereDir)
+{
+    TerrainNodeResult result;
+    if (node.type != TerrainNodeType::RidgeChain) {
+        return result;
+    }
+
+    const float angularDistance = std::acos(glm::clamp(glm::dot(sphereDir, node.sphereDir), -1.0f, 1.0f));
+    const float angularRadius = glm::max(node.radius * 1.57079637f, 0.001f);
+    const float radialD = angularDistance / angularRadius;
+    if (radialD >= 1.55f) {
+        return result;
+    }
+
+    const glm::vec3 referenceUp = std::abs(node.sphereDir.y) > 0.92f
+        ? glm::vec3(1.0f, 0.0f, 0.0f)
+        : glm::vec3(0.0f, 1.0f, 0.0f);
+    const glm::vec3 tangentU = glm::normalize(glm::cross(referenceUp, node.sphereDir));
+    const glm::vec3 tangentV = glm::normalize(glm::cross(node.sphereDir, tangentU));
+    const glm::vec3 tangentDelta = sphereDir - node.sphereDir * glm::dot(sphereDir, node.sphereDir);
+    const glm::vec2 localPoint(
+        glm::dot(tangentDelta, tangentU) / angularRadius,
+        glm::dot(tangentDelta, tangentV) / angularRadius
+    );
+    const float sinO = std::sin(node.orientation);
+    const float cosO = std::cos(node.orientation);
+    const glm::vec2 p(
+        localPoint.x * cosO + localPoint.y * sinO,
+        -localPoint.x * sinO + localPoint.y * cosO
+    );
+
+    const float aspect = glm::clamp(node.aspectRatio, 1.55f, 5.20f);
+    const float alongD = std::abs(p.x) / glm::max(aspect, 0.001f);
+    const float meanderNoise = perlinNoise(glm::vec3(
+        p.x * 0.72f + node.variation * 10.4f,
+        node.variation * 5.6f,
+        109.8f
+    ));
+    const float centerOffset = (std::sin((p.x / glm::max(aspect, 0.001f) + node.variation * 0.21f) * 9.424778f) * 0.055f
+                              + meanderNoise * 0.085f)
+                             * (1.0f - glm::smoothstep(0.72f, 1.10f, alongD));
+    const float shiftedY = p.y - centerOffset;
+    const float acrossD = std::abs(shiftedY);
+    const float widthNoise = perlinNoise(glm::vec3(
+        p.x * 1.10f + node.variation * 8.2f,
+        node.variation * 2.7f,
+        112.6f
+    )) * 0.5f + 0.5f;
+    const float widthScale = glm::mix(0.72f, 1.28f, widthNoise);
+    const float axialFade = 1.0f - glm::smoothstep(0.78f, 1.08f, alongD);
+    const float sideFade = 1.0f - glm::smoothstep(0.82f * widthScale, 1.24f * widthScale, acrossD);
+    const float footprint = glm::clamp(axialFade * sideFade, 0.0f, 1.0f);
+    if (footprint <= 0.001f) {
+        return result;
+    }
+
+    const float chainNoise = perlinNoise(glm::vec3(
+        p.x * 1.35f + node.variation * 9.8f,
+        shiftedY * 1.10f + node.variation * 4.1f,
+        116.3f
+    )) * 0.5f + 0.5f;
+    const float crestNoise = perlinNoise(glm::vec3(
+        p.x * 2.80f + node.variation * 6.3f,
+        shiftedY * 3.10f + node.variation * 11.2f,
+        127.5f
+    )) * 0.5f + 0.5f;
+    const float heightNoise = perlinNoise(glm::vec3(
+        p.x * 0.88f + node.variation * 14.1f,
+        node.variation * 3.3f,
+        121.7f
+    )) * 0.5f + 0.5f;
+    const float peakWaveA = std::sin((p.x / glm::max(aspect, 0.001f) + node.variation * 0.37f) * 25.132742f) * 0.5f + 0.5f;
+    const float peakWaveB = std::sin((p.x / glm::max(aspect, 0.001f) * 1.73f + node.variation * 0.13f) * 18.849556f) * 0.5f + 0.5f;
+    const float peakTrain = glm::smoothstep(0.34f, 0.88f, peakWaveA * 0.24f + peakWaveB * 0.18f + chainNoise * 0.34f + heightNoise * 0.24f);
+    const float coreWidth = glm::mix(0.16f, 0.28f, node.variation) * widthScale;
+    const float core = std::exp(-(acrossD / coreWidth) * (acrossD / coreWidth) * 1.75f)
+                     * axialFade
+                     * glm::mix(0.54f, 1.34f, peakTrain);
+    const float shoulder = std::exp(-(acrossD / widthScale) * (acrossD / widthScale) * 2.10f) * axialFade * 0.48f;
+    const float sideLobeA = std::exp(-((shiftedY - coreWidth * 1.55f) / (coreWidth * 0.62f)) * ((shiftedY - coreWidth * 1.55f) / (coreWidth * 0.62f)))
+                         * axialFade
+                         * glm::mix(0.05f, 0.20f, crestNoise);
+    const float sideLobeB = std::exp(-((shiftedY + coreWidth * 1.35f) / (coreWidth * 0.68f)) * ((shiftedY + coreWidth * 1.35f) / (coreWidth * 0.68f)))
+                         * axialFade
+                         * glm::mix(0.04f, 0.17f, chainNoise);
+    const float brokenEdge = glm::mix(0.82f, 1.16f, crestNoise);
+    const float heightScale = glm::mix(0.68f, 1.24f, heightNoise);
+    float ridgeHeight = node.height * heightScale * (core * 0.88f + shoulder * 0.30f + sideLobeA + sideLobeB) * sideFade * brokenEdge;
+
+    const float slopeMask = glm::smoothstep(coreWidth * 0.80f, 0.92f, acrossD)
+                          * (1.0f - glm::smoothstep(0.92f, 1.22f, acrossD))
+                          * axialFade;
+    const float transverseGrooveNoise = 1.0f - std::abs(perlinNoise(glm::vec3(
+        p.x * 1.55f + node.variation * 13.6f,
+        shiftedY * 5.80f,
+        138.9f
+    )));
+    const float grooveMask = std::pow(glm::clamp(transverseGrooveNoise, 0.0f, 1.0f), 4.6f)
+                           * slopeMask
+                           * node.erosion;
+    const float pittedNoise = perlinNoise(glm::vec3(
+        p.x * 4.10f + node.variation * 7.6f,
+        shiftedY * 6.40f + node.variation * 2.4f,
+        144.8f
+    ));
+    const float pittedRelief = pittedNoise * node.height * 0.052f * footprint * glm::clamp(core + slopeMask, 0.0f, 1.0f);
+    ridgeHeight += pittedRelief;
+    ridgeHeight -= grooveMask * node.height * 0.145f;
+
+    const float talus = glm::smoothstep(0.54f, 1.02f, acrossD)
+                      * (1.0f - glm::smoothstep(1.02f, 1.28f, acrossD))
+                      * axialFade;
+    ridgeHeight += talus * node.height * glm::mix(0.030f, 0.060f, chainNoise);
+
+    result.heightDelta = ridgeHeight * footprint;
+    result.footprint = footprint;
+    result.materialMask = glm::clamp(slopeMask * 0.58f + grooveMask * 0.88f + talus * 0.36f, 0.0f, 1.0f);
+    result.cliffMask = glm::clamp(core * 0.34f + slopeMask * 0.54f, 0.0f, 1.0f);
+    result.grooveMask = grooveMask;
+    result.foundationMask = glm::clamp(footprint * (1.0f - glm::smoothstep(1.12f, 1.48f, radialD)), 0.0f, 1.0f);
+    return result;
+}
+
+void PlanetProceduralData::mergeTerrainNodeResult(TerrainNodeAccumulation& accumulation,
+                                                  const TerrainNodeResult& result)
+{
+    accumulation.mask = 1.0f - (1.0f - accumulation.mask) * (1.0f - result.footprint * 0.86f);
+    accumulation.materialMask = glm::max(accumulation.materialMask, result.materialMask);
+    accumulation.footprint = glm::max(accumulation.footprint, result.footprint);
+    const float primaryHeight = glm::max(accumulation.heightDelta, result.heightDelta);
+    const float secondaryHeight = glm::min(accumulation.heightDelta, result.heightDelta);
+    accumulation.heightDelta = primaryHeight + secondaryHeight * 0.30f;
+    accumulation.cliffMask = glm::max(accumulation.cliffMask, result.cliffMask);
+    accumulation.topMask = glm::max(accumulation.topMask, result.topMask);
+    accumulation.grooveMask = glm::max(accumulation.grooveMask, result.grooveMask);
+    accumulation.volcanoMask = glm::max(accumulation.volcanoMask, result.volcanoMask);
+    accumulation.foundationMask = glm::max(accumulation.foundationMask, result.foundationMask);
+}
+
 void PlanetProceduralData::applyHeightfieldNoiseLayers(const PlanetRenderSettings& settings,
                                                        const std::function<void(const char*)>& advanceProgress)
 {
@@ -2080,7 +2800,14 @@ void PlanetProceduralData::applyHeightfieldNoiseLayers(const PlanetRenderSetting
     const float seaLevel = settings.seaLevelOffset;
     const float heightScale = glm::max(settings.terrainHeightScale, 0.001f);
     const float amplitudeScale = glm::clamp(heightScale / 22.0f, 0.60f, 1.35f);
-
+    const float mountainScale = glm::clamp(settings.mountainMaskScale, 0.5f, 8.0f);
+    const float ridgeSharpness = glm::clamp(settings.mountainRidgeSharpness, 1.0f, 6.0f);
+    std::array<std::vector<const TerrainSkeletonSegment*>, 6> skeletonsByFace{};
+    for (const TerrainSkeletonSegment& skeleton : terrainSkeletons_) {
+        if (skeleton.faceIndex >= 0 && skeleton.faceIndex < 6) {
+            skeletonsByFace[static_cast<std::size_t>(skeleton.faceIndex)].push_back(&skeleton);
+        }
+    }
     for (std::size_t faceIndex = 0; faceIndex < faces_.size(); ++faceIndex) {
         FaceData& faceData = faces_[faceIndex];
         for (int y = 0; y < resolution_; ++y) {
@@ -2094,9 +2821,6 @@ void PlanetProceduralData::applyHeightfieldNoiseLayers(const PlanetRenderSetting
                 float height = faceData.height[index];
                 const float relativeHeight = height - seaLevel;
                 const float landMask = glm::smoothstep(0.025f, 0.20f, relativeHeight);
-                if (landMask <= 0.001f) {
-                    continue;
-                }
 
                 const glm::vec3 p = sphereDir * settings.terrainNoiseScale;
                 const glm::vec3 warp(
@@ -2112,10 +2836,8 @@ void PlanetProceduralData::applyHeightfieldNoiseLayers(const PlanetRenderSetting
                 float skeletonShoulder = 0.0f;
                 float skeletonCore = 0.0f;
                 const bool useSkeletonHeightControl = false;
-                if (useSkeletonHeightControl) for (const TerrainSkeletonSegment& skeleton : terrainSkeletons_) {
-                    if (skeleton.faceIndex != static_cast<int>(faceIndex)) {
-                        continue;
-                    }
+                if (useSkeletonHeightControl) for (const TerrainSkeletonSegment* skeletonPtr : skeletonsByFace[faceIndex]) {
+                    const TerrainSkeletonSegment& skeleton = *skeletonPtr;
 
                     float along = 0.0f;
                     const float distance = distanceToSegmentOnSphere(sphereDir, skeleton.sphereDirA, skeleton.sphereDirB, along);
@@ -2177,37 +2899,16 @@ void PlanetProceduralData::applyHeightfieldNoiseLayers(const PlanetRenderSetting
 
                 const float hillUplift = hillDomain * (0.010f + hillNoise * 0.012f);
                 const float mountainUplift = settings.mountainMaskStrength * amplitudeScale
-                    * (skeletonShoulder * 0.0015f + skeletonCore * 0.060f + massifShape * 0.032f + ridgeShape * 0.040f);
+                    * (skeletonShoulder * 0.006f + skeletonCore * 0.095f + massifShape * 0.058f + ridgeShape * 0.070f);
                 const float volcanicUplift = settings.mountainMaskStrength * amplitudeScale
-                    * coneShape * (0.095f + volcanicNoise * 0.045f);
+                    * coneShape * (0.110f + volcanicNoise * 0.052f);
                 const float valleyCarve = 0.0f;
                 const float terrainDetail = (detail * glm::max(skeletonCore, mountainProvince * 0.55f) * 0.0055f + gentleWrinkle * hillDomain * 0.0025f)
                                           * (1.0f - skeletonValley * 0.65f);
 
-                float peakMask = 0.0f;
-                float peakCore = 0.0f;
-                float peakMaterial = 0.0f;
-                for (const TerrainPeakNode& peak : terrainPeakNodes_) {
-                    const float angularDistance = std::acos(glm::clamp(glm::dot(sphereDir, peak.sphereDir), -1.0f, 1.0f));
-                    const float angularRadius = glm::max(peak.radius * 1.57079637f, 0.001f);
-                    const float boundaryNoise = perlinNoise(
-                        sphereDir * 5.2f + glm::vec3(peak.variation * 12.7f, 6.4f, 21.3f)
-                    ) * 0.5f + 0.5f;
-                    const float effectiveRadius = angularRadius * glm::mix(0.78f, 1.24f, boundaryNoise);
-                    const float d = angularDistance / glm::max(effectiveRadius, 0.001f);
-                    if (d >= 1.65f) {
-                        continue;
-                    }
-
-                    const float footprint = std::exp(-d * d * peak.sharpness);
-                    const float core = std::pow(glm::clamp(1.0f - d * d, 0.0f, 1.0f), peak.type == TerrainPeakType::RidgePeak ? 1.85f : 1.35f);
-                    const float peakNoise = perlinNoise(sphereDir * 7.2f + glm::vec3(peak.variation * 9.1f, 3.4f, 12.7f)) * 0.5f + 0.5f;
-                    const float shoulder = std::exp(-d * d * 0.90f)
-                                         * glm::smoothstep(0.16f, 0.72f, boundaryNoise * 0.58f + footprint * 0.42f);
-
-                    peakMask = 1.0f - (1.0f - peakMask) * (1.0f - shoulder * 0.72f);
-                    peakCore = 1.0f - (1.0f - peakCore) * (1.0f - core * glm::mix(0.30f, 0.52f, peakNoise));
-                    peakMaterial = glm::max(peakMaterial, glm::clamp(footprint * (0.24f + core * 0.36f), 0.0f, 1.0f));
+                TerrainNodeAccumulation terrainNodeAccumulation;
+                for (const TerrainNode& node : terrainNodes_) {
+                    mergeTerrainNodeResult(terrainNodeAccumulation, applyTerrainNode(node, sphereDir));
                 }
 
                 const glm::vec3 mountainWarp(
@@ -2215,42 +2916,90 @@ void PlanetProceduralData::applyHeightfieldNoiseLayers(const PlanetRenderSetting
                     perlinNoise(terrainP * 0.62f + glm::vec3(11.8f, 5.3f, 24.1f)),
                     perlinNoise(terrainP * 0.62f + glm::vec3(19.6f, 14.2f, 3.5f))
                 );
-                const glm::vec3 mountainFieldP = terrainP * 0.92f + mountainWarp * 0.34f;
+                const glm::vec3 mountainFieldP = terrainP * glm::mix(0.46f, 0.92f, glm::smoothstep(0.5f, 8.0f, mountainScale))
+                                                + mountainWarp * 0.18f;
                 const float mountainNoise = perlinNoise(mountainFieldP + glm::vec3(31.2f, 4.8f, 15.6f)) * 0.5f + 0.5f;
                 const float ridgeNoise = 1.0f - std::abs(perlinNoise(mountainFieldP * 1.85f + glm::vec3(6.3f, 28.4f, 12.7f)));
                 const float maskBreakup = perlinNoise(mountainFieldP * 1.35f + glm::vec3(22.2f, 9.1f, 4.7f)) * 0.5f + 0.5f;
                 const float rawMountainMask =
-                    peakMask * 1.05f
-                  + mountainProvince * 0.10f
-                  + (mountainNoise - 0.5f) * 0.08f
-                  + (maskBreakup - 0.5f) * 0.06f;
-                const float mountainMaskField = glm::smoothstep(0.28f, 0.82f, rawMountainMask);
+                    terrainNodeAccumulation.mask * 0.82f
+                  + terrainNodeAccumulation.footprint * 0.40f
+                  + mountainProvince * 0.18f
+                  + (mountainNoise - 0.5f) * 0.035f
+                  + (maskBreakup - 0.5f) * 0.020f;
+                const float mountainMaskField = glm::smoothstep(0.34f, 0.82f, rawMountainMask);
+                const float ridgeRelief = std::pow(glm::clamp(ridgeNoise, 0.0f, 1.0f), glm::mix(3.8f, 5.6f, (ridgeSharpness - 1.0f) / 5.0f));
+                const float massifRelief = std::pow(glm::clamp(terrainNodeAccumulation.footprint, 0.0f, 1.0f), 1.15f)
+                                          * (0.070f + mountainNoise * 0.030f);
+                const float provinceRelief = settings.mountainMaskStrength * amplitudeScale * landMask
+                    * std::pow(glm::clamp(mountainProvince, 0.0f, 1.0f), 1.35f)
+                    * (0.034f + mountainNoise * 0.024f);
+                const float mesaExpansionMask =
+                    terrainNodeAccumulation.footprint
+                    * glm::smoothstep(-0.018f, 0.035f, relativeHeight);
+                const float terrainNodeExpansionMask = glm::max(
+                    mesaExpansionMask,
+                    terrainNodeAccumulation.volcanoMask
+                );
+                const float volcanoExpansionMask = terrainNodeAccumulation.volcanoMask;
+                const float nodeLandMask = glm::max(
+                    landMask,
+                    glm::max(terrainNodeExpansionMask, volcanoExpansionMask)
+                );
+                const float nodeRelief = amplitudeScale * nodeLandMask
+                    * terrainNodeAccumulation.heightDelta
+                    * (1.60f + mountainNoise * 0.12f)
+                    * glm::mix(0.98f, 1.24f, mountainMaskField);
+                const float nodeFoundationFootprint = glm::max(
+                    terrainNodeAccumulation.foundationMask * glm::smoothstep(-0.020f, 0.035f, relativeHeight),
+                    glm::max(mesaExpansionMask * 0.92f, terrainNodeAccumulation.volcanoMask)
+                );
+                const float foundationMask = nodeFoundationFootprint;
+                const float foundationTarget = seaLevel
+                    + terrainNodeAccumulation.foundationMask * glm::smoothstep(-0.020f, 0.035f, relativeHeight) * 0.030f
+                    + mesaExpansionMask * 0.040f
+                    + terrainNodeAccumulation.volcanoMask * 0.025f;
                 const float fieldRelief = settings.mountainMaskStrength * amplitudeScale * landMask
                     * mountainMaskField
-                    * (glm::smoothstep(0.30f, 0.92f, mountainNoise) * 0.034f
-                       + std::pow(glm::clamp(ridgeNoise, 0.0f, 1.0f), 2.1f) * 0.026f);
-                const float coreRelief = settings.mountainMaskStrength * amplitudeScale * landMask
-                    * std::pow(glm::clamp(peakCore, 0.0f, 1.0f), 1.35f)
-                    * (0.010f + ridgeNoise * 0.012f);
+                    * (massifRelief
+                       + glm::smoothstep(0.30f, 0.92f, mountainNoise) * 0.045f
+                       + ridgeRelief * 0.004f);
                 const float gullyNoise = 1.0f - std::abs(perlinNoise(mountainFieldP * 3.25f + glm::vec3(5.7f, 18.9f, 30.4f)));
                 const float fieldCarve = settings.mountainMaskStrength * amplitudeScale * landMask
                     * mountainMaskField
-                    * (1.0f - peakCore * 0.55f)
                     * std::pow(glm::clamp(gullyNoise, 0.0f, 1.0f), 4.0f)
-                    * 0.004f;
+                    * 0.00018f;
 
-                height += landMask * (hillUplift + mountainUplift + volcanicUplift + terrainDetail) + fieldRelief + coreRelief;
+                height = glm::mix(
+                    height,
+                    glm::max(height, foundationTarget),
+                    glm::clamp(foundationMask, 0.0f, 1.0f)
+                );
+                height += landMask * (hillUplift + mountainUplift + volcanicUplift + terrainDetail)
+                        + provinceRelief + nodeRelief + fieldRelief;
                 height -= fieldCarve;
                 height -= landMask * valleyCarve;
                 faceData.height[index] = height;
                 const float mountainMaterialDomain = glm::clamp(
-                    glm::max(glm::max(glm::max(ridgeShape, massifShape), peakMaterial), coneShape * 0.82f) + mountainMaskField * 0.14f,
+                    glm::max(
+                        glm::max(terrainNodeAccumulation.materialMask, terrainNodeAccumulation.footprint * 0.52f),
+                        glm::max(terrainNodeAccumulation.foundationMask * 0.34f, coneShape * 0.82f)
+                    ) + mountainMaskField * 0.10f,
                     0.0f,
                     1.0f
                 );
                 faceData.domainWeight[index].x = glm::max(faceData.domainWeight[index].x, mountainMaterialDomain);
-                faceData.domainWeight[index].y = glm::max(faceData.domainWeight[index].y, skeletonValley);
-                faceData.domainWeight[index].w = glm::max(faceData.domainWeight[index].w, 1.0f - glm::max(mountainDomain, skeletonValley));
+                faceData.domainWeight[index].y = glm::max(faceData.domainWeight[index].y, glm::max(skeletonValley, terrainNodeAccumulation.grooveMask));
+                faceData.domainWeight[index].w = glm::max(
+                    faceData.domainWeight[index].w,
+                    glm::clamp(1.0f - glm::max(mountainDomain, skeletonValley) + terrainNodeAccumulation.topMask * 0.22f, 0.0f, 1.0f)
+                );
+                faceData.erosionMask[index] = glm::max(faceData.erosionMask[index], terrainNodeAccumulation.grooveMask);
+                faceData.flowMask[index] = glm::max(faceData.flowMask[index], terrainNodeAccumulation.grooveMask * 0.55f);
+                faceData.featureMask[index] = glm::max(
+                    faceData.featureMask[index],
+                    terrainNodeAccumulation.cliffMask * 0.42f + terrainNodeAccumulation.grooveMask * 0.58f
+                );
             }
 
             if (advanceProgress) {
@@ -2602,6 +3351,8 @@ void PlanetProceduralData::refineTerrainFromBiomeWeights(const PlanetRenderSetti
                 const float rock = glm::clamp(biomeB.r, 0.0f, 1.0f);
                 const float snow = glm::clamp(biomeB.g, 0.0f, 1.0f);
                 const float wetland = glm::clamp(biomeB.b, 0.0f, 1.0f);
+                const float mountainDomain = glm::clamp(faceData.domainWeight[index].x, 0.0f, 1.0f);
+                const float mountainProtect = glm::smoothstep(0.26f, 0.72f, mountainDomain);
 
                 const float dune = perlinNoise(sphereDir * 6.5f + glm::vec3(23.1f, 7.4f, 11.8f));
                 const float forestRelief = perlinNoise(sphereDir * 4.8f + glm::vec3(4.2f, 19.7f, 8.5f));
@@ -2610,13 +3361,13 @@ void PlanetProceduralData::refineTerrainFromBiomeWeights(const PlanetRenderSetti
                 float height = faceData.height[index];
                 const float lowPlainTarget = seaLevel + 0.055f + dune * 0.004f;
                 const float desertPlain = desert * (1.0f - glm::smoothstep(0.18f, 0.46f, height - seaLevel));
-                height = glm::mix(height, lowPlainTarget, desertPlain * 0.42f);
+                height = glm::mix(height, lowPlainTarget, desertPlain * 0.42f * (1.0f - mountainProtect * 0.82f));
                 height += desert * dune * 0.0025f;
                 height += grass * forestRelief * 0.0010f;
                 height += forest * forestRelief * 0.0015f;
-                height += (rock * 0.0025f + snow * 0.0018f) * std::max(alpineRelief, 0.0f);
-                height = glm::mix(height, seaLevel + 0.018f, wetland * 0.36f);
-                height = glm::mix(height, seaLevel + 0.010f, beach * 0.48f);
+                height += (rock * 0.0035f + snow * 0.0026f + mountainProtect * 0.0045f) * std::max(alpineRelief, 0.0f);
+                height = glm::mix(height, seaLevel + 0.018f, wetland * 0.36f * (1.0f - mountainProtect * 0.90f));
+                height = glm::mix(height, seaLevel + 0.010f, beach * 0.48f * (1.0f - mountainProtect * 0.92f));
 
                 faceData.height[index] = height;
             }
