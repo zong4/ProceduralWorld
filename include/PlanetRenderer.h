@@ -93,6 +93,15 @@ struct PlanetRenderSettings {
     float atmosphereExposure = 1.15f;
     glm::vec3 atmosphereRayleighColor = glm::vec3(0.32f, 0.56f, 1.0f);
     glm::vec3 atmosphereMieColor = glm::vec3(1.0f, 0.72f, 0.42f);
+    bool renderClouds = true;
+    float cloudCoverage = 0.46f;
+    float cloudSharpness = 1.35f;
+    float cloudScale = 4.2f;
+    float cloudSpeed = 0.018f;
+    float cloudRotationSpeed = 1.5f;
+    float cloudHeight = 12.0f;
+    float cloudOpacity = 0.62f;
+    glm::vec3 cloudColor = glm::vec3(0.96f, 0.98f, 1.0f);
     float cameraNearPlane = 1.0f;
     float cameraFarPlane = 5000.0f;
     // 海水透明度、颜色、反射折射、波浪和材质参数�?

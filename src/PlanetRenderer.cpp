@@ -1655,7 +1655,7 @@ void PlanetRenderer::drawAtmospherePass(const FlyCamera& camera,
     glEnable(GL_CULL_FACE);
     // 从外壳内�?外部观察时绘制背面，形成包住星球的透明大气层�?
     glCullFace(GL_FRONT);
-    glDepthFunc(GL_LEQUAL);
+    glDepthFunc(GL_ALWAYS);
     glDepthMask(GL_FALSE);
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
@@ -1677,6 +1677,16 @@ void PlanetRenderer::drawAtmospherePass(const FlyCamera& camera,
     atmosphereProgram_.setFloat("atmosphereExposure", settings_.atmosphereExposure);
     atmosphereProgram_.setVec3("rayleighColor", settings_.atmosphereRayleighColor);
     atmosphereProgram_.setVec3("mieColor", settings_.atmosphereMieColor);
+    atmosphereProgram_.setInt("renderClouds", settings_.renderClouds ? 1 : 0);
+    atmosphereProgram_.setFloat("cloudCoverage", settings_.cloudCoverage);
+    atmosphereProgram_.setFloat("cloudSharpness", settings_.cloudSharpness);
+    atmosphereProgram_.setFloat("cloudScale", settings_.cloudScale);
+    atmosphereProgram_.setFloat("cloudSpeed", settings_.cloudSpeed);
+    atmosphereProgram_.setFloat("cloudRotationSpeed", settings_.cloudRotationSpeed);
+    atmosphereProgram_.setFloat("cloudHeight", settings_.cloudHeight);
+    atmosphereProgram_.setFloat("cloudOpacity", settings_.cloudOpacity);
+    atmosphereProgram_.setVec3("cloudColor", settings_.cloudColor);
+    atmosphereProgram_.setFloat("timeSeconds", currentTimeSeconds_);
 
     atmosphereMesh_.draw();
 
