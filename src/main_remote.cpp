@@ -49,19 +49,16 @@ constexpr const char* kProceduralCacheFilePath = "config/last_procedural_cache.b
 constexpr const char* kProfileTraceFilePath = "profile_trace.json";
 constexpr float kReferencePlanetRadius = 200.0f;
 constexpr int kGenerationModuleCount = static_cast<int>(PlanetProceduralData::GenerationModule::Count);
-constexpr int kGenerationFaceResolutionMin = 64;
-constexpr int kGenerationFaceResolutionDefault = 256;
-constexpr int kGenerationFaceResolutionMax = 512;
 
-// 应用级工作流�?
-// ProceduralSetup 负责调生成参数；Generating 后台烘焙数据；Render 实时渲染�?
+// 应用级工作流�?
+// ProceduralSetup 负责调生成参数；Generating 后台烘焙数据；Render 实时渲染�?
 enum class WorkflowStage {
     ProceduralSetup,
     Generating,
     Render
 };
 
-// 主程序的所有可变状态集中在这里，避�?GLFW/ImGui 回调之间传递大量全局变量�?
+// 主程序的所有可变状态集中在这里，避�?GLFW/ImGui 回调之间传递大量全局变量�?
 struct ApplicationState {
     FlyCamera camera{glm::vec3(0.0f, 90.0f, 420.0f)};
     PlanetRenderer renderer;
@@ -69,7 +66,7 @@ struct ApplicationState {
     PlanetRenderSettings renderSettings;
     PlanetProceduralData generatedPlanet;
     WorkflowStage workflowStage = WorkflowStage::ProceduralSetup;
-    int generationFaceResolution = kGenerationFaceResolutionDefault;
+    int generationFaceResolution = 256;
     float generationTimer = 0.0f;
     float generationDuration = 0.55f;
     PlanetRenderSettings pendingGenerationSettings;
@@ -146,8 +143,8 @@ void selectFeaturePanel(ApplicationState& state, bool& panelOpen)
     panelOpen = openTarget;
 }
 
-// 复制会影响“重新生成星球”或生成后地表显示的参数�?
-// 海水反射、大气、相机、LOD 等纯运行时参数保留当�?renderSettings�?
+// 复制会影响“重新生成星球”或生成后地表显示的参数�?
+// 海水反射、大气、相机、LOD 等纯运行时参数保留当�?renderSettings�?
 void copyProceduralSettings(PlanetRenderSettings& destination, const PlanetRenderSettings& source)
 {
     destination.planetRadius = source.planetRadius;
@@ -157,11 +154,11 @@ void copyProceduralSettings(PlanetRenderSettings& destination, const PlanetRende
     destination.mountainMaskStrength = source.mountainMaskStrength;
     destination.mountainMaskScale = source.mountainMaskScale;
     destination.mountainRidgeSharpness = source.mountainRidgeSharpness;
-    destination.erosionIterations = source.erosionIterations;
-    destination.erosionStrength = source.erosionStrength;
+    destination.erosionIterations = 0;
+    destination.erosionStrength = 0.0f;
     destination.erosionTalus = source.erosionTalus;
     destination.erosionSediment = source.erosionSediment;
-    destination.erosionThermalStrength = source.erosionThermalStrength;
+    destination.erosionThermalStrength = 0.0f;
     destination.terrainLowlandColor = source.terrainLowlandColor;
     destination.terrainForestColor = source.terrainForestColor;
     destination.terrainDesertColor = source.terrainDesertColor;
@@ -188,7 +185,7 @@ float minCameraOrbitDistance(const PlanetRenderSettings& settings)
     return settings.planetRadius + glm::max(settings.terrainHeightScale, 1.0f) + 4.0f;
 }
 
-// 相机轨道半径随星球半径缩放，保证小星�?大星球都能被观察�?
+// 相机轨道半径随星球半径缩放，保证小星�?大星球都能被观察�?
 float maxCameraOrbitDistance(const PlanetRenderSettings& settings)
 {
     return glm::max(settings.planetRadius * 8.0f, minCameraOrbitDistance(settings) + 10.0f);
@@ -211,16 +208,28 @@ glm::vec3 rotateVectorAroundAxis(const glm::vec3& value, const glm::vec3& axis, 
 void updateOrbitMetadata(ApplicationState& state)
 {
     state.cameraOrbitDistance = glm::length(state.camera.position);
-    if (state.cameraOrbitDistance <= 0.001f) {
+    if (glm::length(state.camera.front) <= 0.001f) {
         return;
     }
 
-    const glm::vec3 direction = glm::normalize(state.camera.position);
-    state.cameraOrbitPitchDegrees = wrapDegrees(glm::degrees(std::asin(glm::clamp(direction.y, -1.0f, 1.0f))));
+    const glm::vec3 direction = glm::normalize(state.camera.front);
+    state.cameraOrbitPitchDegrees = glm::degrees(std::asin(glm::clamp(direction.y, -1.0f, 1.0f)));
     state.cameraOrbitYawDegrees = wrapDegrees(glm::degrees(std::atan2(direction.x, direction.z)));
 }
 
-// 将相机朝向锁定到星球中心，同时尽量保留用户期望的上方向�?
+glm::vec3 orbitDirectionFromAngles(float yawDegrees, float pitchDegrees)
+{
+    const float yawRadians = glm::radians(yawDegrees);
+    const float pitchRadians = glm::radians(glm::clamp(pitchDegrees, -85.0f, 85.0f));
+    const float cosPitch = std::cos(pitchRadians);
+    return glm::normalize(glm::vec3(
+        std::sin(yawRadians) * cosPitch,
+        std::sin(pitchRadians),
+        std::cos(yawRadians) * cosPitch
+    ));
+}
+
+// 将相机朝向锁定到星球中心，同时尽量保留用户期望的上方向�?
 void orientCameraToPlanet(ApplicationState& state, const glm::vec3& preferredUp)
 {
     glm::vec3 radialDirection = glm::normalize(state.camera.position);
@@ -237,25 +246,14 @@ void orientCameraToPlanet(ApplicationState& state, const glm::vec3& preferredUp)
     state.camera.up = glm::normalize(glm::cross(state.camera.right, state.camera.front));
 }
 
-// 统一维护轨道相机约束：FOV 固定、距离裁剪、朝向星球中心�?
+// 统一维护轨道相机约束：FOV 固定、距离裁剪、朝向星球中心�?
 void updateOrbitCamera(ApplicationState& state, const PlanetRenderSettings& settings)
 {
+    (void)settings;
     state.camera.fieldOfView = kLockedCameraFov;
-    state.cameraOrbitDistance = glm::clamp(
-        state.cameraOrbitDistance,
-        minCameraOrbitDistance(settings),
-        maxCameraOrbitDistance(settings)
-    );
-
-    glm::vec3 radialDirection = glm::length(state.camera.position) > 0.001f
-        ? glm::normalize(state.camera.position)
-        : glm::vec3(0.0f, 0.0f, 1.0f);
-    state.camera.position = radialDirection * state.cameraOrbitDistance;
-    orientCameraToPlanet(state, state.camera.up);
-    updateOrbitMetadata(state);
 }
 
-// 从已有相机位置恢复轨道相机元数据，常用于加载 session 或生成完成后重定位�?
+// 从已有相机位置恢复轨道相机元数据，常用于加载 session 或生成完成后重定位�?
 void setOrbitFromCameraPosition(ApplicationState& state, const PlanetRenderSettings& settings)
 {
     state.cameraOrbitDistance = glm::clamp(
@@ -274,7 +272,7 @@ void setOrbitFromCameraPosition(ApplicationState& state, const PlanetRenderSetti
 
 using SessionValues = std::unordered_map<std::string, std::string>;
 
-// session 文件使用简�?key=value 格式，下面这�?helper 负责读写和类型转换�?
+// session 文件使用简�?key=value 格式，下面这�?helper 负责读写和类型转换�?
 std::string trimString(const std::string& value)
 {
     const std::size_t first = value.find_first_not_of(" \t\r\n");
@@ -410,7 +408,7 @@ bool readVec3(const SessionValues& values, const std::string& key, glm::vec3& ou
     return false;
 }
 
-// 用宏列出所有需要保�?加载的设置字段，避免 writeSettings/readSettings 漏字段�?
+// 用宏列出所有需要保�?加载的设置字段，避免 writeSettings/readSettings 漏字段�?
 #define PLANET_SETTING_FLOAT_FIELDS(X) \
     X(planetRadius) \
     X(seaLevelOffset) \
@@ -536,7 +534,7 @@ void writeSettings(std::ostream& out, const std::string& prefix, const PlanetRen
     writeInt(out, sessionKey(prefix, "wireMode"), static_cast<int>(settings.wireMode));
 }
 
-// 读取 session 后会对部分字段做 clamp，防止旧配置或手改文件产生非法范围�?
+// 读取 session 后会对部分字段做 clamp，防止旧配置或手改文件产生非法范围�?
 void readSettings(const SessionValues& values, const std::string& prefix, PlanetRenderSettings& settings)
 {
 #define READ_FLOAT_FIELD(name) readFloat(values, sessionKey(prefix, #name), settings.name);
@@ -564,9 +562,9 @@ void readSettings(const SessionValues& values, const std::string& prefix, Planet
 
     settings.featureOverlayMode = TerrainFeatureOverlayMode::None;
 
-    settings.erosionIterations = 96;
-    settings.erosionStrength = 0.055f;
-    settings.erosionThermalStrength = 0.014f;
+    settings.erosionIterations = 0;
+    settings.erosionStrength = 0.0f;
+    settings.erosionThermalStrength = 0.0f;
     settings.terrainMaterialNoiseStrength = 0.0f;
     settings.oceanFftCascadeCount = glm::clamp(settings.oceanFftCascadeCount, 1, 3);
     settings.oceanFftFrameStride = glm::max(settings.oceanFftFrameStride, 1);
@@ -574,7 +572,7 @@ void readSettings(const SessionValues& values, const std::string& prefix, Planet
     settings.oceanRefractionFrameStride = glm::max(settings.oceanRefractionFrameStride, 1);
 }
 
-// 保存 UI/session 参数；如果当前已有生成数据，同时保存一份二进制缓存�?
+// 保存 UI/session 参数；如果当前已有生成数据，同时保存一份二进制缓存�?
 bool saveSession(ApplicationState& state, const char* path = kSessionFilePath)
 {
     if (state.workflowStage == WorkflowStage::Render) {
@@ -599,8 +597,8 @@ bool saveSession(ApplicationState& state, const char* path = kSessionFilePath)
     writeFloat(file, "planetYawDegrees", state.planetYawDegrees);
     writeFloat(file, "planetPitchDegrees", state.planetPitchDegrees);
     writeVec3(file, "cameraPosition", state.camera.position);
-    writeVec3(file, "cameraUp", state.camera.up);
-    writeFloat(file, "cameraOrbitDistance", state.cameraOrbitDistance);
+    writeVec3(file, "cameraFront", state.camera.front);
+    writeVec3(file, "cameraUp", state.camera.up);    writeFloat(file, "cameraOrbitDistance", state.cameraOrbitDistance);
     writeFloat(file, "cameraMouseSensitivity", state.camera.mouseSensitivity);
     writeBool(file, "showPerformancePanel", state.showPerformancePanel);
     writeBool(file, "showProceduralTerrainFeature", state.showProceduralTerrainFeature);
@@ -632,8 +630,8 @@ bool saveSession(ApplicationState& state, const char* path = kSessionFilePath)
     return true;
 }
 
-// 读取 session，并尝试恢复上次生成的星球缓存�?
-// 缓存加载成功后会立即上传�?renderer，用户可以直接进�?Render 阶段�?
+// 读取 session，并尝试恢复上次生成的星球缓存�?
+// 缓存加载成功后会立即上传�?renderer，用户可以直接进�?Render 阶段�?
 bool loadSession(ApplicationState& state, const char* path = kSessionFilePath, bool reportMissing = true)
 {
     SessionValues values;
@@ -647,12 +645,12 @@ bool loadSession(ApplicationState& state, const char* path = kSessionFilePath, b
     readSettings(values, "procedural", state.proceduralSettings);
     readSettings(values, "render", state.renderSettings);
     readInt(values, "generationFaceResolution", state.generationFaceResolution);
-    state.generationFaceResolution = glm::clamp(state.generationFaceResolution, kGenerationFaceResolutionMin, kGenerationFaceResolutionMax);
+    state.generationFaceResolution = glm::clamp(state.generationFaceResolution, 256, 512);
     readFloat(values, "planetYawDegrees", state.planetYawDegrees);
     readFloat(values, "planetPitchDegrees", state.planetPitchDegrees);
     readVec3(values, "cameraPosition", state.camera.position);
-    readVec3(values, "cameraUp", state.camera.up);
-    readFloat(values, "cameraOrbitDistance", state.cameraOrbitDistance);
+    const bool loadedCameraFront = readVec3(values, "cameraFront", state.camera.front);
+    readVec3(values, "cameraUp", state.camera.up);    readFloat(values, "cameraOrbitDistance", state.cameraOrbitDistance);
     readFloat(values, "cameraMouseSensitivity", state.camera.mouseSensitivity);
     readBool(values, "showPerformancePanel", state.showPerformancePanel);
     readBool(values, "showProceduralTerrainFeature", state.showProceduralTerrainFeature);
@@ -693,8 +691,22 @@ bool loadSession(ApplicationState& state, const char* path = kSessionFilePath, b
     if (glm::length(state.camera.position) <= 0.001f) {
         state.camera.position = glm::vec3(0.0f, 0.0f, activeSettings.planetRadius * 2.1f);
     }
-    state.cameraOrbitDistance = glm::length(state.camera.position);
-    updateOrbitCamera(state, activeSettings);
+    if (loadedCameraFront && glm::length(state.camera.front) > 0.001f) {
+        state.camera.front = glm::normalize(state.camera.front);
+        glm::vec3 upCandidate = state.camera.up - state.camera.front * glm::dot(state.camera.up, state.camera.front);
+        if (glm::length(upCandidate) < 0.001f) {
+            upCandidate = glm::vec3(0.0f, 1.0f, 0.0f) - state.camera.front * glm::dot(glm::vec3(0.0f, 1.0f, 0.0f), state.camera.front);
+        }
+        if (glm::length(upCandidate) < 0.001f) {
+            upCandidate = glm::vec3(1.0f, 0.0f, 0.0f);
+        }
+        state.camera.up = glm::normalize(upCandidate);
+        state.camera.right = glm::normalize(glm::cross(state.camera.front, state.camera.up));
+        state.camera.up = glm::normalize(glm::cross(state.camera.right, state.camera.front));
+    } else {
+        state.camera.lookAt(glm::vec3(0.0f));
+    }
+    updateOrbitMetadata(state);
 
     state.sessionMessage = loadedCache
         ? std::string("Loaded session and cached planet: ") + path
@@ -787,7 +799,7 @@ float planetDistanceScale(float planetRadius)
     return glm::max(planetRadius / kReferencePlanetRadius, 0.25f);
 }
 
-// 生成模块名只用于 UI 进度显示，顺序必须与 GenerationModule 枚举一致�?
+// 生成模块名只用于 UI 进度显示，顺序必须与 GenerationModule 枚举一致�?
 const char* generationModuleLabel(int moduleIndex)
 {
     static const char* kLabels[kGenerationModuleCount] = {
@@ -809,7 +821,7 @@ const char* generationModuleLabel(int moduleIndex)
 
 void startPlanetGeneration(ApplicationState& state)
 {
-    // 如果已有后台生成任务还没完成，忽略重复点击�?
+    // 如果已有后台生成任务还没完成，忽略重复点击�?
     if (state.generationFuture.valid()
         && state.generationFuture.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
         return;
@@ -833,8 +845,8 @@ void startPlanetGeneration(ApplicationState& state)
     copyProceduralSettings(generatedSettings, state.proceduralSettings);
     state.pendingGenerationSettings = generatedSettings;
     const int faceResolution = state.generationFaceResolution;
-    const int clampedResolution = glm::clamp(faceResolution, kGenerationFaceResolutionMin, kGenerationFaceResolutionMax);
-    // 主线程先估算各模块总步数，UI 可以在后台任务第一次回调前显示合理进度�?
+    const int clampedResolution = glm::clamp(faceResolution, 16, 512);
+    // 主线程先估算各模块总步数，UI 可以在后台任务第一次回调前显示合理进度�?
     const int erosionIterations = glm::clamp(generatedSettings.erosionIterations, 0, 256);
     const float erosionStrength = glm::max(generatedSettings.erosionStrength, 0.0f);
     const float thermalStrength = glm::max(generatedSettings.erosionThermalStrength, 0.0f);
@@ -867,7 +879,7 @@ void startPlanetGeneration(ApplicationState& state)
     auto* moduleTotalSteps = &state.generationModuleTotalSteps;
     std::mutex* statusMutex = &state.generationStatusMutex;
     std::string* statusText = &state.generationStatusText;
-    // 后台线程只负�?CPU 数据生成，不�?OpenGL 资源；GPU 上传留给主线程完成�?
+    // 后台线程只负�?CPU 数据生成，不�?OpenGL 资源；GPU 上传留给主线程完成�?
     state.generationFuture = std::async(
         std::launch::async,
         [generatedSettings,
@@ -886,7 +898,7 @@ void startPlanetGeneration(ApplicationState& state)
                 [completedSteps, totalSteps, activeModule, moduleCompletedSteps, moduleTotalSteps, statusMutex, statusText](
                     const PlanetProceduralData::GenerationProgress& progress
                 ) {
-                    // 进度字段�?atomic 写入，状态文本用 mutex 保护�?
+                    // 进度字段�?atomic 写入，状态文本用 mutex 保护�?
                     const int moduleIndex = glm::clamp(static_cast<int>(progress.module), 0, kGenerationModuleCount - 1);
                     completedSteps->store(progress.completedSteps, std::memory_order_relaxed);
                     totalSteps->store(std::max(progress.totalSteps, 1), std::memory_order_relaxed);
@@ -919,18 +931,19 @@ void finishPlanetGeneration(ApplicationState& state, std::unique_ptr<PlanetProce
     const PlanetRenderSettings generatedSettings = state.pendingGenerationSettings;
     state.generatedPlanet = std::move(*generatedPlanet);
     state.renderer.settings() = generatedSettings;
-    // OpenGL 纹理上传必须发生在拥�?context 的主线程�?
+    // OpenGL 纹理上传必须发生在拥�?context 的主线程�?
     state.renderer.setProceduralData(state.generatedPlanet);
     state.renderSettings = generatedSettings;
     state.hasGeneratedPlanet = true;
     state.workflowStage = WorkflowStage::Render;
 
     state.camera.position = glm::vec3(0.0f, generatedSettings.planetRadius * 0.45f, generatedSettings.planetRadius * 2.10f);
-    setOrbitFromCameraPosition(state, generatedSettings);
+    state.camera.lookAt(glm::vec3(0.0f));
+    updateOrbitMetadata(state);
     saveSession(state);
 }
 
-// 从渲染阶段回到生成参数界面时，把当前 renderer 设置同步�?UI�?
+// 从渲染阶段回到生成参数界面时，把当前 renderer 设置同步�?UI�?
 void returnToProceduralSetup(ApplicationState& state)
 {
     if (state.hasGeneratedPlanet) {
@@ -955,10 +968,10 @@ void onMouseScrolled(GLFWwindow* window, double, double yOffset)
     }
 
     const PlanetRenderSettings& settings = state->renderer.settings();
-    // 滚轮不是�?FOV，而是沿轨道半径推�?拉远，保持星球观察视角稳定�?
-    const float scrollStep = glm::max(state->cameraOrbitDistance * 0.09f, settings.planetRadius * 0.035f);
-    state->cameraOrbitDistance -= static_cast<float>(yOffset) * scrollStep;
-    updateOrbitCamera(*state, settings);
+    // 滚轮不是�?FOV，而是沿轨道半径推�?拉远，保持星球观察视角稳定�?
+    const float scrollStep = glm::max(glm::length(state->camera.position) * 0.09f, settings.planetRadius * 0.035f);
+    state->camera.position += state->camera.front * (static_cast<float>(yOffset) * scrollStep);
+    updateOrbitMetadata(*state);
 }
 
 void onMouseMoved(GLFWwindow* window, double xPosition, double yPosition)
@@ -997,7 +1010,22 @@ void onMouseMoved(GLFWwindow* window, double xPosition, double yPosition)
         state->firstLeftMouseSample = true;
     }
 
-    state->firstRightMouseSample = true;
+    if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS) {
+        if (state->firstRightMouseSample) {
+            state->lastRightMouseX = static_cast<float>(xPosition);
+            state->lastRightMouseY = static_cast<float>(yPosition);
+            state->firstRightMouseSample = false;
+        }
+
+        const float deltaX = static_cast<float>(xPosition) - state->lastRightMouseX;
+        const float deltaY = static_cast<float>(yPosition) - state->lastRightMouseY;
+        state->lastRightMouseX = static_cast<float>(xPosition);
+        state->lastRightMouseY = static_cast<float>(yPosition);
+        state->camera.rotate(deltaX, -deltaY);
+        updateOrbitMetadata(*state);
+    } else {
+        state->firstRightMouseSample = true;
+    }
 }
 
 void onMouseButtonChanged(GLFWwindow* window, int button, int action, int modifiers)
@@ -1042,7 +1070,7 @@ void onKeyPressed(GLFWwindow* window, int key, int, int action, int modifiers)
 
     PlanetRenderSettings& settings = state->renderer.settings();
 
-    // 快捷键主要循�?debug/render mode，具体连续参数仍�?ImGui 控件调整�?
+    // 快捷键主要循�?debug/render mode，具体连续参数仍�?ImGui 控件调整�?
     if (key == GLFW_KEY_ESCAPE) glfwSetWindowShouldClose(window, true);
     if (key == GLFW_KEY_1) {
         const int nextMode = (static_cast<int>(settings.renderMode) + 1) % 4;
@@ -1078,45 +1106,37 @@ void handleKeyboardMovement(GLFWwindow* window, ApplicationState& state)
     if (state.workflowStage != WorkflowStage::Render) return;
     if (ImGui::GetIO().WantCaptureKeyboard) return;
 
-    const PlanetRenderSettings& settings = state.renderer.settings();
-    const float orbitStep = kOrbitAngularSpeedDegrees * state.deltaSeconds;
-    glm::vec3 newPosition = state.camera.position;
-    glm::vec3 newUp = state.camera.up;
-
-    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
-        newPosition = rotateVectorAroundAxis(newPosition, state.camera.up, -orbitStep);
-    }
-    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
-        newPosition = rotateVectorAroundAxis(newPosition, state.camera.up, orbitStep);
-    }
     if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
-        newPosition = rotateVectorAroundAxis(newPosition, state.camera.right, -orbitStep);
-        newUp = rotateVectorAroundAxis(newUp, state.camera.right, -orbitStep);
+        state.camera.move(FlyCamera::MovementDirection::Forward, state.deltaSeconds);
     }
     if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
-        newPosition = rotateVectorAroundAxis(newPosition, state.camera.right, orbitStep);
-        newUp = rotateVectorAroundAxis(newUp, state.camera.right, orbitStep);
+        state.camera.move(FlyCamera::MovementDirection::Backward, state.deltaSeconds);
+    }
+    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
+        state.camera.move(FlyCamera::MovementDirection::Left, state.deltaSeconds);
+    }
+    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
+        state.camera.move(FlyCamera::MovementDirection::Right, state.deltaSeconds);
     }
     if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) {
-        newUp = rotateVectorAroundAxis(newUp, state.camera.front, -orbitStep);
+        state.camera.move(FlyCamera::MovementDirection::Down, state.deltaSeconds);
     }
     if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) {
-        newUp = rotateVectorAroundAxis(newUp, state.camera.front, orbitStep);
+        state.camera.move(FlyCamera::MovementDirection::Up, state.deltaSeconds);
     }
 
-    state.camera.position = glm::normalize(newPosition) * state.cameraOrbitDistance;
-    orientCameraToPlanet(state, newUp);
     updateOrbitMetadata(state);
 }
 
 void printControls()
 {
     std::cout << "\n=== Procedural Planet Controls ===\n";
-    std::cout << "  W/S       : orbit camera along screen up/down\n";
-    std::cout << "  A/D       : orbit camera along screen left/right\n";
-    std::cout << "  Q/E       : roll camera around view axis\n";
+    std::cout << "  W/S       : move forward/backward\n";
+    std::cout << "  A/D       : move left/right\n";
+    std::cout << "  Q/E       : move down/up\n";
     std::cout << "  LMB+drag  : rotate planet\n";
-    std::cout << "  Scroll    : dolly camera toward/away from planet\n";
+    std::cout << "  RMB+drag  : rotate camera\n";
+    std::cout << "  Scroll    : dolly camera toward/away from view direction\n";
     std::cout << "  1         : cycle render mode\n";
     std::cout << "  2         : cycle wire overlay\n";
     std::cout << "  4         : cycle land/ocean visibility\n";
@@ -1135,7 +1155,7 @@ void drawProceduralPanel(ApplicationState& state)
     ImGui::Separator();
 
     if (state.workflowStage == WorkflowStage::Generating) {
-        // 生成期间只显示进度，不允许同时修改输入参数�?
+        // 生成期间只显示进度，不允许同时修改输入参数�?
         const int completedSteps = state.generationCompletedSteps.load(std::memory_order_relaxed);
         const int totalSteps = std::max(state.generationTotalSteps.load(std::memory_order_relaxed), 1);
         const float progress = glm::clamp(
@@ -1176,15 +1196,15 @@ void drawProceduralPanel(ApplicationState& state)
     ImGui::Text("Feature Panels");
     drawFeatureToggleRow(state, "Terrain Bake", state.showProceduralTerrainFeature, "Erosion Bake", state.showProceduralErosionFeature);
     if (ImGui::Button("Preset: Rugged Rivers", ImVec2(-1.0f, 28.0f))) {
-        settings.terrainHeightScale = 34.0f * proceduralDistanceScale;
-        settings.terrainNoiseScale = 0.78f;
-        settings.mountainMaskStrength = 1.90f;
-        settings.mountainMaskScale = 3.35f;
-        settings.mountainRidgeSharpness = 3.80f;
-        settings.erosionIterations = 96;
-        settings.erosionStrength = 0.055f;
+        settings.terrainHeightScale = 24.0f * proceduralDistanceScale;
+        settings.terrainNoiseScale = 0.58f;
+        settings.mountainMaskStrength = 0.55f;
+        settings.mountainMaskScale = 1.95f;
+        settings.mountainRidgeSharpness = 2.85f;
+        settings.erosionIterations = 0;
+        settings.erosionStrength = 0.0f;
         settings.erosionSediment = 0.72f;
-        settings.erosionThermalStrength = 0.014f;
+        settings.erosionThermalStrength = 0.0f;
         settings.terrainMaterialNoiseStrength = 0.0f;
         settings.riverVisibility = 1.70f;
         settings.riverWidth = 0.72f;
@@ -1192,7 +1212,7 @@ void drawProceduralPanel(ApplicationState& state)
         settings.riverRefractionStrength = 0.55f;
     }
     ImGui::Separator();
-    // 下面是会影响 CPU 烘焙的参数：地形高度、山脉、侵蚀、材质权重等�?
+    // 下面是会影响 CPU 烘焙的参数：地形高度、山脉、侵蚀、材质权重等�?
     if (state.showProceduralTerrainFeature) {
         drawFeatureBodyBegin();
         ImGui::Text("Terrain Bake");
@@ -1203,7 +1223,7 @@ void drawProceduralPanel(ApplicationState& state)
         ImGui::SliderFloat("Mountain Mask", &settings.mountainMaskStrength, 0.0f, 2.4f, "%.2f");
         ImGui::SliderFloat("Mountain Scale", &settings.mountainMaskScale, 0.5f, 8.0f, "%.2f");
         ImGui::SliderFloat("Ridge Sharpness", &settings.mountainRidgeSharpness, 1.0f, 6.0f, "%.2f");
-        ImGui::SliderInt("Face Resolution", &state.generationFaceResolution, kGenerationFaceResolutionMin, kGenerationFaceResolutionMax);
+        ImGui::SliderInt("Face Resolution", &state.generationFaceResolution, 256, 512);
         drawFeatureBodyEnd();
     }
     if (state.showProceduralErosionFeature) {
@@ -1450,7 +1470,7 @@ void drawRenderPanel(ApplicationState& state)
         ImGui::Text("Ocean Reflection");
         ImGui::Checkbox("Ocean Enabled", &settings.renderOcean);
         ImGui::Checkbox("Planar Targets Enabled", &settings.renderOceanReflectionRefraction);
-        // 反射/折射 target 支持降采样和隔帧更新，减少水面效果的额外 draw cost�?
+        // 反射/折射 target 支持降采样和隔帧更新，减少水面效果的额外 draw cost�?
         ImGui::Checkbox("Reflection", &settings.renderOceanReflection);
         ImGui::Checkbox("Refraction", &settings.renderOceanRefraction);
         ImGui::SliderFloat("Target Scale", &settings.oceanReflectionResolutionScale, 0.25f, 1.0f, "%.2f");
@@ -1478,10 +1498,11 @@ void drawRenderPanel(ApplicationState& state)
     if (state.showCameraFeature) {
         drawFeatureBodyBegin();
         ImGui::Text("Camera");
-        ImGui::SliderFloat("Orbit Distance", &state.cameraOrbitDistance, minCameraOrbitDistance(settings), maxCameraOrbitDistance(settings), "%.1f");
+        ImGui::Text("Distance: %.1f", glm::length(state.camera.position));
         ImGui::Text("Yaw %.1f | Pitch %.1f", state.cameraOrbitYawDegrees, state.cameraOrbitPitchDegrees);
         ImGui::SliderFloat("Mouse Sensitivity", &state.camera.mouseSensitivity, 0.02f, 0.5f, "%.2f");
         ImGui::Text("Position: %.1f %.1f %.1f", state.camera.position.x, state.camera.position.y, state.camera.position.z);
+        ImGui::Text("Front: %.2f %.2f %.2f", state.camera.front.x, state.camera.front.y, state.camera.front.z);
         ImGui::Text("Altitude: %.1f", glm::max(glm::length(state.camera.position) - settings.planetRadius, 0.0f));
         ImGui::Text("FOV: %.1f", state.camera.fieldOfView);
         drawFeatureBodyEnd();
@@ -1520,7 +1541,7 @@ void drawPerformancePanel(ApplicationState& state)
         const PlanetRenderer::PerformanceStats& perf = state.renderer.performanceStats();
         const PlanetRenderer::CullingStats& cullingStats = state.renderer.cullingStats();
 
-        // 这些时间�?CPU 提交侧统计，不包�?glFinish �?GPU 阻塞等待�?
+        // 这些时间�?CPU 提交侧统计，不包�?glFinish �?GPU 阻塞等待�?
         ImGui::PushStyleColor(ImGuiCol_Text, gold);
         ImGui::Text("CPU Submit Timings");
         ImGui::PopStyleColor();
@@ -1574,7 +1595,7 @@ void drawDebugPanel(ApplicationState& state)
         ? "Render Controls"
         : "Procedural Generation";
 
-    // 调试面板使用单独配色，不影响 ImGui 全局主题�?
+    // 调试面板使用单独配色，不影响 ImGui 全局主题�?
     const ImVec4 deepNavy(0.018f, 0.035f, 0.070f, 0.96f);
     const ImVec4 panelBlue(0.045f, 0.105f, 0.180f, 0.98f);
     const ImVec4 activeBlue(0.070f, 0.210f, 0.360f, 1.0f);
@@ -1648,7 +1669,7 @@ void configureImGuiFonts()
         }
     }
 
-    // 找不到中文字体时退回默认字体；UI 文本仍以英文为主�?
+    // 找不到中文字体时退回默认字体；UI 文本仍以英文为主�?
     io.Fonts->AddFontDefault();
 }
 } // namespace
@@ -1676,7 +1697,7 @@ int main(int argc, char** argv)
         }
     }
 
-    // 1. 创建窗口�?OpenGL context�?
+    // 1. 创建窗口�?OpenGL context�?
     if (!glfwInit()) {
         std::cerr << "Failed to initialize GLFW\n";
         if (profileEnabled) {
@@ -1706,7 +1727,7 @@ int main(int argc, char** argv)
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1);
 
-    // 2. 注册输入回调。ApplicationState 挂到 GLFW user pointer 供回调访问�?
+    // 2. 注册输入回调。ApplicationState 挂到 GLFW user pointer 供回调访问�?
     ApplicationState appState;
     glfwSetWindowUserPointer(window, &appState);
     glfwSetFramebufferSizeCallback(window, onFramebufferSizeChanged);
@@ -1732,7 +1753,7 @@ int main(int argc, char** argv)
     std::cout << "OpenGL vendor: " << glGetString(GL_VENDOR) << "\n";
     std::cout << "OpenGL renderer: " << glGetString(GL_RENDERER) << "\n";
 
-    // 3. 初始�?ImGui 和渲染器资源�?
+    // 3. 初始�?ImGui 和渲染器资源�?
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGui::StyleColorsDark();
@@ -1743,7 +1764,7 @@ int main(int argc, char** argv)
     appState.renderer.initialize();
     appState.renderSettings = appState.renderer.settings();
     appState.proceduralSettings = appState.renderer.settings();
-    // 4. 尝试恢复本地 session/cache；成功时可直接进入渲染阶段�?
+    // 4. 尝试恢复本地 session/cache；成功时可直接进入渲染阶段�?
     loadSession(appState, kSessionFilePath, false);
     appState.renderer.setPlanetRotation(appState.planetYawDegrees, appState.planetPitchDegrees);
 
@@ -1758,13 +1779,13 @@ int main(int argc, char** argv)
     while (!glfwWindowShouldClose(window))
     {
         PROFILE_SCOPE("MainLoop Frame");
-        // 帧时间用于相机、自动旋转、反射权重平滑和 FFT 更新节流�?
+        // 帧时间用于相机、自动旋转、反射权重平滑和 FFT 更新节流�?
         const float currentTime = static_cast<float>(glfwGetTime());
         appState.deltaSeconds = currentTime - appState.previousFrameTime;
         appState.previousFrameTime = currentTime;
 
         if (appState.workflowStage == WorkflowStage::Generating) {
-            // 后台生成完成后，在主线程取出结果并上�?GPU 资源�?
+            // 后台生成完成后，在主线程取出结果并上�?GPU 资源�?
             appState.generationTimer += appState.deltaSeconds;
             if (appState.generationFuture.valid()
                 && appState.generationFuture.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
@@ -1783,7 +1804,7 @@ int main(int argc, char** argv)
             handleKeyboardMovement(window, appState);
         }
         if (appState.workflowStage == WorkflowStage::Render) {
-            // Render 阶段保持星球静止，方便观察河流、LOD 和材�?debug；需要旋转时用左键拖拽�?
+            // Render 阶段保持星球静止，方便观察河流、LOD 和材质 debug；需要旋转时用右键拖拽。
             appState.renderer.setPlanetRotation(appState.planetYawDegrees, appState.planetPitchDegrees);
             updateOrbitCamera(appState, appState.renderer.settings());
         }
@@ -1798,7 +1819,7 @@ int main(int argc, char** argv)
             ? appState.renderer.settings()
             : appState.renderSettings;
 
-        // 投影矩阵使用当前设置里的 near/far，支持大半径星球的远裁剪面�?
+        // 投影矩阵使用当前设置里的 near/far，支持大半径星球的远裁剪面�?
         const glm::mat4 projectionMatrix = glm::perspective(
             glm::radians(appState.camera.fieldOfView),
             static_cast<float>(framebufferWidth) / static_cast<float>(framebufferHeight),
@@ -1823,7 +1844,7 @@ int main(int argc, char** argv)
             ImGui::NewFrame();
         }
 
-        // UI 先生�?draw data，星球渲染后再提�?ImGui，保证面板覆盖在画面上方�?
+        // UI 先生�?draw data，星球渲染后再提�?ImGui，保证面板覆盖在画面上方�?
         {
             PROFILE_SCOPE("ImGui Build Panels");
             drawDebugPanel(appState);

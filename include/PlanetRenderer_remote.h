@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include <array>
 #include <cstddef>
@@ -14,7 +14,7 @@
 
 class PlanetProceduralData;
 
-// 鍦板舰璋冭瘯/灞曠ず妯″紡銆?
+// 地形调试/展示模式�?
 enum class PlanetRenderMode : int {
     Shaded = 0,
     Unshaded = 1,
@@ -22,7 +22,7 @@ enum class PlanetRenderMode : int {
     Normals = 3
 };
 
-// 绾挎鍙犲姞妯″紡锛氬彲閫夋嫨鏄剧ず闄嗗湴 patch 鎴栨捣娲?patch 鐨勭粏鍒嗙粨鏋勩€?
+// 线框叠加模式：可选择显示陆地 patch 或海�?patch 的细分结构�?
 enum class PlanetWireMode : int {
     None = 0,
     Ocean = 1,
@@ -39,28 +39,28 @@ enum class TerrainFeatureOverlayMode : int {
     Erosion = 5
 };
 
-// 鎵€鏈夊彲璋冩覆鏌?鐢熸垚鍙傛暟銆?
-// 杩欎竴涓粨鏋勫悓鏃舵湇鍔?UI銆丆PU 鐢熸垚銆丟PU uniform 涓婁紶鍜?session 淇濆瓨銆?
+// 所有可调渲�?生成参数�?
+// 这一个结构同时服�?UI、CPU 生成、GPU uniform 上传�?session 保存�?
 struct PlanetRenderSettings {
-    // 鏄熺悆鍑犱綍灏哄害涓?tessellation LOD銆?
+    // 星球几何尺度�?tessellation LOD�?
     float planetRadius = 200.0f;
     float seaLevelOffset = 0.0f;
     float oceanTessellationMax = 1.0f;
     float oceanTessellationMin = 1.0f;
     float oceanTessellationNearDistance = 40.0f;
     float oceanTessellationFarDistance = 550.0f;
-    // 绋嬪簭鍖栧湴褰㈠拰渚佃殌鍙傛暟銆?
-    float terrainHeightScale = 34.0f;
-    float terrainNoiseScale = 0.78f;
-    float mountainMaskStrength = 1.90f;
-    float mountainMaskScale = 3.35f;
-    float mountainRidgeSharpness = 3.80f;
-    int erosionIterations = 96;
-    float erosionStrength = 0.055f;
+    // 程序化地形和侵蚀参数�?
+    float terrainHeightScale = 22.0f;
+    float terrainNoiseScale = 0.58f;
+    float mountainMaskStrength = 0.55f;
+    float mountainMaskScale = 1.8f;
+    float mountainRidgeSharpness = 2.6f;
+    int erosionIterations = 0;
+    float erosionStrength = 0.0f;
     float erosionTalus = 0.028f;
     float erosionSediment = 0.58f;
-    float erosionThermalStrength = 0.014f;
-    // 鍦拌〃鏉愯川棰滆壊涓?biome/slope 闃堝€笺€?
+    float erosionThermalStrength = 0.0f;
+    // 地表材质颜色�?biome/slope 阈值�?
     glm::vec3 terrainLowlandColor = glm::vec3(0.23f, 0.44f, 0.18f);
     glm::vec3 terrainForestColor = glm::vec3(0.10f, 0.30f, 0.12f);
     glm::vec3 terrainDesertColor = glm::vec3(0.70f, 0.57f, 0.32f);
@@ -81,7 +81,7 @@ struct PlanetRenderSettings {
     float riverRefractionStrength = 0.48f;
     glm::vec3 riverColor = glm::vec3(0.02f, 0.36f, 0.42f);
     float coarseGridLineWidth = 1.6f;
-    // 澶╃┖銆佸ぇ姘斿拰鐩告満瑁佸壀闈€?
+    // 天空、大气和相机裁剪面�?
     glm::vec3 skyColor = glm::vec3(0.0f);
     float fogDensity = 0.0f;
     bool renderAtmosphere = true;
@@ -104,7 +104,7 @@ struct PlanetRenderSettings {
     glm::vec3 cloudColor = glm::vec3(0.96f, 0.98f, 1.0f);
     float cameraNearPlane = 1.0f;
     float cameraFarPlane = 5000.0f;
-    // 娴锋按閫忔槑搴︺€侀鑹层€佸弽灏勬姌灏勩€佹尝娴拰鏉愯川鍙傛暟銆?
+    // 海水透明度、颜色、反射折射、波浪和材质参数�?
     float oceanAlpha = 0.96f;
     float oceanShallowAlpha = 0.48f;
     float oceanDeepAlpha = 0.98f;
@@ -150,14 +150,14 @@ struct PlanetRenderSettings {
     bool renderOcean = true;
 };
 
-// 娓叉煋鍣ㄨ礋璐ｏ細
-// 1) 绠＄悊 shader銆乵esh銆丗BO 鍜?GPU texture锛?
-// 2) 姣忓抚 CPU 鍥涘弶鏍?LOD/瑁佸壀锛?
-// 3) 鎸?terrain/ocean/atmosphere/wire 椤哄簭鎻愪氦 draw call銆?
+// 渲染器负责：
+// 1) 管理 shader、mesh、FBO �?GPU texture�?
+// 2) 每帧 CPU 四叉�?LOD/裁剪�?
+// 3) �?terrain/ocean/atmosphere/wire 顺序提交 draw call�?
 class PlanetRenderer
 {
 public:
-    // CPU LOD 闃舵鐨勭粺璁′俊鎭紝鐢ㄤ簬 performance 闈㈡澘銆?
+    // CPU LOD 阶段的统计信息，用于 performance 面板�?
     struct CullingStats {
         std::size_t visitedNodes = 0;
         std::size_t frustumCulledNodes = 0;
@@ -166,7 +166,7 @@ public:
         std::size_t emittedPatches = 0;
     };
 
-    // 姣忓抚鍚勬覆鏌撻樁娈佃€楁椂鍜屽姩鎬佽川閲忓弬鏁般€?
+    // 每帧各渲染阶段耗时和动态质量参数�?
     struct PerformanceStats {
         float totalMs = 0.0f;
         float cullingMs = 0.0f;
@@ -214,21 +214,21 @@ public:
     const PerformanceStats& performanceStats() const;
 
 private:
-    // cube face 灞€閮ㄥ潗鏍囩郴锛屼笌 PlanetProceduralData 涓殑瀹氫箟淇濇寔涓€鑷淬€?
+    // cube face 局部坐标系，与 PlanetProceduralData 中的定义保持一致�?
     struct FaceBasis {
         glm::vec3 normal;
         glm::vec3 axisU;
         glm::vec3 axisV;
     };
 
-    // CPU 鍥涘弶鏍戣妭鐐癸紝浣跨敤 cube face UV 鑼冨洿鎻忚堪 patch銆?
+    // CPU 四叉树节点，使用 cube face UV 范围描述 patch�?
     struct QuadtreeNode {
         glm::vec2 uvMin{0.0f, 0.0f};
         float uvSize = 1.0f;
         int depth = 0;
     };
 
-    // 涓€涓?patch 鍐呮按/闄?娴峰哺瑕嗙洊鎯呭喌锛屾潵鑷?CPU prefix sum 蹇€熸煡璇€?
+    // 一�?patch 内水/�?海岸覆盖情况，来�?CPU prefix sum 快速查询�?
     struct PatchWaterCoverage {
         bool hasData = false;
         bool hasWater = false;
@@ -236,7 +236,7 @@ private:
         float maxShoreMask = 0.0f;
     };
 
-    // 姣忓抚瀹為檯鎻愪氦缁?shader 鐨?patch銆?
+    // 每帧实际提交�?shader �?patch�?
     struct OceanPatch {
         int faceIndex = 0;
         glm::vec2 uvMin{0.0f, 0.0f};
@@ -245,19 +245,19 @@ private:
         PatchWaterCoverage waterCoverage;
     };
 
-    // 浠?view-projection 鐭╅樀鎻愬彇鍑虹殑 6 涓鍓钩闈€?
+    // �?view-projection 矩阵提取出的 6 个裁剪平面�?
     struct Frustum {
         std::array<glm::vec4, 6> planes{};
     };
 
-    // LOD/瑁佸壀浣跨敤鐨勭悆闈㈣繎浼煎寘鍥翠綋銆?
+    // LOD/裁剪使用的球面近似包围体�?
     struct NodeBounds {
         glm::vec3 worldDirection{0.0f, 1.0f, 0.0f};
         float radius = 0.001f;
         float lodScale = 1.0f;
     };
 
-    // 鎵€鏈夊湴褰㈠拰娴锋磱 patch 鍏变韩鍚屼竴涓鍒欑綉鏍?VAO锛岀敱 tessellation shader 鏀惧ぇ銆?
+    // 所有地形和海洋 patch 共享同一个规则网�?VAO，由 tessellation shader 放大�?
     struct TerrainMesh {
         GLuint vertexArrayObject = 0;
         GLuint vertexBufferObject = 0;
@@ -301,7 +301,7 @@ private:
         void drawChunkBounds(const std::vector<VisibleBakedChunk>& visibleChunks) const;
     };
 
-    // 澶ф皵灞備娇鐢ㄦ櫘閫氱悆浣撶綉鏍硷紝涓嶈蛋 tessellation銆?
+    // 大气层使用普通球体网格，不走 tessellation�?
     struct SphereMesh {
         GLuint vertexArrayObject = 0;
         GLuint vertexBufferObject = 0;
@@ -312,7 +312,7 @@ private:
         void draw() const;
     };
 
-    // 鍙嶅皠/鎶樺皠绂诲睆娓叉煋鐩爣銆?
+    // 反射/折射离屏渲染目标�?
     struct RenderTarget {
         GLuint framebufferObject = 0;
         GLuint colorTexture = 0;
@@ -408,7 +408,7 @@ private:
     static Frustum extractFrustum(const glm::mat4& viewProjectionMatrix);
     static glm::vec4 normalizePlane(const glm::vec4& plane);
     glm::vec3 worldDirection(const glm::vec3& localDirection) const;
-    // 涓嬮潰涓€缁勫嚱鏁扮粍鎴?CPU 鍙鎬?LOD 娴佺▼銆?
+    // 下面一组函数组�?CPU 可见�?LOD 流程�?
     NodeBounds computeNodeBounds(const FaceBasis& face, const QuadtreeNode& node) const;
     bool isNodeOutsideFrustum(const Frustum& frustum, const NodeBounds& bounds) const;
     bool isNodeHiddenByHorizon(const FlyCamera& camera, const NodeBounds& bounds) const;
@@ -437,7 +437,7 @@ private:
                                                      CullingStats& stats) const;
     bool patchHasOceanCoverage(const OceanPatch& patch) const;
 
-    // 缁?terrain/ocean/wire shader 缁熶竴涓婁紶褰撳墠 patch 鍜屽叏灞€娓叉煋鍙傛暟銆?
+    // �?terrain/ocean/wire shader 统一上传当前 patch 和全局渲染参数�?
     void applyCommonUniforms(const ShaderProgram& program,
                              const FlyCamera& camera,
                              const glm::mat4& viewMatrix,
@@ -446,7 +446,7 @@ private:
 
     float seaLevelRadius() const;
 
-    // 娓叉煋 pass銆傚弽灏?鎶樺皠 pass 浼氬鐢?terrain pass 骞跺惎鐢ㄨ鍓钩闈€?
+    // 渲染 pass。反�?折射 pass 会复�?terrain pass 并启用裁剪平面�?
     void drawTerrainPass(const FlyCamera& camera, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix);
     void drawTerrainPass(const FlyCamera& camera,
                          const glm::mat4& viewMatrix,

@@ -7,6 +7,7 @@
 #include <limits>
 
 #include "Instumentor/InstrumentationTimer.hpp"
+#include "PlanetTerrainGenerator.h"
 
 const std::array<PlanetProceduralData::FaceBasis, 6> PlanetProceduralData::kFaces = {{
     {{ 1.0f,  0.0f,  0.0f}, { 0.0f,  0.0f, -1.0f}, { 0.0f,  1.0f,  0.0f}},
@@ -19,10 +20,10 @@ const std::array<PlanetProceduralData::FaceBasis, 6> PlanetProceduralData::kFace
 
 namespace
 {
-// 缓存文件版本号和 magic 用来拒绝旧格式/损坏文件。
+// 缂傛挸鐡ㄩ弬鍥︽閻楀牊婀伴崣宄版嫲 magic 閻劍娼甸幏鎺旂卜閺冄勭壐瀵?閹圭喎娼栭弬鍥︽閵?
 constexpr char kProceduralCacheMagic[8] = { 'P', 'W', 'C', 'A', 'C', 'H', 'E', '9' };
-constexpr std::uint32_t kProceduralCacheVersion = 116;
-constexpr int kTerrainChunkMeshResolution = 16;
+constexpr std::uint32_t kProceduralCacheVersion = 117;
+constexpr int kTerrainChunkMeshResolution = 24;
 constexpr int kTerrainChunkMinDepth = 2;
 constexpr int kTerrainChunkMaxDepth = 6;
 constexpr int kFinalizeChunkProgressSteps = 256;
@@ -107,8 +108,8 @@ struct BiomeWeights {
     float shallowWater = 0.0f;
 };
 
-// 海岸遮蔽度：用多层 value noise 估计某处是否像海湾/内海一样“受保护”。
-// 受保护海岸更容易生成沙滩、湿地；暴露海岸更容易生成岩岸。
+// 濞村嘲鍝洪柆顔挎杸鎼达讣绱伴悽銊ヮ樋鐏?value noise 娴兼媽顓搁弻鎰槱閺勵垰鎯侀崓蹇旀崳濠€?閸愬懏鎹ｆ稉鈧弽灏佲偓婊冨綀娣囨繃濮㈤垾婵勨偓?
+// 閸欐ぞ绻氶幎銈嗘崳瀹€鍛婃纯鐎硅妲楅悽鐔稿灇濞屾瑦鍝楅妴浣圭畭閸﹀府绱遍弳鎾苟濞村嘲鍝洪弴鏉戭啇閺勬挾鏁撻幋鎰崥瀹€鎼炩偓?
 float coastalShelter(const glm::vec3& sphereDir)
 {
     const auto hash = [](const glm::vec3& p) {
@@ -158,7 +159,7 @@ float coastalShelter(const glm::vec3& sphereDir)
     return glm::smoothstep(0.42f, 0.78f, sheltered);
 }
 
-// 大尺度气候区域噪声，用于让沙漠、森林、岩地等形成片区，而不是纯纬度条带。
+// 婢堆冩槀鎼达附鐨甸崐娆忓隘閸╃喎娅旀竟甯礉閻劋绨拋鈺傜煓濠曠姰鈧焦锛庨弸妞尖偓浣稿崥閸︽壆鐡戣ぐ銏″灇閻楀洤灏敍宀冣偓灞肩瑝閺勵垳鍑界痪顒€瀹抽弶鈥崇敨閵?
 float climateRegionNoise(const glm::vec3& sphereDir, float scale, const glm::vec3& offset)
 {
     const auto hash = [](const glm::vec3& p) {
@@ -201,8 +202,8 @@ float climateRegionNoise(const glm::vec3& sphereDir, float scale, const glm::vec
     return value / std::max(total, 0.0001f);
 }
 
-// 将地形、水文、气候、坡度和侵蚀信息合成为 8 类 biome 权重。
-// 这里输出的是“混合权重”，不是互斥分类；后续 shader 会按权重混色。
+// 鐏忓棗婀磋ぐ顫偓浣规寜閺傚洢鈧焦鐨甸崐娆嶁偓浣告蒋鎼达箑鎷版笟浣冩畬娣団剝浼呴崥鍫熷灇娑?8 缁?biome 閺夊啴鍣搁妴?
+// 鏉╂瑩鍣锋潏鎾冲毉閻ㄥ嫭妲搁垾婊勮穿閸氬牊娼堥柌宥佲偓婵撶礉娑撳秵妲告禍鎺撴灱閸掑棛琚敍娑樻倵缂?shader 娴兼碍瀵滈弶鍐櫢濞ｇ柉澹婇妴?
 BiomeWeights computeBiome(float height,
                           float waterDepth,
                           float shore,
@@ -492,7 +493,7 @@ bool PlanetProceduralData::saveCache(const char* path) const
     }
 
     file.write(kProceduralCacheMagic, sizeof(kProceduralCacheMagic));
-    // 文件头保存统计信息，随后逐 face 写入所有标量/向量层。
+    // 閺傚洣娆㈡径缈犵箽鐎涙绮虹拋鈥蹭繆閹垽绱濋梾蹇撴倵闁?face 閸愭瑥鍙嗛幍鈧張澶嬬垼闁?閸氭垿鍣虹仦鍌樷偓?
     const std::int32_t resolution = resolution_;
     if (!writeBinary(file, kProceduralCacheVersion)
         || !writeBinary(file, resolution)
@@ -547,7 +548,7 @@ bool PlanetProceduralData::loadCache(const char* path, const PlanetRenderSetting
 
     std::uint32_t version = 0;
     std::int32_t resolution = 0;
-    // 缓存不做跨版本兼容；算法或字段变更时 bump 版本并强制重新生成。
+    // 缂傛挸鐡ㄦ稉宥呬粵鐠恒劎澧楅張顒€鍚嬬€圭櫢绱辩粻妤佺《閹存牕鐡у▓闈涘綁閺囧瓨妞?bump 閻楀牊婀伴獮璺哄繁閸掑爼鍣搁弬鎵晸閹存劑鈧?
     if (!readBinary(file, version)
         || version != kProceduralCacheVersion
         || !readBinary(file, resolution)
@@ -607,7 +608,6 @@ bool PlanetProceduralData::loadCache(const char* path, const PlanetRenderSetting
     maxWaterDepth_ = loadedMaxWaterDepth;
     waterCoverage_ = loadedWaterCoverage;
     shoreCoverage_ = loadedShoreCoverage;
-    buildTerrainSkeletons(settings_);
     buildTerrainFeatureSegments(settings_);
     buildTerrainChunks(settings_);
     generated_ = true;
@@ -616,7 +616,7 @@ bool PlanetProceduralData::loadCache(const char* path, const PlanetRenderSetting
 
 PlanetGlobalHeightField PlanetProceduralData::globalHeightField() const
 {
-    // 将内部 FaceData 转成通用高度场结构，供未来局部 LOD/工具链复用。
+    // 鐏忓棗鍞撮柈?FaceData 鏉烆剚鍨氶柅姘辨暏妤傛ê瀹抽崷铏圭波閺嬪嫸绱濇笟娑欐弓閺夈儱鐪柈?LOD/瀹搞儱鍙块柧鎯ь槻閻劊鈧?
     PlanetGlobalHeightField heightField;
     heightField.faceResolution = resolution_;
     heightField.minHeight = minHeight_;
@@ -665,9 +665,6 @@ void PlanetProceduralData::clear()
     faces_ = {};
     terrainChunks_.clear();
     terrainFeatureSegments_.clear();
-    terrainSkeletons_.clear();
-    terrainPeakNodes_.clear();
-    terrainNodes_.clear();
     minHeight_ = 0.0f;
     maxHeight_ = 0.0f;
     maxWaterDepth_ = 0.0f;
@@ -702,13 +699,12 @@ void PlanetProceduralData::generate(const PlanetRenderSettings& settings,
         : 0;
     std::array<int, static_cast<std::size_t>(GenerationModule::Count)> moduleTotals{};
     std::array<int, static_cast<std::size_t>(GenerationModule::Count)> moduleCompleted{};
-    moduleTotals[static_cast<std::size_t>(GenerationModule::BaseTerrain)] = resolution_ * 6 + 8;
+    moduleTotals[static_cast<std::size_t>(GenerationModule::BaseTerrain)] = resolution_ * 6 + 1;
     moduleTotals[static_cast<std::size_t>(GenerationModule::InitialClimate)] = resolution_ * 6 + 1;
     moduleTotals[static_cast<std::size_t>(GenerationModule::InitialBiomes)] = resolution_ * 6 + 2;
-    moduleTotals[static_cast<std::size_t>(GenerationModule::BiomeTerrain)] = resolution_ * 6 + 1;
-    moduleTotals[static_cast<std::size_t>(GenerationModule::Erosion)] =
-        erosionActive ? erosionIterations + thermalIterations + 8 : 0;
-    moduleTotals[static_cast<std::size_t>(GenerationModule::FinalClimate)] = resolution_ * 6 + 3;
+    moduleTotals[static_cast<std::size_t>(GenerationModule::BiomeTerrain)] = 0;
+    moduleTotals[static_cast<std::size_t>(GenerationModule::Erosion)] = 0;
+    moduleTotals[static_cast<std::size_t>(GenerationModule::FinalClimate)] = resolution_ * 6 + 1;
     moduleTotals[static_cast<std::size_t>(GenerationModule::FinalBiomes)] = resolution_ * 6 + 2;
     moduleTotals[static_cast<std::size_t>(GenerationModule::MeshPlanning)] = resolution_ * 6 + 1;
     moduleTotals[static_cast<std::size_t>(GenerationModule::Finalize)] = 1 + 6 + 1 + kFinalizeChunkProgressSteps + 1;
@@ -753,8 +749,7 @@ void PlanetProceduralData::generate(const PlanetRenderSettings& settings,
 
     reportProgress("Preparing terrain buffers");
 
-    // 第一阶段：为 6 个 cube face 采样基础高度。
-    // 每个 texel 先映射到球面方向，再调用 terrainHeight 得到归一化高度。
+    // Build the base heightfield for all six faces.
     for (std::size_t faceIndex = 0; faceIndex < faces_.size(); ++faceIndex) {
         FaceData& faceData = faces_[faceIndex];
         faceData.resolution = resolution_;
@@ -788,27 +783,12 @@ void PlanetProceduralData::generate(const PlanetRenderSettings& settings,
 
                 faceData.height[index] = normalizedHeight;
             }
-            advanceModuleProgress(GenerationModule::BaseTerrain, "Generating continents, highlands, and mountain belts");
+            advanceModuleProgress(GenerationModule::BaseTerrain, "Generating base terrain");
         }
     }
 
-    // 后续阶段故意多次“水文/biome -> 塑形/侵蚀 -> 水文/biome”循环，
-    // 让地形、河道、湿度和材质分布互相影响，而不是单向涂色。
-    buildTerrainSkeletons(settings);
-    buildTerrainPeakNodes(settings);
-    applyHeightfieldNoiseLayers(settings, [&](const char* status) {
-        advanceModuleProgress(GenerationModule::BaseTerrain, status);
-    });
-    removeSmallTerrainSpikes(settings, 1, 0.018f, 0.28f);
-    relaxExtremeTerrainSlopes(settings, 1, 0.042f, 0.16f);
     fixCubeFaceSeams();
-    advanceModuleProgress(GenerationModule::BaseTerrain, "Blending structural mountain fields");
-
-    removeSmallTerrainSpikes(settings, 1, 0.016f, 0.24f);
-    smoothSmallTerrainBumps(settings, 1, 0.08f);
-    relaxExtremeTerrainSlopes(settings, 1, 0.038f, 0.14f);
-    fixCubeFaceSeams();
-    advanceModuleProgress(GenerationModule::BaseTerrain, "Blending broad mountain seams");
+    advanceModuleProgress(GenerationModule::BaseTerrain, "Blending base terrain seams");
 
     computeWaterClimateFields(settings, [&](const char* status) {
         advanceModuleProgress(GenerationModule::InitialClimate, status);
@@ -824,31 +804,11 @@ void PlanetProceduralData::generate(const PlanetRenderSettings& settings,
     fixCubeFaceSeams();
     advanceModuleProgress(GenerationModule::InitialBiomes, "Blending initial biome seams");
 
-    refineTerrainFromBiomeWeights(settings, [&](const char* status) {
-        advanceModuleProgress(GenerationModule::BiomeTerrain, status);
-    });
-    removeSmallTerrainSpikes(settings, 1, 0.010f, 0.36f);
-    smoothSmallTerrainBumps(settings, 2, 0.22f);
-    relaxExtremeTerrainSlopes(settings, 1, 0.024f, 0.35f);
-    fixCubeFaceSeams();
-    advanceModuleProgress(GenerationModule::BiomeTerrain, "Blending biome-shaped terrain seams");
-
-    applyErosion(settings, advanceErosionProgress);
-    extractPrimaryRiver(settings, advanceErosionProgress);
-    removeSmallTerrainSpikes(settings, 1, 0.011f, 0.32f);
-    smoothSmallTerrainBumps(settings, 1, 0.18f);
-    relaxExtremeTerrainSlopes(settings, 2, 0.026f, 0.32f);
-    fixCubeFaceSeams();
-    advanceModuleProgress(GenerationModule::Erosion, "Blending primary river seams");
-
     computeWaterClimateFields(settings, [&](const char* status) {
         advanceModuleProgress(GenerationModule::FinalClimate, status);
     });
 
     fixCubeFaceSeams();
-    updateHydrologyMoisture(settings);
-    fixCubeFaceSeams();
-    advanceModuleProgress(GenerationModule::FinalClimate, "Updating moisture from rivers and coasts");
     advanceModuleProgress(GenerationModule::FinalClimate, "Blending final climate seams");
     computeBiomeWeights(settings, [&](const char* status) {
         advanceModuleProgress(GenerationModule::FinalBiomes, status);
@@ -914,8 +874,8 @@ void PlanetProceduralData::fixCubeFaceSeams()
     const int geometrySeamRings = 1;
     const int materialSeamRings = 1;
 
-    // 标量层接缝修复：把 face 边界和跨 face 邻居取平均。
-    // neighborCell 支持越界 UV 映射到相邻 face，因此这里不需要手写 12 条边关系。
+    // 閺嶅洭鍣虹仦鍌涘复缂傛繀鎱ㄦ径宥忕窗閹?face 鏉堝湱鏅崪宀冩硶 face 闁鐪抽崣鏍ч挬閸у洢鈧?
+    // neighborCell 閺€顖涘瘮鐡掑﹦鏅?UV 閺勭姴鐨犻崚鎵祲闁?face閿涘苯娲滃銈堢箹闁插奔绗夐棁鈧憰浣瑰閸?12 閺壜ょ珶閸忓磭閮撮妴?
     const auto reconcileField = [&](std::vector<float> FaceData::* field, int seamRings) {
         std::array<std::vector<float>, 6> updated;
         for (std::size_t faceIndex = 0; faceIndex < faces_.size(); ++faceIndex) {
@@ -950,7 +910,7 @@ void PlanetProceduralData::fixCubeFaceSeams()
             faces_[faceIndex].*field = std::move(updated[faceIndex]);
         }
     };
-    // vec4 层接缝修复，逻辑与标量层一致，用于 biome 权重。
+    // vec4 鐏炲倹甯寸紓婵呮叏婢跺稄绱濋柅鏄忕帆娑撳孩鐖ｉ柌蹇撶湴娑撯偓閼疯揪绱濋悽銊ょ艾 biome 閺夊啴鍣搁妴?
     const auto reconcileVec4Field = [&](std::vector<glm::vec4> FaceData::* field, int seamRings) {
         std::array<std::vector<glm::vec4>, 6> updated;
         for (std::size_t faceIndex = 0; faceIndex < faces_.size(); ++faceIndex) {
@@ -1345,7 +1305,10 @@ void PlanetProceduralData::buildTerrainChunks(const PlanetRenderSettings& settin
         const int vertexSide = kTerrainChunkMeshResolution + 1;
         chunk.vertices.reserve(static_cast<std::size_t>(vertexSide * vertexSide));
         chunk.indices.reserve(static_cast<std::size_t>(kTerrainChunkMeshResolution * kTerrainChunkMeshResolution * 6));
-        const bool useTinMesh = false;
+        const bool useTinMesh = maxHeight > settings.seaLevelOffset + settings.terrainHeightScale * 0.06f
+                             || featureMask > 0.26f
+                             || geometricError > 0.18f
+                             || meshDensity > 0.28f;
 
         const auto sampleFeatureWeight = [&](const glm::vec2& uv) {
             const float channel = sampleFaceLayerBilinear(face.channelMask, resolution_, uv);
@@ -1454,7 +1417,7 @@ void PlanetProceduralData::buildTerrainChunks(const PlanetRenderSettings& settin
         };
 
         std::vector<glm::vec2> localPoints;
-        localPoints.reserve(96);
+        localPoints.reserve(224);
         const auto addLocalPoint = [&](const glm::vec2& local) {
             const glm::vec2 clamped = glm::clamp(local, glm::vec2(0.0f), glm::vec2(1.0f));
             for (std::size_t i = 0; i < localPoints.size(); ++i) {
@@ -1473,7 +1436,7 @@ void PlanetProceduralData::buildTerrainChunks(const PlanetRenderSettings& settin
             int b = 0;
         };
         std::vector<ConstraintEdge> constraintEdges;
-        constraintEdges.reserve(32);
+        constraintEdges.reserve(96);
 
         for (int i = 0; i <= kTerrainChunkMeshResolution; ++i) {
             const float t = static_cast<float>(i) / static_cast<float>(kTerrainChunkMeshResolution);
@@ -1490,25 +1453,52 @@ void PlanetProceduralData::buildTerrainChunks(const PlanetRenderSettings& settin
         }
 
         if (useTinMesh) {
-            constexpr int kFeaturePointSamples = 6;
+            constexpr int kFeaturePointSamples = 10;
             for (int y = 0; y < kFeaturePointSamples; ++y) {
                 for (int x = 0; x < kFeaturePointSamples; ++x) {
                     const glm::vec2 local((static_cast<float>(x) + 0.5f) / static_cast<float>(kFeaturePointSamples),
                                           (static_cast<float>(y) + 0.5f) / static_cast<float>(kFeaturePointSamples));
                     const glm::vec2 uv = node.uvMin + local * node.uvSize;
+                    const float step = glm::max(1.0f / static_cast<float>(resolution_),
+                                                node.uvSize.x / static_cast<float>(kTerrainChunkMeshResolution * 2));
+                    const glm::vec2 uvL(glm::max(uv.x - step, 0.0f), uv.y);
+                    const glm::vec2 uvR(glm::min(uv.x + step, 1.0f), uv.y);
+                    const glm::vec2 uvD(uv.x, glm::max(uv.y - step, 0.0f));
+                    const glm::vec2 uvU(uv.x, glm::min(uv.y + step, 1.0f));
+                    const float centerHeight = sampleFaceLayerBilinear(face.height, resolution_, uv);
+                    const float dx = sampleFaceLayerBilinear(face.height, resolution_, uvR) - sampleFaceLayerBilinear(face.height, resolution_, uvL);
+                    const float dy = sampleFaceLayerBilinear(face.height, resolution_, uvU) - sampleFaceLayerBilinear(face.height, resolution_, uvD);
+                    const float dxx = sampleFaceLayerBilinear(face.height, resolution_, glm::clamp(uv + glm::vec2(step * 1.5f, 0.0f), glm::vec2(0.0f), glm::vec2(0.999999f)))
+                                    - 2.0f * centerHeight
+                                    + sampleFaceLayerBilinear(face.height, resolution_, glm::clamp(uv - glm::vec2(step * 1.5f, 0.0f), glm::vec2(0.0f), glm::vec2(0.999999f)));
+                    const float dyy = sampleFaceLayerBilinear(face.height, resolution_, glm::clamp(uv + glm::vec2(0.0f, step * 1.5f), glm::vec2(0.0f), glm::vec2(0.999999f)))
+                                    - 2.0f * centerHeight
+                                    + sampleFaceLayerBilinear(face.height, resolution_, glm::clamp(uv - glm::vec2(0.0f, step * 1.5f), glm::vec2(0.0f), glm::vec2(0.999999f)));
+                    const float slope = glm::clamp(std::sqrt(dx * dx + dy * dy) * 7.5f, 0.0f, 1.0f);
+                    const float curvature = glm::clamp(std::abs(dxx) + std::abs(dyy), 0.0f, 1.0f);
                     const float feature = sampleFeatureWeight(uv);
                     const float density = sampleFaceLayerBilinear(face.meshDensity, resolution_, uv);
                     const float error = sampleFaceLayerBilinear(face.geometricError, resolution_, uv);
-                    const float score = glm::clamp(feature * 0.72f + density * 0.34f + error * 0.018f, 0.0f, 1.0f);
-                    if (score < 0.46f) {
+                    const float complexity = glm::clamp(slope * 0.52f + curvature * 0.24f + feature * 0.20f + density * 0.16f + error * 0.05f, 0.0f, 1.0f);
+                    const float score = complexity;
+                    if (score < 0.34f) {
                         continue;
                     }
 
                     const float hash = glm::fract(std::sin(glm::dot(uv, glm::vec2(127.1f, 311.7f))) * 43758.5453f);
                     const float hashB = glm::fract(std::sin(glm::dot(uv, glm::vec2(269.5f, 183.3f))) * 24634.6345f);
                     const glm::vec2 jitter(hash - 0.5f, hashB - 0.5f);
-                    const float jitterScale = 0.22f / static_cast<float>(kFeaturePointSamples);
+                    const float jitterScale = 0.18f / static_cast<float>(kFeaturePointSamples);
                     addLocalPoint(glm::clamp(local + jitter * jitterScale, glm::vec2(0.02f), glm::vec2(0.98f)));
+
+                    if (complexity > 0.48f) {
+                        const glm::vec2 ridgeDir(dx, dy);
+                        const glm::vec2 ridgePerp = glm::length(ridgeDir) > 1.0e-5f
+                            ? glm::normalize(glm::vec2(-ridgeDir.y, ridgeDir.x))
+                            : glm::vec2(0.0f, 1.0f);
+                        addLocalPoint(glm::clamp(local + ridgePerp * 0.032f, glm::vec2(0.02f), glm::vec2(0.98f)));
+                        addLocalPoint(glm::clamp(local - ridgePerp * 0.032f, glm::vec2(0.02f), glm::vec2(0.98f)));
+                    }
                 }
             }
         }
@@ -1831,15 +1821,21 @@ void PlanetProceduralData::buildTerrainChunks(const PlanetRenderSettings& settin
         bool hasShore = false;
         sampleNodeStats(node, meshDensity, geometricError, featureMask, minHeight, maxHeight, hasWater, hasShore);
 
-        const float splitScore = meshDensity * 0.55f
-                               + geometricError * 1.35f
-                               + featureMask * 0.75f
-                               + (hasShore ? 0.35f : 0.0f);
+        const float mountainBoost = glm::smoothstep(0.18f, 0.60f, featureMask + meshDensity * 0.25f + geometricError * 0.18f);
+        const float splitScore = meshDensity * 0.50f
+                               + geometricError * 1.25f
+                               + featureMask * 0.65f
+                               + mountainBoost * 0.48f
+                               + (hasShore ? 0.28f : 0.0f);
         const float depthBias = static_cast<float>(node.depth) * 0.13f;
         const bool deepOcean = hasWater && !hasShore && maxHeight < settings.seaLevelOffset - 0.03f;
         const bool forceBase = node.depth < kTerrainChunkMinDepth;
-        const bool adaptiveSplit = !deepOcean && splitScore > (0.86f + depthBias);
-        if ((forceBase || adaptiveSplit) && node.depth < kTerrainChunkMaxDepth) {
+        const bool mountainTerrain = maxHeight > settings.seaLevelOffset + settings.terrainHeightScale * 0.06f
+                                   || featureMask > 0.42f
+                                   || meshDensity > 0.48f;
+        const bool adaptiveSplit = !deepOcean && splitScore > (0.74f + depthBias - mountainBoost * 0.18f);
+        const bool mountainSplit = mountainTerrain && node.depth < kTerrainChunkMaxDepth && splitScore > (0.52f + depthBias * 0.65f);
+        if ((forceBase || adaptiveSplit || mountainSplit) && node.depth < kTerrainChunkMaxDepth) {
             const glm::vec2 childSize = node.uvSize * 0.5f;
             for (int childY = 0; childY < 2; ++childY) {
                 for (int childX = 0; childX < 2; ++childX) {
@@ -1864,2650 +1860,53 @@ void PlanetProceduralData::buildTerrainChunks(const PlanetRenderSettings& settin
         advanceProgress("Building offline terrain chunks");
     }
 }
-
-void PlanetProceduralData::buildTerrainSkeletons(const PlanetRenderSettings& settings)
+float PlanetProceduralData::terrainHeight(const PlanetRenderSettings& settings, const glm::vec3& sphereDir)
 {
-    PROFILE_SCOPE("Build Terrain Skeletons");
-    terrainSkeletons_.clear();
-
-    const auto addSkeleton = [&](TerrainSkeletonType type,
-                                 int faceIndex,
-                                 const glm::vec2& uvA,
-                                 const glm::vec2& uvB,
-                                 float width,
-                                 float strength,
-                                 float falloff,
-                                 float variation = 0.0f) {
-        TerrainSkeletonSegment segment;
-        segment.type = type;
-        segment.faceIndex = faceIndex;
-        segment.uvA = glm::clamp(uvA, glm::vec2(0.02f), glm::vec2(0.98f));
-        segment.uvB = glm::clamp(uvB, glm::vec2(0.02f), glm::vec2(0.98f));
-        segment.sphereDirA = cubeSphereDirection(kFaces[static_cast<std::size_t>(faceIndex)], segment.uvA);
-        segment.sphereDirB = cubeSphereDirection(kFaces[static_cast<std::size_t>(faceIndex)], segment.uvB);
-        segment.width = glm::max(width, 0.001f);
-        segment.strength = strength;
-        segment.falloff = glm::max(falloff, 0.1f);
-        segment.variation = variation;
-        terrainSkeletons_.push_back(segment);
-    };
-
-    for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
-        const glm::vec3 seedOffset(
-            static_cast<float>(faceIndex) * 17.3f + 4.1f,
-            static_cast<float>(faceIndex) * 9.7f + 11.4f,
-            static_cast<float>(faceIndex) * 13.1f + 2.8f
-        );
-
-        for (int beltIndex = 0; beltIndex < 3; ++beltIndex) {
-            const float bandSeed = static_cast<float>(beltIndex);
-            const float n0 = fbm(seedOffset + glm::vec3(1.7f + bandSeed, 5.2f, 9.3f), 3, 2.0f, 0.5f) * 0.5f + 0.5f;
-            const float n1 = fbm(seedOffset + glm::vec3(7.4f, 2.6f + bandSeed, 3.8f), 3, 2.0f, 0.5f) * 0.5f + 0.5f;
-            const float n2 = fbm(seedOffset + glm::vec3(4.9f, 12.1f, 6.5f + bandSeed), 3, 2.0f, 0.5f) * 0.5f + 0.5f;
-            const float rangeType = fbm(seedOffset + glm::vec3(10.9f, 8.2f + bandSeed, 1.6f), 3, 2.0f, 0.5f) * 0.5f + 0.5f;
-            const bool broadMassif = rangeType > 0.58f;
-            const float angle = glm::mix(-0.95f, 0.95f, n0);
-            const glm::vec2 center(glm::mix(0.28f, 0.72f, n1), glm::mix(0.28f, 0.72f, n2));
-            const glm::vec2 axis = glm::normalize(glm::vec2(std::cos(angle), std::sin(angle)));
-            const glm::vec2 normal(-axis.y, axis.x);
-            const float halfLength = glm::mix(0.28f, 0.48f, n2);
-            const float width = glm::mix(broadMassif ? 0.185f : 0.145f, broadMassif ? 0.260f : 0.205f, n0);
-            const float strength = settings.mountainMaskStrength * glm::mix(broadMassif ? 0.092f : 0.105f, broadMassif ? 0.145f : 0.168f, n1);
-            const glm::vec2 bend = normal * glm::mix(-0.18f, 0.18f, fbm(seedOffset + glm::vec3(15.1f, 3.4f, bandSeed), 3, 2.0f, 0.5f) * 0.5f + 0.5f);
-            const glm::vec2 beltA = center - axis * halfLength;
-            const glm::vec2 beltB = center + axis * halfLength;
-            const glm::vec2 beltMid = center + bend;
-            const glm::vec2 beltA0 = glm::mix(beltA, beltMid, 0.52f);
-            const glm::vec2 beltB0 = glm::mix(beltMid, beltB, 0.52f);
-
-            addSkeleton(TerrainSkeletonType::Massif, faceIndex, beltMid - normal * width * 0.28f, beltMid + normal * width * 0.28f, width * (broadMassif ? 1.55f : 1.28f), strength * (broadMassif ? 0.82f : 0.62f), broadMassif ? 1.18f : 1.32f, rangeType);
-            addSkeleton(TerrainSkeletonType::MountainBelt, faceIndex, beltA, beltA0, width, strength * 0.78f, 1.12f, rangeType);
-            addSkeleton(TerrainSkeletonType::MountainBelt, faceIndex, beltA0, beltB0, width * 1.16f, strength * 0.92f, 1.05f, rangeType);
-            addSkeleton(TerrainSkeletonType::MountainBelt, faceIndex, beltB0, beltB, width, strength * 0.78f, 1.12f, rangeType);
-            if (!broadMassif) {
-                addSkeleton(TerrainSkeletonType::Ridge, faceIndex, beltA + normal * width * 0.12f, beltMid + normal * width * 0.22f, width * 0.34f, strength * 0.46f, 1.75f, rangeType);
-                addSkeleton(TerrainSkeletonType::Ridge, faceIndex, beltMid + normal * width * 0.22f, beltB + normal * width * 0.10f, width * 0.34f, strength * 0.46f, 1.75f, rangeType);
-            }
-            addSkeleton(TerrainSkeletonType::Valley, faceIndex, beltA0 - normal * width * 0.82f, beltMid - normal * width * 0.48f, width * 0.58f, strength * 0.24f, 1.28f, rangeType);
-            addSkeleton(TerrainSkeletonType::Valley, faceIndex, beltMid + normal * width * 0.50f, beltB0 + normal * width * 0.86f, width * 0.58f, strength * 0.22f, 1.28f, rangeType);
-
-            const glm::vec2 branchAnchor = glm::mix(beltA0, beltB0, glm::mix(0.28f, 0.72f, n0));
-            const glm::vec2 branchDir = glm::normalize(axis * glm::mix(-0.35f, 0.35f, n1) + normal * (n2 > 0.5f ? 1.0f : -1.0f));
-            addSkeleton(TerrainSkeletonType::Ridge,
-                        faceIndex,
-                        branchAnchor,
-                        branchAnchor + branchDir * halfLength * 0.42f,
-                        width * (broadMassif ? 0.30f : 0.25f),
-                        strength * (broadMassif ? 0.22f : 0.32f),
-                        broadMassif ? 1.45f : 1.65f,
-                        rangeType);
-            addSkeleton(TerrainSkeletonType::Valley,
-                        faceIndex,
-                        branchAnchor - branchDir * halfLength * 0.10f,
-                        branchAnchor - branchDir * halfLength * 0.36f + normal * width * (n2 > 0.5f ? -0.45f : 0.45f),
-                        width * 0.46f,
-                        strength * 0.16f,
-                        1.20f,
-                        rangeType);
-        }
-    }
+    return PlanetTerrainGenerator::terrainHeight(settings, sphereDir);
 }
 
-void PlanetProceduralData::buildTerrainPeakNodes(const PlanetRenderSettings& settings)
+PlanetProceduralData::PlanetSample PlanetProceduralData::samplePlanetBase(const PlanetRenderSettings& settings,
+                                                                          const glm::vec3& sphereDir)
 {
-    PROFILE_SCOPE("Build Terrain Peak Nodes");
-    terrainPeakNodes_.clear();
-    terrainNodes_.clear();
-    if (terrainSkeletons_.empty()) {
-        return;
-    }
-
-    const auto addMesaNode = [&](TerrainPeakType type,
-                                 int faceIndex,
-                                 const glm::vec2& uv,
-                                 float radius,
-                                 float height,
-                                 float sharpness,
-                                 float variation) {
-        TerrainPeakNode node;
-        node.type = type;
-        node.faceIndex = faceIndex;
-        node.uv = glm::clamp(uv, glm::vec2(0.02f), glm::vec2(0.98f));
-        node.sphereDir = cubeSphereDirection(kFaces[static_cast<std::size_t>(faceIndex)], node.uv);
-        node.radius = glm::max(radius, 0.001f);
-        node.height = height;
-        node.sharpness = glm::max(sharpness, 0.1f);
-        node.variation = variation;
-        terrainPeakNodes_.push_back(node);
-
-        TerrainNode terrainNode;
-        terrainNode.type = type == TerrainPeakType::Volcanic ? TerrainNodeType::Volcano : TerrainNodeType::Mesa;
-        terrainNode.faceIndex = node.faceIndex;
-        terrainNode.uv = node.uv;
-        terrainNode.sphereDir = node.sphereDir;
-        const float shapeNoise = perlinNoise(glm::vec3(
-            variation * 17.3f + static_cast<float>(faceIndex) * 2.1f,
-            uv.x * 11.7f,
-            uv.y * 13.9f
-        )) * 0.5f + 0.5f;
-        if (terrainNode.type == TerrainNodeType::Volcano) {
-            terrainNode.radius = node.radius * glm::mix(0.92f, 1.22f, shapeNoise);
-            terrainNode.height = node.height * glm::mix(0.54f, 0.74f, variation);
-            terrainNode.topRadius = glm::mix(0.16f, 0.26f, shapeNoise);
-            terrainNode.cliffRadius = glm::mix(0.58f, 0.74f, variation);
-            terrainNode.erosion = glm::mix(0.20f, 0.38f, shapeNoise);
-        } else {
-            terrainNode.radius = node.radius * glm::mix(0.46f, 0.62f, shapeNoise);
-            terrainNode.height = node.height * glm::mix(0.76f, 0.95f, variation);
-            terrainNode.topRadius = glm::mix(0.22f, 0.40f, shapeNoise);
-            terrainNode.cliffRadius = terrainNode.topRadius + glm::mix(0.24f, 0.42f, variation);
-            terrainNode.erosion = glm::mix(0.05f, 0.16f, shapeNoise);
-        }
-        terrainNode.variation = variation;
-        terrainNode.orientation = perlinNoise(glm::vec3(
-            uv.x * 5.9f + variation * 8.7f,
-            uv.y * 6.3f,
-            static_cast<float>(faceIndex) * 4.2f
-        )) * 3.14159265f;
-        terrainNode.aspectRatio = glm::mix(1.20f, 2.20f, perlinNoise(glm::vec3(
-            variation * 11.1f,
-            uv.x * 9.4f,
-            uv.y * 7.6f + static_cast<float>(faceIndex)
-        )) * 0.5f + 0.5f);
-        if (terrainNode.type == TerrainNodeType::Mesa) {
-            const float clusterStyle = glm::smoothstep(0.74f, 0.96f, shapeNoise);
-            terrainNode.lobeSpread = glm::mix(glm::mix(0.10f, 0.24f, shapeNoise), glm::mix(0.18f, 0.34f, shapeNoise), clusterStyle);
-            terrainNode.lobeStrength = glm::mix(glm::mix(0.14f, 0.26f, variation), glm::mix(0.22f, 0.38f, variation), clusterStyle);
-            terrainNode.edgeRoughness = glm::mix(glm::mix(0.14f, 0.26f, shapeNoise), glm::mix(0.18f, 0.30f, shapeNoise), clusterStyle);
-        } else {
-            terrainNode.lobeSpread = glm::mix(0.18f, 0.40f, shapeNoise);
-            terrainNode.lobeStrength = glm::mix(0.22f, 0.48f, variation);
-            terrainNode.edgeRoughness = glm::mix(0.12f, 0.28f, shapeNoise);
-        }
-        terrainNodes_.push_back(terrainNode);
-    };
-
-    std::vector<int> claimedVolcanicRegionKeys;
-    claimedVolcanicRegionKeys.reserve(16);
-    const auto volcanicRegionKey = [&](int faceIndex, const glm::vec2& uv, const glm::vec3& sphereDir) {
-        const int regionX = glm::clamp(static_cast<int>(std::floor(uv.x * 3.0f)), 0, 2);
-        const int regionY = glm::clamp(static_cast<int>(std::floor(uv.y * 3.0f)), 0, 2);
-        const float provinceNoise = perlinNoise(sphereDir * 1.18f + glm::vec3(17.4f, 6.2f, 29.8f)) * 0.5f + 0.5f;
-        const int provinceBand = glm::clamp(static_cast<int>(std::floor(provinceNoise * 3.0f)), 0, 2);
-        return faceIndex * 100 + regionY * 30 + regionX * 10 + provinceBand;
-    };
-    const auto tryClaimVolcanicRegion = [&](int faceIndex, const glm::vec2& uv, const glm::vec3& sphereDir) {
-        const int key = volcanicRegionKey(faceIndex, uv, sphereDir);
-        if (std::find(claimedVolcanicRegionKeys.begin(), claimedVolcanicRegionKeys.end(), key) != claimedVolcanicRegionKeys.end()) {
-            return false;
-        }
-        claimedVolcanicRegionKeys.push_back(key);
-        return true;
-    };
-
-    for (const TerrainSkeletonSegment& skeleton : terrainSkeletons_) {
-        if (skeleton.type == TerrainSkeletonType::Ridge) {
-            const glm::vec2 segment = skeleton.uvB - skeleton.uvA;
-            const float length = glm::length(segment);
-            if (length <= 0.001f) {
-                continue;
-            }
-
-            const glm::vec2 uv = glm::clamp(glm::mix(skeleton.uvA, skeleton.uvB, 0.5f), glm::vec2(0.02f), glm::vec2(0.98f));
-            const glm::vec3 candidateDir = cubeSphereDirection(kFaces[static_cast<std::size_t>(skeleton.faceIndex)], uv);
-            const PlanetSample baseSample = samplePlanetBase(settings, candidateDir);
-            const float relativeLandHeight = baseSample.height - settings.seaLevelOffset;
-            if (relativeLandHeight < 0.035f || baseSample.shoreMask > 0.58f) {
-                continue;
-            }
-
-            TerrainNode ridgeNode;
-            ridgeNode.type = TerrainNodeType::RidgeChain;
-            ridgeNode.faceIndex = skeleton.faceIndex;
-            ridgeNode.uv = uv;
-            ridgeNode.sphereDir = candidateDir;
-            ridgeNode.radius = glm::max(skeleton.width * 1.85f, 0.018f);
-            ridgeNode.height = skeleton.strength * glm::mix(0.68f, 1.02f, skeleton.variation);
-            ridgeNode.erosion = glm::mix(0.30f, 0.52f, skeleton.variation);
-            ridgeNode.variation = skeleton.variation;
-            ridgeNode.orientation = std::atan2(segment.y, segment.x);
-            ridgeNode.aspectRatio = glm::clamp(length / glm::max(skeleton.width * 2.10f, 0.001f), 1.75f, 4.80f);
-            ridgeNode.edgeRoughness = glm::mix(0.18f, 0.34f, skeleton.variation);
-            terrainNodes_.push_back(ridgeNode);
-            continue;
-        }
-
-        if (skeleton.type == TerrainSkeletonType::Valley || skeleton.type == TerrainSkeletonType::Ridge) {
-            continue;
-        }
-
-        const glm::vec2 segment = skeleton.uvB - skeleton.uvA;
-        const float length = glm::length(segment);
-        if (length <= 0.001f) {
-            continue;
-        }
-
-        const int peakCount = 1;
-        for (int i = 0; i < peakCount; ++i) {
-            const float tBase = (static_cast<float>(i) + 0.5f) / static_cast<float>(peakCount);
-            const float tNoise = perlinNoise(glm::vec3(
-                skeleton.variation * 7.1f + static_cast<float>(i) * 2.3f,
-                static_cast<float>(skeleton.faceIndex) * 3.7f,
-                length * 11.4f
-            )) * 0.5f + 0.5f;
-            const float t = glm::clamp(tBase + (tNoise - 0.5f) * 0.18f, 0.08f, 0.92f);
-            const glm::vec2 axis = glm::normalize(segment);
-            const glm::vec2 normal(-axis.y, axis.x);
-            const float sideNoise = perlinNoise(glm::vec3(
-                skeleton.variation * 5.3f,
-                static_cast<float>(i) * 4.9f,
-                static_cast<float>(skeleton.faceIndex) * 2.8f
-            ));
-            const glm::vec2 uv = glm::mix(skeleton.uvA, skeleton.uvB, t) + normal * skeleton.width * sideNoise * 0.24f;
-            const float sizeNoise = perlinNoise(glm::vec3(
-                skeleton.variation * 8.6f + static_cast<float>(i),
-                13.2f,
-                static_cast<float>(skeleton.faceIndex) * 4.1f
-            )) * 0.5f + 0.5f;
-            const glm::vec3 candidateDir = cubeSphereDirection(
-                kFaces[static_cast<std::size_t>(skeleton.faceIndex)],
-                glm::clamp(uv, glm::vec2(0.02f), glm::vec2(0.98f))
-            );
-            const PlanetSample baseSample = samplePlanetBase(settings, candidateDir);
-            const float relativeLandHeight = baseSample.height - settings.seaLevelOffset;
-            const float lowIslandLand = glm::smoothstep(-0.010f, 0.045f, relativeLandHeight)
-                                      * (1.0f - glm::smoothstep(0.060f, 0.220f, relativeLandHeight));
-            const float islandVolcanoBias = glm::clamp(glm::max(baseSample.shoreMask, lowIslandLand), 0.0f, 1.0f);
-            const float volcanoNoise = perlinNoise(glm::vec3(
-                skeleton.variation * 17.6f + static_cast<float>(i) * 5.1f,
-                uv.x * 10.4f + static_cast<float>(skeleton.faceIndex),
-                uv.y * 12.8f
-            )) * 0.5f + 0.5f;
-            const float volcanoThreshold = glm::mix(0.82f, 0.70f, islandVolcanoBias);
-            bool volcanic =
-                skeleton.type == TerrainSkeletonType::Massif && volcanoNoise > volcanoThreshold;
-            if (volcanic && !tryClaimVolcanicRegion(skeleton.faceIndex, uv, candidateDir)) {
-                volcanic = false;
-            }
-            const float coastalMesaReject = baseSample.shoreMask
-                * (1.0f - glm::smoothstep(0.035f, 0.120f, relativeLandHeight));
-            if (!volcanic && coastalMesaReject > 0.38f) {
-                continue;
-            }
-            const TerrainPeakType type = volcanic
-                ? TerrainPeakType::Volcanic
-                : (skeleton.type == TerrainSkeletonType::Ridge ? TerrainPeakType::RidgePeak : TerrainPeakType::Massif);
-            const float radiusScale = type == TerrainPeakType::Massif ? 0.62f : (type == TerrainPeakType::RidgePeak ? 0.38f : 0.48f);
-            const float heightScale = type == TerrainPeakType::Volcanic ? 1.08f : (type == TerrainPeakType::RidgePeak ? 0.82f : 0.96f);
-            const float baseRadius = skeleton.width * glm::mix(radiusScale * 0.78f, radiusScale * 1.28f, sizeNoise);
-            const float clusterNoise = perlinNoise(glm::vec3(
-                skeleton.variation * 14.2f + static_cast<float>(i) * 3.7f,
-                static_cast<float>(skeleton.faceIndex) * 8.8f,
-                length * 5.6f
-            )) * 0.5f + 0.5f;
-            const int satelliteCount = volcanic ? 0 : (clusterNoise > 0.94f ? 2 : (clusterNoise > 0.64f ? 1 : 0));
-            const float mesaClusterHeightScale = glm::mix(0.54f, 0.75f, static_cast<float>(satelliteCount) / 2.0f) * 0.60f;
-            const float flatTopHeightScale = type == TerrainPeakType::Volcanic ? 1.0f : mesaClusterHeightScale;
-            const float baseHeight = settings.mountainMaskStrength
-                * glm::mix(0.150f, 0.255f, sizeNoise)
-                * heightScale
-                * flatTopHeightScale;
-            addMesaNode(
-                type,
-                skeleton.faceIndex,
-                uv,
-                baseRadius,
-                baseHeight,
-                type == TerrainPeakType::Massif ? 0.92f : (type == TerrainPeakType::RidgePeak ? 1.25f : 1.10f),
-                sizeNoise
-            );
-
-            for (int satellite = 0; satellite < satelliteCount; ++satellite) {
-                const float satelliteSeed = skeleton.variation * 21.4f
-                    + static_cast<float>(satellite) * 6.7f
-                    + static_cast<float>(skeleton.faceIndex) * 2.9f;
-                const float offsetAlongNoise = perlinNoise(glm::vec3(satelliteSeed, 4.2f, length * 9.1f));
-                const float offsetSideNoise = perlinNoise(glm::vec3(8.3f, satelliteSeed, length * 6.4f));
-                const float offsetAlong = baseRadius * glm::mix(0.12f, 0.30f, std::abs(offsetAlongNoise))
-                    * (offsetAlongNoise >= 0.0f ? 1.0f : -1.0f);
-                const float offsetSide = baseRadius * glm::mix(0.035f, 0.13f, std::abs(offsetSideNoise))
-                    * (offsetSideNoise >= 0.0f ? 1.0f : -1.0f);
-                const glm::vec2 satelliteUv = uv + axis * offsetAlong + normal * offsetSide;
-                const float satelliteSizeNoise = perlinNoise(glm::vec3(satelliteSeed, uv.x * 7.3f, uv.y * 9.5f)) * 0.5f + 0.5f;
-                addMesaNode(
-                    type,
-                    skeleton.faceIndex,
-                    satelliteUv,
-                    baseRadius * glm::mix(0.46f, 0.70f, satelliteSizeNoise),
-                    baseHeight * glm::mix(0.46f, 0.68f, satelliteSizeNoise),
-                    type == TerrainPeakType::Massif ? 0.74f : (type == TerrainPeakType::RidgePeak ? 1.02f : 0.92f),
-                    glm::fract(sizeNoise + satelliteSizeNoise * 0.73f + static_cast<float>(satellite) * 0.19f)
-                );
-            }
-        }
-    }
-
-    struct IslandVolcanoCandidate {
-        int faceIndex = 0;
-        glm::vec2 uv{0.0f, 0.0f};
-        glm::vec3 sphereDir{0.0f, 1.0f, 0.0f};
-        float score = 0.0f;
-        float volcanoNoise = 0.0f;
-        float radiusNoise = 0.0f;
-    };
-    std::vector<IslandVolcanoCandidate> islandVolcanoCandidates;
-    for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
-        for (int y = 0; y < 18; ++y) {
-            for (int x = 0; x < 18; ++x) {
-                const glm::vec2 uv(
-                    (static_cast<float>(x) + 0.5f) / 18.0f,
-                    (static_cast<float>(y) + 0.5f) / 18.0f
-                );
-                const glm::vec3 candidateDir = cubeSphereDirection(kFaces[static_cast<std::size_t>(faceIndex)], uv);
-                const PlanetSample baseSample = samplePlanetBase(settings, candidateDir);
-                const float relativeLandHeight = baseSample.height - settings.seaLevelOffset;
-                const float shallowIslandBase = glm::smoothstep(-0.045f, 0.020f, relativeLandHeight)
-                                              * (1.0f - glm::smoothstep(0.055f, 0.170f, relativeLandHeight));
-                const float nearSeaBand = 1.0f - glm::smoothstep(0.035f, 0.145f, std::abs(relativeLandHeight));
-                const float attemptSeed = static_cast<float>(faceIndex) * 17.0f
-                    + static_cast<float>(x) * 2.1f
-                    + static_cast<float>(y) * 3.7f;
-                const float volcanoNoise = perlinNoise(glm::vec3(
-                    attemptSeed,
-                    uv.x * 12.9f,
-                    uv.y * 15.4f
-                )) * 0.5f + 0.5f;
-                const float islandScore = shallowIslandBase
-                    * glm::mix(0.35f, 1.0f, glm::max(baseSample.shoreMask, nearSeaBand))
-                    * glm::mix(0.72f, 1.15f, volcanoNoise);
-                if (islandScore < 0.040f) {
-                    continue;
-                }
-
-                IslandVolcanoCandidate candidate;
-                candidate.faceIndex = faceIndex;
-                candidate.uv = uv;
-                candidate.sphereDir = candidateDir;
-                candidate.score = islandScore;
-                candidate.volcanoNoise = volcanoNoise;
-                candidate.radiusNoise = perlinNoise(glm::vec3(attemptSeed, 21.6f, 7.2f)) * 0.5f + 0.5f;
-                islandVolcanoCandidates.push_back(candidate);
-            }
-        }
-    }
-    std::sort(
-        islandVolcanoCandidates.begin(),
-        islandVolcanoCandidates.end(),
-        [](const IslandVolcanoCandidate& a, const IslandVolcanoCandidate& b) {
-            return a.score > b.score;
-        }
-    );
-    std::vector<glm::vec3> selectedIslandVolcanoDirs;
-    selectedIslandVolcanoDirs.reserve(3);
-    for (const TerrainNode& node : terrainNodes_) {
-        if (node.type == TerrainNodeType::Volcano) {
-            selectedIslandVolcanoDirs.push_back(node.sphereDir);
-        }
-    }
-    constexpr float kMinIslandVolcanoAngularDistance = 0.34f;
-    int islandVolcanoCount = 0;
-    for (const IslandVolcanoCandidate& candidate : islandVolcanoCandidates) {
-        bool tooClose = false;
-        for (const glm::vec3& existingDir : selectedIslandVolcanoDirs) {
-            const float angularDistance = std::acos(glm::clamp(glm::dot(candidate.sphereDir, existingDir), -1.0f, 1.0f));
-            if (angularDistance < kMinIslandVolcanoAngularDistance) {
-                tooClose = true;
-                break;
-            }
-        }
-        if (tooClose) {
-            continue;
-        }
-        if (!tryClaimVolcanicRegion(candidate.faceIndex, candidate.uv, candidate.sphereDir)) {
-            continue;
-        }
-        addMesaNode(
-            TerrainPeakType::Volcanic,
-            candidate.faceIndex,
-            candidate.uv,
-            glm::mix(0.088f, 0.145f, candidate.radiusNoise),
-            settings.mountainMaskStrength * glm::mix(0.070f, 0.118f, candidate.volcanoNoise),
-            1.08f,
-            glm::fract(candidate.volcanoNoise + candidate.radiusNoise * 0.37f)
-        );
-        selectedIslandVolcanoDirs.push_back(candidate.sphereDir);
-        ++islandVolcanoCount;
-        if (islandVolcanoCount >= 3) {
-            break;
-        }
-    }
+    return samplePlanetBase(settings, sphereDir, terrainHeight(settings, glm::normalize(sphereDir)));
 }
 
-void PlanetProceduralData::applyTerrainSkeletons(const PlanetRenderSettings& settings,
-                                                 const std::function<void(const char*)>& advanceProgress)
+PlanetProceduralData::PlanetSample PlanetProceduralData::samplePlanetBase(const PlanetRenderSettings& settings,
+                                                                          const glm::vec3& sphereDir,
+                                                                          float height)
 {
-    PROFILE_SCOPE("Apply Terrain Skeletons");
-    if (terrainSkeletons_.empty() || resolution_ <= 1) {
-        return;
-    }
+    // 閸╄櫣顢呴柌鍥ㄧ壉閸欘亙绶风挧鏍х秼閸撳秹鐝惔锕€鎷伴悶鍐桨閺傜懓鎮滈敍灞肩返婢舵俺鐤嗛悽鐔稿灇闂冭埖顔岄柌宥咁槻娴ｈ法鏁ら妴?
+    const glm::vec3 n = glm::normalize(sphereDir);
+    PlanetSample sample;
+    sample.height = height;
 
-    for (std::size_t faceIndex = 0; faceIndex < faces_.size(); ++faceIndex) {
-        FaceData& faceData = faces_[faceIndex];
-        for (int y = 0; y < resolution_; ++y) {
-            for (int x = 0; x < resolution_; ++x) {
-                const glm::vec2 uv(
-                    (static_cast<float>(x) + 0.5f) / static_cast<float>(resolution_),
-                    (static_cast<float>(y) + 0.5f) / static_cast<float>(resolution_)
-                );
-                const glm::vec3 sphereDir = cubeSphereDirection(kFaces[faceIndex], uv);
-                const std::size_t index = static_cast<std::size_t>(y * resolution_ + x);
-                float height = faceData.height[index];
-                const float landMask = glm::smoothstep(settings.seaLevelOffset - 0.08f, settings.seaLevelOffset + 0.10f, height);
+    const float signedWaterDepth = (settings.seaLevelOffset - height) * settings.terrainHeightScale;
+    sample.waterDepth = std::max(signedWaterDepth, 0.0f);
 
-                for (const TerrainSkeletonSegment& skeleton : terrainSkeletons_) {
-                    if (skeleton.faceIndex != static_cast<int>(faceIndex)) {
-                        continue;
-                    }
-
-                    float along = 0.0f;
-                    const float distance = distanceToSegmentOnSphere(sphereDir, skeleton.sphereDirA, skeleton.sphereDirB, along);
-                    const float angularWidth = glm::max(skeleton.width * 1.57079637f, 0.001f);
-                    const float normalizedDistance = distance / angularWidth;
-                    if (normalizedDistance >= 1.0f) {
-                        continue;
-                    }
-
-                    const float axialFade = glm::smoothstep(0.0f, 0.22f, along) * (1.0f - glm::smoothstep(0.78f, 1.0f, along));
-                    const float radialFalloff = std::exp(-normalizedDistance * normalizedDistance * 2.85f);
-                    const float softEdge = 1.0f - glm::smoothstep(0.68f, 1.0f, normalizedDistance);
-                    const float lateral = std::pow(glm::clamp(radialFalloff * softEdge, 0.0f, 1.0f), skeleton.falloff);
-                    const float lowDetail = perlinNoise(sphereDir * 3.2f + glm::vec3(12.5f, 4.7f, 21.6f)) * 0.5f + 0.5f;
-                    const float slopeDetail = perlinNoise(sphereDir * 5.6f + glm::vec3(2.6f, 18.4f, 7.2f)) * 0.5f + 0.5f;
-                    const float terraceNoise = perlinNoise(sphereDir * 7.5f + glm::vec3(8.8f, 3.1f, 14.6f));
-                    const float structuralNoise = glm::mix(lowDetail, slopeDetail, glm::smoothstep(0.0f, 0.58f, 1.0f - skeleton.variation));
-                    const float influence = lateral * axialFade * landMask;
-                    const float slopeBand = glm::smoothstep(0.18f, 0.42f, normalizedDistance)
-                                          * (1.0f - glm::smoothstep(0.72f, 0.98f, normalizedDistance));
-
-                    switch (skeleton.type) {
-                    case TerrainSkeletonType::Massif: {
-                        const float dome = std::exp(-normalizedDistance * normalizedDistance * glm::mix(1.65f, 2.55f, 1.0f - skeleton.variation));
-                        const float uplift = skeleton.strength * influence * (0.18f + lowDetail * 0.025f) * dome;
-                        height += uplift;
-                        height += skeleton.strength * influence * slopeBand * terraceNoise * 0.0015f;
-                        break;
-                    }
-                    case TerrainSkeletonType::MountainBelt: {
-                        const float flank = std::exp(-normalizedDistance * normalizedDistance * 2.05f);
-                        const float uplift = skeleton.strength * influence * (0.16f + structuralNoise * 0.025f) * flank;
-                        height += uplift;
-                        height += skeleton.strength * influence * slopeBand * terraceNoise * 0.0012f;
-                        break;
-                    }
-                    case TerrainSkeletonType::Ridge: {
-                        const float ridgeCore = std::pow(glm::max(1.0f - normalizedDistance, 0.0f), 1.75f);
-                        height += skeleton.strength * influence * (0.20f + structuralNoise * 0.025f) * ridgeCore;
-                        break;
-                    }
-                    case TerrainSkeletonType::Valley: {
-                        const float valleyCore = std::pow(glm::max(1.0f - normalizedDistance, 0.0f), 1.12f);
-                        const float valleyFloor = 1.0f - glm::smoothstep(0.0f, 0.42f, normalizedDistance);
-                        height -= skeleton.strength * influence * (0.18f + structuralNoise * 0.020f) * valleyCore;
-                        height = glm::mix(height, height - skeleton.strength * 0.035f * influence, valleyFloor * 0.22f);
-                        faceData.flowMask[index] = glm::max(faceData.flowMask[index], influence * 0.55f);
-                        faceData.erosionMask[index] = glm::max(faceData.erosionMask[index], influence * 0.35f);
-                        break;
-                    }
-                    }
-                }
-
-                faceData.height[index] = height;
-            }
-            if (advanceProgress) {
-                advanceProgress("Applying terrain skeleton shaping");
-            }
-        }
-    }
+    const float shoreWidth = std::max(settings.oceanShoreBlendWidth, 0.001f);
+    sample.shoreMask = 1.0f - glm::smoothstep(0.0f, shoreWidth, std::abs(signedWaterDepth));
+    sample.temperature = temperature(settings, n, height);
+    sample.moisture = moisture(n, sample.shoreMask);
+    return sample;
 }
 
-PlanetProceduralData::TerrainNodeResult PlanetProceduralData::applyTerrainNode(const TerrainNode& node,
-                                                                               const glm::vec3& sphereDir)
+float PlanetProceduralData::temperature(const PlanetRenderSettings& settings, const glm::vec3& sphereDir, float height)
 {
-    switch (node.type) {
-    case TerrainNodeType::Mesa:
-        return applyMesaNode(node, sphereDir);
-    case TerrainNodeType::Volcano:
-        return applyVolcanoNode(node, sphereDir);
-    case TerrainNodeType::RidgeChain:
-        return applyRidgeChainNode(node, sphereDir);
-    case TerrainNodeType::Massif:
-    case TerrainNodeType::Hill:
-    default:
-        return TerrainNodeResult{};
-    }
+    // 濞撯晛瀹?= 缁绢剙瀹虫稉璇差嚤 + 濞撮攱瀚堥梽宥嗕刊 + 鐏忔垿鍣?fBM 閹垫澘濮╅妴?
+    const float latitude01 = std::abs(sphereDir.y);
+    const float latitudeTemperature = 1.0f - latitude01;
+    const float heightCooling = std::max(height - settings.seaLevelOffset, 0.0f) * 0.35f;
+    const float temperatureNoise = fbm(sphereDir * 3.0f + glm::vec3(8.1f, 2.7f, 5.4f), 4, 2.0f, 0.5f) * 0.12f;
+    return glm::clamp(latitudeTemperature - heightCooling + temperatureNoise, 0.0f, 1.0f);
 }
 
-PlanetProceduralData::TerrainNodeResult PlanetProceduralData::applyMesaNode(const TerrainNode& node,
-                                                                            const glm::vec3& sphereDir)
+float PlanetProceduralData::moisture(const glm::vec3& sphereDir, float shoreMask)
 {
-    TerrainNodeResult result;
-    if (node.type != TerrainNodeType::Mesa) {
-        return result;
-    }
-
-    const float angularDistance = std::acos(glm::clamp(glm::dot(sphereDir, node.sphereDir), -1.0f, 1.0f));
-    const float angularRadius = glm::max(node.radius * 1.57079637f, 0.001f);
-    const float radialD = angularDistance / angularRadius;
-    if (radialD >= 1.46f) {
-        return result;
-    }
-
-    const glm::vec3 referenceUp = std::abs(node.sphereDir.y) > 0.92f
-        ? glm::vec3(1.0f, 0.0f, 0.0f)
-        : glm::vec3(0.0f, 1.0f, 0.0f);
-    const glm::vec3 tangentU = glm::normalize(glm::cross(referenceUp, node.sphereDir));
-    const glm::vec3 tangentV = glm::normalize(glm::cross(node.sphereDir, tangentU));
-    const glm::vec3 tangentDelta = sphereDir - node.sphereDir * glm::dot(sphereDir, node.sphereDir);
-    const glm::vec2 localPoint(
-        glm::dot(tangentDelta, tangentU) / angularRadius,
-        glm::dot(tangentDelta, tangentV) / angularRadius
-    );
-    const float orientation = node.orientation;
-    const float sinO = std::sin(orientation);
-    const float cosO = std::cos(orientation);
-    const glm::vec2 p(
-        localPoint.x * cosO + localPoint.y * sinO,
-        -localPoint.x * sinO + localPoint.y * cosO
-    );
-    const float aspect = glm::clamp(node.aspectRatio, 0.72f, 2.55f);
-    const float baseD = glm::length(glm::vec2(p.x / aspect, p.y * aspect));
-    float shapeD = baseD;
-    float lobeMask = 0.0f;
-    for (int lobe = 0; lobe < 3; ++lobe) {
-        const float lobeSeed = node.variation * 19.7f + static_cast<float>(lobe) * 5.3f;
-        const float lobeAngle = lobeSeed
-            + perlinNoise(glm::vec3(lobeSeed, node.variation * 3.1f, 4.7f)) * 1.35f;
-        const float lobeDistance = node.lobeSpread * glm::mix(
-            0.62f,
-            1.16f,
-            perlinNoise(glm::vec3(lobeSeed, 8.1f, node.variation * 6.4f)) * 0.5f + 0.5f
-        );
-        const glm::vec2 lobeCenter(std::cos(lobeAngle) * lobeDistance, std::sin(lobeAngle) * lobeDistance);
-        const float lobeAspect = glm::mix(0.78f, 1.36f, perlinNoise(glm::vec3(3.4f, lobeSeed, 17.2f)) * 0.5f + 0.5f);
-        const float lobeRadius = glm::mix(0.50f, 0.78f, perlinNoise(glm::vec3(9.2f, 12.5f, lobeSeed)) * 0.5f + 0.5f);
-        const glm::vec2 lobeP = p - lobeCenter;
-        const float lobeD = glm::length(glm::vec2(lobeP.x / lobeAspect, lobeP.y * lobeAspect)) / lobeRadius;
-        const float lobeInfluence = (1.0f - glm::smoothstep(0.32f, 1.14f, lobeD)) * node.lobeStrength;
-        shapeD = glm::mix(shapeD, glm::min(shapeD, lobeD), lobeInfluence);
-        lobeMask = glm::max(lobeMask, lobeInfluence);
-    }
-    const float angle = std::atan2(p.y, p.x);
-    const float edgeNoiseA = perlinNoise(glm::vec3(
-        std::cos(angle) * 1.8f + node.variation * 7.1f,
-        std::sin(angle) * 1.8f + node.variation * 3.7f,
-        11.3f
-    ));
-    const float edgeNoiseB = perlinNoise(glm::vec3(
-        std::cos(angle * 2.7f + node.variation) * 2.6f + node.variation * 5.3f,
-        std::sin(angle * 2.7f + node.variation) * 2.6f + node.variation * 8.1f,
-        19.7f
-    ));
-    const float edgeNoiseC = perlinNoise(glm::vec3(
-        std::cos(angle * 5.1f - node.variation) * 3.4f + node.variation * 11.6f,
-        std::sin(angle * 5.1f - node.variation) * 3.4f + node.variation * 2.9f,
-        31.2f
-    ));
-    const float edgeNoise = glm::clamp(edgeNoiseA * 0.62f + edgeNoiseB * 0.28f + edgeNoiseC * 0.10f, -1.0f, 1.0f);
-    const float bodyNoise = glm::clamp(edgeNoiseA * 0.74f + edgeNoiseB * 0.26f, -1.0f, 1.0f);
-    const float bodyInfluence = glm::smoothstep(0.18f, 0.86f, shapeD);
-    const float blockAxis = glm::dot(
-        glm::normalize(glm::vec2(std::cos(node.variation * 6.2831853f + 1.7f),
-                                 std::sin(node.variation * 6.2831853f + 1.7f))),
-        p
-    );
-    const float bodyBias = glm::clamp(blockAxis, -1.0f, 1.0f) * 0.055f * bodyInfluence;
-    shapeD /= glm::max(1.0f + bodyNoise * node.edgeRoughness * 0.42f * bodyInfluence + bodyBias, 0.001f);
-    const float edgeInfluence = glm::smoothstep(0.34f, 1.04f, shapeD);
-    const float notchNoise = perlinNoise(glm::vec3(
-        std::cos(angle * 7.4f + node.variation) * 2.2f + node.variation * 4.6f,
-        std::sin(angle * 7.4f + node.variation) * 2.2f + node.variation * 10.9f,
-        43.5f
-    )) * 0.5f + 0.5f;
-    const float notchMask = glm::smoothstep(0.58f, 0.88f, notchNoise) * edgeInfluence;
-    const float edgeWarp = 1.0f + edgeNoise * node.edgeRoughness * 1.18f * edgeInfluence
-                          - notchMask * node.edgeRoughness * 0.42f;
-    const float warpedD = shapeD / glm::max(edgeWarp, 0.001f);
-
-    const float topRadius = glm::clamp(node.topRadius, 0.14f, 0.48f);
-    const float cliffRadius = glm::max(node.cliffRadius, topRadius + 0.16f);
-    const float footRadius = 1.0f;
-    const float topEdgeNoiseA = perlinNoise(glm::vec3(
-        std::cos(angle * 2.1f + node.variation * 0.8f) * 1.9f + node.variation * 5.4f,
-        std::sin(angle * 2.1f + node.variation * 0.8f) * 1.9f + node.variation * 8.7f,
-        72.3f
-    ));
-    const float topEdgeNoiseB = perlinNoise(glm::vec3(
-        std::cos(angle * 4.6f - node.variation) * 2.8f + node.variation * 11.2f,
-        std::sin(angle * 4.6f - node.variation) * 2.8f + node.variation * 3.9f,
-        81.6f
-    ));
-    const float topEdgeNoiseC = perlinNoise(glm::vec3(
-        std::cos(angle * 7.2f + node.variation * 1.6f) * 3.1f + node.variation * 4.4f,
-        std::sin(angle * 7.2f + node.variation * 1.6f) * 3.1f + node.variation * 12.3f,
-        88.2f
-    ));
-    const float topEdgeNoise = glm::clamp(topEdgeNoiseA * 0.56f + topEdgeNoiseB * 0.31f + topEdgeNoiseC * 0.13f, -1.0f, 1.0f);
-    const float topBias = glm::dot(glm::normalize(glm::vec2(std::cos(node.variation * 6.2831853f),
-                                                            std::sin(node.variation * 6.2831853f))), p);
-    const float irregularTopRadius = topRadius * glm::clamp(
-        1.0f
-            + topEdgeNoise * glm::mix(0.16f, 0.28f, node.edgeRoughness / 0.30f)
-            + glm::clamp(topBias, -1.0f, 1.0f) * 0.12f
-            + (lobeMask - 0.18f) * 0.12f,
-        0.68f,
-        1.34f
-    );
-    const float topWarp = 1.0f
-        + topEdgeNoise * glm::mix(0.22f, 0.34f, node.edgeRoughness / 0.30f)
-        + glm::clamp(topBias, -1.0f, 1.0f) * 0.085f
-        + (lobeMask - 0.18f) * 0.10f;
-    const float topD = warpedD / glm::max(topWarp, 0.001f);
-    const float topMask = 1.0f - glm::smoothstep(irregularTopRadius * 0.70f, irregularTopRadius * 1.12f, topD);
-    const float cliffT = glm::smoothstep(topRadius * 0.72f, cliffRadius * 1.08f, warpedD);
-    const float footT = glm::smoothstep(cliffRadius * 0.82f, footRadius, warpedD);
-    const float talusMask = glm::smoothstep(cliffRadius * 0.78f, cliffRadius * 1.10f, warpedD)
-                          * (1.0f - glm::smoothstep(0.92f, 1.18f, warpedD));
-    const float plateauHeight = node.height * glm::mix(0.58f, 0.72f, node.variation) * glm::mix(0.96f, 1.04f, lobeMask);
-    const float cliffBaseHeight = node.height * glm::mix(0.22f, 0.32f, 1.0f - node.variation);
-    const float softenedCliff = glm::mix(plateauHeight, cliffBaseHeight, cliffT);
-    const float footFade = (1.0f - footT) * (1.0f - footT * 0.45f);
-    float mesaHeight = softenedCliff * footFade;
-    mesaHeight = glm::mix(mesaHeight, plateauHeight, topMask * 0.72f);
-
-    const float topUndulationA = perlinNoise(glm::vec3(
-        p.x * 1.35f + node.variation * 6.1f,
-        p.y * 1.35f + node.variation * 2.8f,
-        52.4f
-    ));
-    const float topUndulationB = perlinNoise(glm::vec3(
-        p.x * 2.45f + node.variation * 3.7f,
-        p.y * 2.45f + node.variation * 7.9f,
-        61.8f
-    ));
-    const float topUndulationC = perlinNoise(glm::vec3(
-        p.x * 4.20f + node.variation * 9.1f,
-        p.y * 3.60f + node.variation * 5.4f,
-        68.7f
-    ));
-    const float topInterior = topMask * (1.0f - glm::smoothstep(irregularTopRadius * 0.72f, irregularTopRadius * 1.06f, topD));
-    const float topUndulation = (topUndulationA * 0.55f + topUndulationB * 0.30f + topUndulationC * 0.15f)
-                              * node.height
-                              * 0.095f
-                              * topInterior;
-    mesaHeight += topUndulation;
-
-    const float cliffChip = notchMask
-                          * glm::smoothstep(topRadius * 0.90f, cliffRadius * 0.98f, warpedD)
-                          * (1.0f - glm::smoothstep(cliffRadius * 0.96f, footRadius, warpedD));
-    mesaHeight -= cliffChip * node.height * 0.080f;
-    mesaHeight += talusMask * node.height * glm::mix(0.045f, 0.082f, notchNoise) * (1.0f - topMask * 0.65f);
-
-    const float slopeMask = glm::smoothstep(topRadius * 0.92f, cliffRadius, warpedD)
-                          * (1.0f - glm::smoothstep(0.90f, 1.05f, warpedD));
-    const float sideLayerNoise = perlinNoise(glm::vec3(
-        p.x * 3.4f + node.variation * 12.6f,
-        warpedD * 8.2f + p.y * 1.1f,
-        91.4f
-    ));
-    const float sideRib = (0.5f + 0.5f * std::sin((p.x * 4.4f + p.y * 1.2f + node.variation * 5.7f) * 3.14159265f))
-                        * (sideLayerNoise * 0.5f + 0.5f);
-    const float sideRelief = (sideRib - 0.42f) * slopeMask * node.height * 0.082f * (1.0f - topMask * 0.70f);
-    mesaHeight += sideRelief;
-    const float grooveNoise = 1.0f - std::abs(perlinNoise(glm::vec3(
-        angle * 1.7f + node.variation * 9.2f,
-        warpedD * 4.6f,
-        24.8f
-    )));
-    const float grooveMask = std::pow(glm::clamp(grooveNoise, 0.0f, 1.0f), 5.8f) * slopeMask * node.erosion;
-    mesaHeight -= grooveMask * node.height * 0.075f;
-
-    const float mesaFootprint = glm::clamp(1.0f - glm::smoothstep(0.96f, 1.12f, warpedD), 0.0f, 1.0f);
-    result.heightDelta = mesaHeight * mesaFootprint;
-    result.footprint = mesaFootprint;
-    result.materialMask = glm::clamp(slopeMask * 0.42f + grooveMask * 0.86f + talusMask * 0.52f + cliffChip * 0.62f, 0.0f, 1.0f);
-    result.cliffMask = glm::clamp(slopeMask + cliffChip * 0.76f + talusMask * 0.18f, 0.0f, 1.0f);
-    result.topMask = topMask * mesaFootprint;
-    result.grooveMask = grooveMask;
-    result.foundationMask = glm::clamp(1.0f - glm::smoothstep(1.06f, 1.46f, warpedD), 0.0f, 1.0f);
-    return result;
-}
-
-PlanetProceduralData::TerrainNodeResult PlanetProceduralData::applyVolcanoNode(const TerrainNode& node,
-                                                                               const glm::vec3& sphereDir)
-{
-    TerrainNodeResult result;
-    if (node.type != TerrainNodeType::Volcano) {
-        return result;
-    }
-
-    const float angularDistance = std::acos(glm::clamp(glm::dot(sphereDir, node.sphereDir), -1.0f, 1.0f));
-    const float angularRadius = glm::max(node.radius * 1.57079637f, 0.001f);
-    const float d = angularDistance / angularRadius;
-    if (d >= 1.55f) {
-        return result;
-    }
-
-    const glm::vec3 referenceUp = std::abs(node.sphereDir.y) > 0.92f
-        ? glm::vec3(1.0f, 0.0f, 0.0f)
-        : glm::vec3(0.0f, 1.0f, 0.0f);
-    const glm::vec3 tangentU = glm::normalize(glm::cross(referenceUp, node.sphereDir));
-    const glm::vec3 tangentV = glm::normalize(glm::cross(node.sphereDir, tangentU));
-    const glm::vec3 tangentDelta = sphereDir - node.sphereDir * glm::dot(sphereDir, node.sphereDir);
-    const glm::vec2 localPoint(
-        glm::dot(tangentDelta, tangentU) / angularRadius,
-        glm::dot(tangentDelta, tangentV) / angularRadius
-    );
-    const float angle = std::atan2(localPoint.y, localPoint.x);
-    const float radialNoise = perlinNoise(glm::vec3(
-        std::cos(angle * 3.0f + node.variation) * 2.1f + node.variation * 4.2f,
-        std::sin(angle * 3.0f + node.variation) * 2.1f + node.variation * 7.8f,
-        91.4f
-    ));
-    const float warpedD = d / glm::max(1.0f + radialNoise * node.edgeRoughness * 0.36f, 0.001f);
-
-    const float cone = std::pow(glm::clamp(1.0f - warpedD * 0.78f, 0.0f, 1.0f), glm::mix(2.05f, 2.65f, node.variation)) * 0.74f;
-    const float lowerSlope = std::pow(glm::clamp(1.0f - warpedD * 0.54f, 0.0f, 1.0f), 2.0f) * 0.34f;
-    const float craterRadius = glm::clamp(node.topRadius, 0.10f, 0.26f);
-    const float craterBowl = 1.0f - glm::smoothstep(craterRadius * 0.42f, craterRadius, warpedD);
-    const float craterRim = glm::smoothstep(craterRadius * 0.78f, craterRadius * 1.08f, warpedD)
-                          * (1.0f - glm::smoothstep(craterRadius * 1.08f, craterRadius * 1.42f, warpedD));
-    const float footprint = glm::clamp(1.0f - glm::smoothstep(0.96f, 1.18f, warpedD), 0.0f, 1.0f);
-    float volcanoHeight = node.height * (cone + lowerSlope) * footprint;
-    volcanoHeight += craterRim * node.height * 0.15f;
-    volcanoHeight -= craterBowl * node.height * 0.26f;
-
-    const float radialGrooveNoise = 1.0f - std::abs(perlinNoise(glm::vec3(
-        angle * 2.8f + node.variation * 8.4f,
-        warpedD * 4.9f,
-        103.7f
-    )));
-    const float slopeBand = glm::smoothstep(craterRadius * 1.20f, 0.36f, warpedD)
-                          * (1.0f - glm::smoothstep(0.84f, 1.12f, warpedD));
-    const float grooveMask = std::pow(glm::clamp(radialGrooveNoise, 0.0f, 1.0f), 4.4f)
-                           * slopeBand
-                           * node.erosion;
-    volcanoHeight -= grooveMask * node.height * 0.095f;
-
-    result.heightDelta = glm::max(volcanoHeight, 0.0f) * footprint;
-    result.footprint = footprint;
-    result.materialMask = glm::clamp(slopeBand * 0.62f + craterRim * 0.54f + grooveMask * 0.85f, 0.0f, 1.0f);
-    result.cliffMask = glm::clamp(slopeBand * 0.55f + craterRim * 0.82f, 0.0f, 1.0f);
-    result.topMask = craterBowl * footprint;
-    result.grooveMask = grooveMask;
-    result.volcanoMask = footprint;
-    result.foundationMask = glm::clamp(1.0f - glm::smoothstep(1.10f, 1.55f, warpedD), 0.0f, 1.0f);
-    return result;
-}
-
-PlanetProceduralData::TerrainNodeResult PlanetProceduralData::applyRidgeChainNode(const TerrainNode& node,
-                                                                                  const glm::vec3& sphereDir)
-{
-    TerrainNodeResult result;
-    if (node.type != TerrainNodeType::RidgeChain) {
-        return result;
-    }
-
-    const float angularDistance = std::acos(glm::clamp(glm::dot(sphereDir, node.sphereDir), -1.0f, 1.0f));
-    const float angularRadius = glm::max(node.radius * 1.57079637f, 0.001f);
-    const float radialD = angularDistance / angularRadius;
-    if (radialD >= 1.55f) {
-        return result;
-    }
-
-    const glm::vec3 referenceUp = std::abs(node.sphereDir.y) > 0.92f
-        ? glm::vec3(1.0f, 0.0f, 0.0f)
-        : glm::vec3(0.0f, 1.0f, 0.0f);
-    const glm::vec3 tangentU = glm::normalize(glm::cross(referenceUp, node.sphereDir));
-    const glm::vec3 tangentV = glm::normalize(glm::cross(node.sphereDir, tangentU));
-    const glm::vec3 tangentDelta = sphereDir - node.sphereDir * glm::dot(sphereDir, node.sphereDir);
-    const glm::vec2 localPoint(
-        glm::dot(tangentDelta, tangentU) / angularRadius,
-        glm::dot(tangentDelta, tangentV) / angularRadius
-    );
-    const float sinO = std::sin(node.orientation);
-    const float cosO = std::cos(node.orientation);
-    const glm::vec2 p(
-        localPoint.x * cosO + localPoint.y * sinO,
-        -localPoint.x * sinO + localPoint.y * cosO
-    );
-
-    const float aspect = glm::clamp(node.aspectRatio, 1.55f, 5.20f);
-    const float alongD = std::abs(p.x) / glm::max(aspect, 0.001f);
-    const float meanderNoise = perlinNoise(glm::vec3(
-        p.x * 0.72f + node.variation * 10.4f,
-        node.variation * 5.6f,
-        109.8f
-    ));
-    const float centerOffset = (std::sin((p.x / glm::max(aspect, 0.001f) + node.variation * 0.21f) * 9.424778f) * 0.055f
-                              + meanderNoise * 0.085f)
-                             * (1.0f - glm::smoothstep(0.72f, 1.10f, alongD));
-    const float shiftedY = p.y - centerOffset;
-    const float acrossD = std::abs(shiftedY);
-    const float widthNoise = perlinNoise(glm::vec3(
-        p.x * 1.10f + node.variation * 8.2f,
-        node.variation * 2.7f,
-        112.6f
-    )) * 0.5f + 0.5f;
-    const float widthScale = glm::mix(0.72f, 1.28f, widthNoise);
-    const float axialFade = 1.0f - glm::smoothstep(0.78f, 1.08f, alongD);
-    const float sideFade = 1.0f - glm::smoothstep(0.82f * widthScale, 1.24f * widthScale, acrossD);
-    const float footprint = glm::clamp(axialFade * sideFade, 0.0f, 1.0f);
-    if (footprint <= 0.001f) {
-        return result;
-    }
-
-    const float chainNoise = perlinNoise(glm::vec3(
-        p.x * 1.35f + node.variation * 9.8f,
-        shiftedY * 1.10f + node.variation * 4.1f,
-        116.3f
-    )) * 0.5f + 0.5f;
-    const float crestNoise = perlinNoise(glm::vec3(
-        p.x * 2.80f + node.variation * 6.3f,
-        shiftedY * 3.10f + node.variation * 11.2f,
-        127.5f
-    )) * 0.5f + 0.5f;
-    const float heightNoise = perlinNoise(glm::vec3(
-        p.x * 0.88f + node.variation * 14.1f,
-        node.variation * 3.3f,
-        121.7f
-    )) * 0.5f + 0.5f;
-    const float peakWaveA = std::sin((p.x / glm::max(aspect, 0.001f) + node.variation * 0.37f) * 25.132742f) * 0.5f + 0.5f;
-    const float peakWaveB = std::sin((p.x / glm::max(aspect, 0.001f) * 1.73f + node.variation * 0.13f) * 18.849556f) * 0.5f + 0.5f;
-    const float peakTrain = glm::smoothstep(0.34f, 0.88f, peakWaveA * 0.24f + peakWaveB * 0.18f + chainNoise * 0.34f + heightNoise * 0.24f);
-    const float coreWidth = glm::mix(0.16f, 0.28f, node.variation) * widthScale;
-    const float core = std::exp(-(acrossD / coreWidth) * (acrossD / coreWidth) * 1.75f)
-                     * axialFade
-                     * glm::mix(0.54f, 1.34f, peakTrain);
-    const float shoulder = std::exp(-(acrossD / widthScale) * (acrossD / widthScale) * 2.10f) * axialFade * 0.48f;
-    const float sideLobeA = std::exp(-((shiftedY - coreWidth * 1.55f) / (coreWidth * 0.62f)) * ((shiftedY - coreWidth * 1.55f) / (coreWidth * 0.62f)))
-                         * axialFade
-                         * glm::mix(0.05f, 0.20f, crestNoise);
-    const float sideLobeB = std::exp(-((shiftedY + coreWidth * 1.35f) / (coreWidth * 0.68f)) * ((shiftedY + coreWidth * 1.35f) / (coreWidth * 0.68f)))
-                         * axialFade
-                         * glm::mix(0.04f, 0.17f, chainNoise);
-    const float brokenEdge = glm::mix(0.82f, 1.16f, crestNoise);
-    const float heightScale = glm::mix(0.68f, 1.24f, heightNoise);
-    float ridgeHeight = node.height * heightScale * (core * 0.88f + shoulder * 0.30f + sideLobeA + sideLobeB) * sideFade * brokenEdge;
-
-    const float slopeMask = glm::smoothstep(coreWidth * 0.80f, 0.92f, acrossD)
-                          * (1.0f - glm::smoothstep(0.92f, 1.22f, acrossD))
-                          * axialFade;
-    const float transverseGrooveNoise = 1.0f - std::abs(perlinNoise(glm::vec3(
-        p.x * 1.55f + node.variation * 13.6f,
-        shiftedY * 5.80f,
-        138.9f
-    )));
-    const float grooveMask = std::pow(glm::clamp(transverseGrooveNoise, 0.0f, 1.0f), 4.6f)
-                           * slopeMask
-                           * node.erosion;
-    const float pittedNoise = perlinNoise(glm::vec3(
-        p.x * 4.10f + node.variation * 7.6f,
-        shiftedY * 6.40f + node.variation * 2.4f,
-        144.8f
-    ));
-    const float pittedRelief = pittedNoise * node.height * 0.052f * footprint * glm::clamp(core + slopeMask, 0.0f, 1.0f);
-    ridgeHeight += pittedRelief;
-    ridgeHeight -= grooveMask * node.height * 0.145f;
-
-    const float talus = glm::smoothstep(0.54f, 1.02f, acrossD)
-                      * (1.0f - glm::smoothstep(1.02f, 1.28f, acrossD))
-                      * axialFade;
-    ridgeHeight += talus * node.height * glm::mix(0.030f, 0.060f, chainNoise);
-
-    result.heightDelta = ridgeHeight * footprint;
-    result.footprint = footprint;
-    result.materialMask = glm::clamp(slopeMask * 0.58f + grooveMask * 0.88f + talus * 0.36f, 0.0f, 1.0f);
-    result.cliffMask = glm::clamp(core * 0.34f + slopeMask * 0.54f, 0.0f, 1.0f);
-    result.grooveMask = grooveMask;
-    result.foundationMask = glm::clamp(footprint * (1.0f - glm::smoothstep(1.12f, 1.48f, radialD)), 0.0f, 1.0f);
-    return result;
-}
-
-void PlanetProceduralData::mergeTerrainNodeResult(TerrainNodeAccumulation& accumulation,
-                                                  const TerrainNodeResult& result)
-{
-    accumulation.mask = 1.0f - (1.0f - accumulation.mask) * (1.0f - result.footprint * 0.86f);
-    accumulation.materialMask = glm::max(accumulation.materialMask, result.materialMask);
-    accumulation.footprint = glm::max(accumulation.footprint, result.footprint);
-    const float primaryHeight = glm::max(accumulation.heightDelta, result.heightDelta);
-    const float secondaryHeight = glm::min(accumulation.heightDelta, result.heightDelta);
-    accumulation.heightDelta = primaryHeight + secondaryHeight * 0.30f;
-    accumulation.cliffMask = glm::max(accumulation.cliffMask, result.cliffMask);
-    accumulation.topMask = glm::max(accumulation.topMask, result.topMask);
-    accumulation.grooveMask = glm::max(accumulation.grooveMask, result.grooveMask);
-    accumulation.volcanoMask = glm::max(accumulation.volcanoMask, result.volcanoMask);
-    accumulation.foundationMask = glm::max(accumulation.foundationMask, result.foundationMask);
-}
-
-void PlanetProceduralData::applyHeightfieldNoiseLayers(const PlanetRenderSettings& settings,
-                                                       const std::function<void(const char*)>& advanceProgress)
-{
-    PROFILE_SCOPE("Apply Heightfield Noise Layers");
-    if (resolution_ <= 1) {
-        return;
-    }
-
-    const float seaLevel = settings.seaLevelOffset;
-    const float heightScale = glm::max(settings.terrainHeightScale, 0.001f);
-    const float amplitudeScale = glm::clamp(heightScale / 22.0f, 0.60f, 1.35f);
-    const float mountainScale = glm::clamp(settings.mountainMaskScale, 0.5f, 8.0f);
-    const float ridgeSharpness = glm::clamp(settings.mountainRidgeSharpness, 1.0f, 6.0f);
-    std::array<std::vector<const TerrainSkeletonSegment*>, 6> skeletonsByFace{};
-    for (const TerrainSkeletonSegment& skeleton : terrainSkeletons_) {
-        if (skeleton.faceIndex >= 0 && skeleton.faceIndex < 6) {
-            skeletonsByFace[static_cast<std::size_t>(skeleton.faceIndex)].push_back(&skeleton);
-        }
-    }
-    for (std::size_t faceIndex = 0; faceIndex < faces_.size(); ++faceIndex) {
-        FaceData& faceData = faces_[faceIndex];
-        for (int y = 0; y < resolution_; ++y) {
-            for (int x = 0; x < resolution_; ++x) {
-                const glm::vec2 uv(
-                    (static_cast<float>(x) + 0.5f) / static_cast<float>(resolution_),
-                    (static_cast<float>(y) + 0.5f) / static_cast<float>(resolution_)
-                );
-                const glm::vec3 sphereDir = cubeSphereDirection(kFaces[faceIndex], uv);
-                const std::size_t index = static_cast<std::size_t>(y * resolution_ + x);
-                float height = faceData.height[index];
-                const float relativeHeight = height - seaLevel;
-                const float landMask = glm::smoothstep(0.025f, 0.20f, relativeHeight);
-
-                const glm::vec3 p = sphereDir * settings.terrainNoiseScale;
-                const glm::vec3 warp(
-                    perlinNoise(p * 0.18f + glm::vec3(31.1f, 4.2f, 11.8f)),
-                    perlinNoise(p * 0.18f + glm::vec3(9.6f, 27.4f, 3.2f)),
-                    perlinNoise(p * 0.18f + glm::vec3(5.1f, 8.7f, 24.6f))
-                );
-
-                float skeletonMountain = 0.0f;
-                float skeletonRidge = 0.0f;
-                float skeletonValley = 0.0f;
-                float massifWeight = 0.0f;
-                float skeletonShoulder = 0.0f;
-                float skeletonCore = 0.0f;
-                const bool useSkeletonHeightControl = false;
-                if (useSkeletonHeightControl) for (const TerrainSkeletonSegment* skeletonPtr : skeletonsByFace[faceIndex]) {
-                    const TerrainSkeletonSegment& skeleton = *skeletonPtr;
-
-                    float along = 0.0f;
-                    const float distance = distanceToSegmentOnSphere(sphereDir, skeleton.sphereDirA, skeleton.sphereDirB, along);
-                    const float angularWidth = glm::max(skeleton.width * 1.57079637f, 0.001f);
-                    const float normalizedDistance = distance / angularWidth;
-                    if (normalizedDistance >= 1.0f) {
-                        continue;
-                    }
-
-                    const float axialFade = glm::smoothstep(0.0f, 0.22f, along)
-                                          * (1.0f - glm::smoothstep(0.78f, 1.0f, along));
-                    const float radialFalloff = std::exp(-normalizedDistance * normalizedDistance * 2.65f);
-                    const float softEdge = 1.0f - glm::smoothstep(0.66f, 1.0f, normalizedDistance);
-                    const float lateral = std::pow(glm::clamp(radialFalloff * softEdge, 0.0f, 1.0f), skeleton.falloff);
-                    const float influence = lateral * axialFade * landMask;
-                    const float coreScale = skeleton.type == TerrainSkeletonType::Massif
-                        ? 0.38f
-                        : (skeleton.type == TerrainSkeletonType::MountainBelt ? 0.26f : 0.18f);
-                    const float coreDistance = normalizedDistance / glm::max(coreScale, 0.001f);
-                    const float longitudinalNoise = perlinNoise(
-                        sphereDir * 4.20f + glm::vec3(along * 5.7f, skeleton.variation * 6.3f, 18.4f)
-                    ) * 0.5f + 0.5f;
-                    const float peakWaveA = std::sin((along + skeleton.variation * 0.37f) * 18.849556f);
-                    const float peakWaveB = std::sin((along * 1.73f + skeleton.variation * 0.19f) * 18.849556f);
-                    const float peakTrain = std::pow(glm::clamp(peakWaveA * 0.5f + 0.5f, 0.0f, 1.0f), 2.4f)
-                                          * glm::mix(0.55f, 1.0f, peakWaveB * 0.5f + 0.5f);
-                    const float peakGate = glm::smoothstep(0.46f, 0.82f, longitudinalNoise * 0.58f + peakTrain * 0.42f);
-                    const float brokenAlong = glm::mix(0.10f, 1.08f, peakGate);
-                    const float coreProfile = std::exp(-coreDistance * coreDistance * 2.65f) * axialFade * landMask * brokenAlong;
-                    skeletonShoulder = 1.0f - (1.0f - skeletonShoulder) * (1.0f - influence * 0.22f);
-                    skeletonCore = 1.0f - (1.0f - skeletonCore) * (1.0f - coreProfile * 0.92f);
-                    if (skeleton.type == TerrainSkeletonType::Valley) {
-                        skeletonValley = 1.0f - (1.0f - skeletonValley) * (1.0f - influence * 0.75f);
-                    } else if (skeleton.type == TerrainSkeletonType::Ridge) {
-                        skeletonRidge = 1.0f - (1.0f - skeletonRidge) * (1.0f - coreProfile * 0.92f);
-                        skeletonMountain = 1.0f - (1.0f - skeletonMountain) * (1.0f - influence * 0.18f);
-                    } else {
-                        skeletonMountain = 1.0f - (1.0f - skeletonMountain) * (1.0f - influence * 0.24f);
-                        const float massifContribution = coreProfile * (skeleton.type == TerrainSkeletonType::Massif ? 0.95f : 0.32f);
-                        massifWeight = 1.0f - (1.0f - massifWeight) * (1.0f - massifContribution);
-                    }
-                }
-
-                const glm::vec3 terrainP = p + warp * 0.30f;
-                const float provinceNoise = perlinNoise(terrainP * 0.34f + glm::vec3(13.7f, 2.1f, 19.4f)) * 0.5f + 0.5f;
-                const float hillNoise = perlinNoise(terrainP * 0.72f + glm::vec3(7.2f, 18.4f, 2.6f)) * 0.5f + 0.5f;
-                const float volcanicNoise = perlinNoise(terrainP * 1.05f + glm::vec3(28.4f, 6.3f, 15.8f)) * 0.5f + 0.5f;
-                const float stableInterior = glm::smoothstep(0.07f, 0.34f, relativeHeight);
-                const float mountainProvince = glm::smoothstep(0.58f, 0.82f, provinceNoise) * stableInterior;
-                const float hillDomain = glm::smoothstep(0.36f, 0.72f, hillNoise) * stableInterior;
-                const float volcanicDomain = glm::smoothstep(0.82f, 0.96f, volcanicNoise) * stableInterior;
-                const float mountainDomain = glm::clamp(mountainProvince * 0.28f + volcanicDomain * 0.18f, 0.0f, 1.0f);
-
-                const float ridgeShape = std::pow(glm::clamp(glm::max(skeletonRidge, skeletonCore * 0.82f), 0.0f, 1.0f), 1.35f);
-                const float massifShape = std::pow(glm::clamp(glm::max(massifWeight, mountainProvince * 0.18f), 0.0f, 1.0f), 1.25f);
-                const float coneShape = std::pow(glm::clamp(volcanicDomain, 0.0f, 1.0f), 1.90f);
-                const float detail = perlinNoise(terrainP * 1.45f + glm::vec3(4.6f, 11.2f, 23.7f));
-                const float gentleWrinkle = perlinNoise(terrainP * 2.20f + glm::vec3(16.5f, 3.2f, 8.4f));
-
-                const float hillUplift = hillDomain * (0.010f + hillNoise * 0.012f);
-                const float mountainUplift = settings.mountainMaskStrength * amplitudeScale
-                    * (skeletonShoulder * 0.006f + skeletonCore * 0.095f + massifShape * 0.058f + ridgeShape * 0.070f);
-                const float volcanicUplift = settings.mountainMaskStrength * amplitudeScale
-                    * coneShape * (0.110f + volcanicNoise * 0.052f);
-                const float valleyCarve = 0.0f;
-                const float terrainDetail = (detail * glm::max(skeletonCore, mountainProvince * 0.55f) * 0.0055f + gentleWrinkle * hillDomain * 0.0025f)
-                                          * (1.0f - skeletonValley * 0.65f);
-
-                TerrainNodeAccumulation terrainNodeAccumulation;
-                for (const TerrainNode& node : terrainNodes_) {
-                    mergeTerrainNodeResult(terrainNodeAccumulation, applyTerrainNode(node, sphereDir));
-                }
-
-                const glm::vec3 mountainWarp(
-                    perlinNoise(terrainP * 0.62f + glm::vec3(2.1f, 17.4f, 8.6f)),
-                    perlinNoise(terrainP * 0.62f + glm::vec3(11.8f, 5.3f, 24.1f)),
-                    perlinNoise(terrainP * 0.62f + glm::vec3(19.6f, 14.2f, 3.5f))
-                );
-                const glm::vec3 mountainFieldP = terrainP * glm::mix(0.46f, 0.92f, glm::smoothstep(0.5f, 8.0f, mountainScale))
-                                                + mountainWarp * 0.18f;
-                const float mountainNoise = perlinNoise(mountainFieldP + glm::vec3(31.2f, 4.8f, 15.6f)) * 0.5f + 0.5f;
-                const float ridgeNoise = 1.0f - std::abs(perlinNoise(mountainFieldP * 1.85f + glm::vec3(6.3f, 28.4f, 12.7f)));
-                const float maskBreakup = perlinNoise(mountainFieldP * 1.35f + glm::vec3(22.2f, 9.1f, 4.7f)) * 0.5f + 0.5f;
-                const float rawMountainMask =
-                    terrainNodeAccumulation.mask * 0.82f
-                  + terrainNodeAccumulation.footprint * 0.40f
-                  + mountainProvince * 0.18f
-                  + (mountainNoise - 0.5f) * 0.035f
-                  + (maskBreakup - 0.5f) * 0.020f;
-                const float mountainMaskField = glm::smoothstep(0.34f, 0.82f, rawMountainMask);
-                const float ridgeRelief = std::pow(glm::clamp(ridgeNoise, 0.0f, 1.0f), glm::mix(3.8f, 5.6f, (ridgeSharpness - 1.0f) / 5.0f));
-                const float massifRelief = std::pow(glm::clamp(terrainNodeAccumulation.footprint, 0.0f, 1.0f), 1.15f)
-                                          * (0.070f + mountainNoise * 0.030f);
-                const float provinceRelief = settings.mountainMaskStrength * amplitudeScale * landMask
-                    * std::pow(glm::clamp(mountainProvince, 0.0f, 1.0f), 1.35f)
-                    * (0.034f + mountainNoise * 0.024f);
-                const float mesaExpansionMask =
-                    terrainNodeAccumulation.footprint
-                    * glm::smoothstep(-0.018f, 0.035f, relativeHeight);
-                const float terrainNodeExpansionMask = glm::max(
-                    mesaExpansionMask,
-                    terrainNodeAccumulation.volcanoMask
-                );
-                const float volcanoExpansionMask = terrainNodeAccumulation.volcanoMask;
-                const float nodeLandMask = glm::max(
-                    landMask,
-                    glm::max(terrainNodeExpansionMask, volcanoExpansionMask)
-                );
-                const float nodeRelief = amplitudeScale * nodeLandMask
-                    * terrainNodeAccumulation.heightDelta
-                    * (1.60f + mountainNoise * 0.12f)
-                    * glm::mix(0.98f, 1.24f, mountainMaskField);
-                const float nodeFoundationFootprint = glm::max(
-                    terrainNodeAccumulation.foundationMask * glm::smoothstep(-0.020f, 0.035f, relativeHeight),
-                    glm::max(mesaExpansionMask * 0.92f, terrainNodeAccumulation.volcanoMask)
-                );
-                const float foundationMask = nodeFoundationFootprint;
-                const float foundationTarget = seaLevel
-                    + terrainNodeAccumulation.foundationMask * glm::smoothstep(-0.020f, 0.035f, relativeHeight) * 0.030f
-                    + mesaExpansionMask * 0.040f
-                    + terrainNodeAccumulation.volcanoMask * 0.025f;
-                const float fieldRelief = settings.mountainMaskStrength * amplitudeScale * landMask
-                    * mountainMaskField
-                    * (massifRelief
-                       + glm::smoothstep(0.30f, 0.92f, mountainNoise) * 0.045f
-                       + ridgeRelief * 0.004f);
-                const float gullyNoise = 1.0f - std::abs(perlinNoise(mountainFieldP * 3.25f + glm::vec3(5.7f, 18.9f, 30.4f)));
-                const float fieldCarve = settings.mountainMaskStrength * amplitudeScale * landMask
-                    * mountainMaskField
-                    * std::pow(glm::clamp(gullyNoise, 0.0f, 1.0f), 4.0f)
-                    * 0.00018f;
-
-                height = glm::mix(
-                    height,
-                    glm::max(height, foundationTarget),
-                    glm::clamp(foundationMask, 0.0f, 1.0f)
-                );
-                height += landMask * (hillUplift + mountainUplift + volcanicUplift + terrainDetail)
-                        + provinceRelief + nodeRelief + fieldRelief;
-                height -= fieldCarve;
-                height -= landMask * valleyCarve;
-                faceData.height[index] = height;
-                const float mountainMaterialDomain = glm::clamp(
-                    glm::max(
-                        glm::max(terrainNodeAccumulation.materialMask, terrainNodeAccumulation.footprint * 0.52f),
-                        glm::max(terrainNodeAccumulation.foundationMask * 0.34f, coneShape * 0.82f)
-                    ) + mountainMaskField * 0.10f,
-                    0.0f,
-                    1.0f
-                );
-                faceData.domainWeight[index].x = glm::max(faceData.domainWeight[index].x, mountainMaterialDomain);
-                faceData.domainWeight[index].y = glm::max(faceData.domainWeight[index].y, glm::max(skeletonValley, terrainNodeAccumulation.grooveMask));
-                faceData.domainWeight[index].w = glm::max(
-                    faceData.domainWeight[index].w,
-                    glm::clamp(1.0f - glm::max(mountainDomain, skeletonValley) + terrainNodeAccumulation.topMask * 0.22f, 0.0f, 1.0f)
-                );
-                faceData.erosionMask[index] = glm::max(faceData.erosionMask[index], terrainNodeAccumulation.grooveMask);
-                faceData.flowMask[index] = glm::max(faceData.flowMask[index], terrainNodeAccumulation.grooveMask * 0.55f);
-                faceData.featureMask[index] = glm::max(
-                    faceData.featureMask[index],
-                    terrainNodeAccumulation.cliffMask * 0.42f + terrainNodeAccumulation.grooveMask * 0.58f
-                );
-            }
-
-            if (advanceProgress) {
-                advanceProgress("Compositing geomorphology domains");
-            }
-        }
-    }
-}
-
-void PlanetProceduralData::removeSmallTerrainSpikes(const PlanetRenderSettings& settings,
-                                                    int iterations,
-                                                    float threshold,
-                                                    float blend)
-{
-    PROFILE_SCOPE("Remove Small Terrain Spikes");
-    if (resolution_ <= 1 || iterations <= 0 || threshold <= 0.0f || blend <= 0.0f) {
-        return;
-    }
-
-    const int n = resolution_;
-    const std::size_t cellCount = static_cast<std::size_t>(n * n);
-    const float seaLevel = settings.seaLevelOffset;
-    const float clampedBlend = glm::clamp(blend, 0.0f, 1.0f);
-    const auto indexOf = [n](int x, int y) {
-        return static_cast<std::size_t>(y * n + x);
-    };
-
-    std::array<std::vector<float>, 6> nextHeight;
-    std::array<float, 8> neighbors{};
-    for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
-        nextHeight[static_cast<std::size_t>(faceIndex)].assign(cellCount, 0.0f);
-    }
-
-    for (int iteration = 0; iteration < iterations; ++iteration) {
-        for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
-            FaceData& faceData = faces_[static_cast<std::size_t>(faceIndex)];
-            std::vector<float>& target = nextHeight[static_cast<std::size_t>(faceIndex)];
-
-            for (int y = 0; y < n; ++y) {
-                for (int x = 0; x < n; ++x) {
-                    const std::size_t index = indexOf(x, y);
-                    const float height = faceData.height[index];
-                    const float landMask = glm::smoothstep(seaLevel - 0.03f, seaLevel + 0.14f, height);
-                    if (landMask <= 0.001f) {
-                        target[index] = height;
-                        continue;
-                    }
-
-                    int neighborCount = 0;
-                    float weightedSum = 0.0f;
-                    float totalWeight = 0.0f;
-                    for (int oy = -1; oy <= 1; ++oy) {
-                        for (int ox = -1; ox <= 1; ++ox) {
-                            if (ox == 0 && oy == 0) {
-                                continue;
-                            }
-                            const CellRef neighbor = neighborCell(faceIndex, x + ox, y + oy, n);
-                            const float neighborHeight = faces_[static_cast<std::size_t>(neighbor.face)].height[neighbor.index];
-                            const float weight = (ox == 0 || oy == 0) ? 1.0f : 0.7071f;
-                            neighbors[static_cast<std::size_t>(neighborCount++)] = neighborHeight;
-                            weightedSum += neighborHeight * weight;
-                            totalWeight += weight;
-                        }
-                    }
-
-                    std::sort(neighbors.begin(), neighbors.begin() + neighborCount);
-                    const float median = neighbors[static_cast<std::size_t>(neighborCount / 2)];
-                    const float neighborAverage = weightedSum / std::max(totalWeight, 0.0001f);
-                    const float highExcess = height - median;
-                    const float lowExcess = median - height;
-                    const float spikeMask = glm::smoothstep(threshold, threshold * 2.6f, std::max(highExcess, lowExcess));
-                    if (spikeMask <= 0.001f) {
-                        target[index] = height;
-                        continue;
-                    }
-
-                    const float filteredHeight = glm::mix(median, neighborAverage, 0.30f);
-                    target[index] = glm::mix(height, filteredHeight, spikeMask * clampedBlend * landMask);
-                }
-            }
-        }
-
-        for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
-            faces_[static_cast<std::size_t>(faceIndex)].height.swap(nextHeight[static_cast<std::size_t>(faceIndex)]);
-        }
-    }
-}
-
-void PlanetProceduralData::smoothSmallTerrainBumps(const PlanetRenderSettings& settings,
-                                                   int iterations,
-                                                   float blend)
-{
-    PROFILE_SCOPE("Smooth Small Terrain Bumps");
-    if (resolution_ <= 1 || iterations <= 0 || blend <= 0.0f) {
-        return;
-    }
-
-    const int n = resolution_;
-    const std::size_t cellCount = static_cast<std::size_t>(n * n);
-    const float seaLevel = settings.seaLevelOffset;
-    const float clampedBlend = glm::clamp(blend, 0.0f, 1.0f);
-    const auto indexOf = [n](int x, int y) {
-        return static_cast<std::size_t>(y * n + x);
-    };
-
-    std::array<std::vector<float>, 6> nextHeight;
-    for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
-        nextHeight[static_cast<std::size_t>(faceIndex)].assign(cellCount, 0.0f);
-    }
-
-    for (int iteration = 0; iteration < iterations; ++iteration) {
-        for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
-            FaceData& faceData = faces_[static_cast<std::size_t>(faceIndex)];
-            std::vector<float>& target = nextHeight[static_cast<std::size_t>(faceIndex)];
-
-            for (int y = 0; y < n; ++y) {
-                for (int x = 0; x < n; ++x) {
-                    const std::size_t index = indexOf(x, y);
-                    const float height = faceData.height[index];
-                    const float landMask = glm::smoothstep(seaLevel - 0.02f, seaLevel + 0.16f, height);
-                    const float coastFade = glm::smoothstep(seaLevel + 0.035f, seaLevel + 0.16f, height);
-                    if (landMask <= 0.001f || coastFade <= 0.001f) {
-                        target[index] = height;
-                        continue;
-                    }
-
-                    float weightedSum = height * 2.0f;
-                    float totalWeight = 2.0f;
-                    for (int oy = -2; oy <= 2; ++oy) {
-                        for (int ox = -2; ox <= 2; ++ox) {
-                            if (ox == 0 && oy == 0) {
-                                continue;
-                            }
-                            const CellRef neighbor = neighborCell(faceIndex, x + ox, y + oy, n);
-                            const FaceData& neighborFace = faces_[static_cast<std::size_t>(neighbor.face)];
-                            const float neighborHeight = neighborFace.height[neighbor.index];
-                            const float neighborLand = glm::smoothstep(seaLevel - 0.02f, seaLevel + 0.16f, neighborHeight);
-                            const float distSq = static_cast<float>(ox * ox + oy * oy);
-                            const float weight = neighborLand / (1.0f + distSq * 0.55f);
-                            weightedSum += neighborHeight * weight;
-                            totalWeight += weight;
-                        }
-                    }
-
-                    const float localAverage = weightedSum / std::max(totalWeight, 0.0001f);
-                    const float localDelta = std::abs(height - localAverage);
-                    const float bumpMask = glm::smoothstep(0.0025f, 0.018f, localDelta);
-                    const float riverProtect = glm::clamp(faceData.flowMask[index] * 0.65f + faceData.erosionMask[index] * 0.35f, 0.0f, 1.0f);
-                    const float mountainCoreProtect = glm::smoothstep(0.72f, 0.98f, faceData.domainWeight[index].x) * 0.28f;
-                    const float preserve = glm::clamp(1.0f - riverProtect * 0.75f - mountainCoreProtect, 0.20f, 1.0f);
-                    const float smoothWeight = clampedBlend * landMask * coastFade * bumpMask * preserve;
-                    target[index] = glm::mix(height, localAverage, smoothWeight);
-                }
-            }
-        }
-
-        for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
-            faces_[static_cast<std::size_t>(faceIndex)].height.swap(nextHeight[static_cast<std::size_t>(faceIndex)]);
-        }
-    }
-}
-
-void PlanetProceduralData::relaxExtremeTerrainSlopes(const PlanetRenderSettings& settings,
-                                                     int iterations,
-                                                     float maxStep,
-                                                     float blend)
-{
-    PROFILE_SCOPE("Relax Extreme Terrain Slopes");
-    if (resolution_ <= 1 || iterations <= 0 || maxStep <= 0.0f || blend <= 0.0f) {
-        return;
-    }
-
-    const int n = resolution_;
-    const std::size_t cellCount = static_cast<std::size_t>(n * n);
-    const float seaLevel = settings.seaLevelOffset;
-    const float clampedBlend = glm::clamp(blend, 0.0f, 1.0f);
-    const auto indexOf = [n](int x, int y) {
-        return static_cast<std::size_t>(y * n + x);
-    };
-
-    std::array<std::vector<float>, 6> nextHeight;
-    std::array<std::vector<float>, 6> correction;
-    for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
-        nextHeight[static_cast<std::size_t>(faceIndex)].assign(cellCount, 0.0f);
-        correction[static_cast<std::size_t>(faceIndex)].assign(cellCount, 0.0f);
-    }
-
-    for (int iteration = 0; iteration < iterations; ++iteration) {
-        for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
-            FaceData& faceData = faces_[static_cast<std::size_t>(faceIndex)];
-            std::vector<float>& target = nextHeight[static_cast<std::size_t>(faceIndex)];
-
-            for (int y = 0; y < n; ++y) {
-                for (int x = 0; x < n; ++x) {
-                    const std::size_t index = indexOf(x, y);
-                    const float height = faceData.height[index];
-                    float minNeighbor = std::numeric_limits<float>::max();
-                    float maxNeighbor = std::numeric_limits<float>::lowest();
-                    float weightedSum = 0.0f;
-                    float totalWeight = 0.0f;
-
-                    for (int oy = -1; oy <= 1; ++oy) {
-                        for (int ox = -1; ox <= 1; ++ox) {
-                            if (ox == 0 && oy == 0) {
-                                continue;
-                            }
-                            const CellRef neighbor = neighborCell(faceIndex, x + ox, y + oy, n);
-                            const FaceData& neighborFace = faces_[static_cast<std::size_t>(neighbor.face)];
-                            const float neighborHeight = neighborFace.height[neighbor.index];
-                            const float weight = (ox == 0 || oy == 0) ? 1.0f : 0.7071f;
-                            minNeighbor = std::min(minNeighbor, neighborHeight);
-                            maxNeighbor = std::max(maxNeighbor, neighborHeight);
-                            weightedSum += neighborHeight * weight;
-                            totalWeight += weight;
-                        }
-                    }
-
-                    const float neighborAverage = weightedSum / std::max(totalWeight, 0.0001f);
-                    const float highLimit = maxNeighbor + maxStep;
-                    const float lowLimit = minNeighbor - maxStep;
-                    float relaxedHeight = height;
-                    if (height > highLimit) {
-                        relaxedHeight = glm::mix(height, glm::min(neighborAverage + maxStep, height), clampedBlend);
-                    } else if (height < lowLimit) {
-                        relaxedHeight = glm::mix(height, glm::max(neighborAverage - maxStep, height), clampedBlend);
-                    }
-
-                    const float landMask = glm::smoothstep(seaLevel - 0.05f, seaLevel + 0.08f, height);
-                    target[index] = glm::mix(height, relaxedHeight, landMask);
-                }
-            }
-        }
-
-        for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
-            faces_[static_cast<std::size_t>(faceIndex)].height = nextHeight[static_cast<std::size_t>(faceIndex)];
-        }
-
-        for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
-            std::fill(correction[static_cast<std::size_t>(faceIndex)].begin(),
-                      correction[static_cast<std::size_t>(faceIndex)].end(),
-                      0.0f);
-        }
-
-        const int axisOffsets[2][2] = {
-            { 1, 0 },
-            { 0, 1 }
-        };
-
-        for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
-            const FaceData& faceData = faces_[static_cast<std::size_t>(faceIndex)];
-            std::vector<float>& faceCorrection = correction[static_cast<std::size_t>(faceIndex)];
-            for (int y = 0; y < n; ++y) {
-                for (int x = 0; x < n; ++x) {
-                    const std::size_t index = indexOf(x, y);
-                    const float height = faceData.height[index];
-                    const float landMask = glm::smoothstep(seaLevel - 0.04f, seaLevel + 0.16f, height);
-                    if (landMask <= 0.001f) {
-                        continue;
-                    }
-
-                    for (const auto& offset : axisOffsets) {
-                        const CellRef neighbor = neighborCell(faceIndex, x + offset[0], y + offset[1], n);
-                        const float neighborHeight = faces_[static_cast<std::size_t>(neighbor.face)].height[neighbor.index];
-                        const float neighborLandMask = glm::smoothstep(seaLevel - 0.04f, seaLevel + 0.16f, neighborHeight);
-                        const float pairMask = std::min(landMask, neighborLandMask);
-                        const float diff = height - neighborHeight;
-                        const float excess = std::abs(diff) - maxStep;
-                        if (pairMask <= 0.001f || excess <= 0.0f) {
-                            continue;
-                        }
-
-                        const float transfer = excess * 0.5f * clampedBlend * pairMask;
-                        if (diff > 0.0f) {
-                            faceCorrection[index] -= transfer;
-                            correction[static_cast<std::size_t>(neighbor.face)][neighbor.index] += transfer;
-                        } else {
-                            faceCorrection[index] += transfer;
-                            correction[static_cast<std::size_t>(neighbor.face)][neighbor.index] -= transfer;
-                        }
-                    }
-                }
-            }
-        }
-
-        for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
-            FaceData& faceData = faces_[static_cast<std::size_t>(faceIndex)];
-            const std::vector<float>& faceCorrection = correction[static_cast<std::size_t>(faceIndex)];
-            for (std::size_t i = 0; i < cellCount; ++i) {
-                faceData.height[i] += faceCorrection[i];
-            }
-        }
-    }
-}
-
-void PlanetProceduralData::computeWaterClimateFields(const PlanetRenderSettings& settings,
-                                                     const std::function<void(const char*)>& advanceProgress)
-{
-    // 根据当前高度重新计算水深、海岸 mask、温度和湿度。
-    // 侵蚀/biome 塑形之后会再次调用，所以这些字段始终跟最终地形同步。
-    for (std::size_t faceIndex = 0; faceIndex < faces_.size(); ++faceIndex) {
-        FaceData& faceData = faces_[faceIndex];
-
-        for (int y = 0; y < resolution_; ++y) {
-            for (int x = 0; x < resolution_; ++x) {
-                const glm::vec2 uv(
-                    (static_cast<float>(x) + 0.5f) / static_cast<float>(resolution_),
-                    (static_cast<float>(y) + 0.5f) / static_cast<float>(resolution_)
-                );
-                const glm::vec3 sphereDir = cubeSphereDirection(kFaces[faceIndex], uv);
-                const std::size_t index = static_cast<std::size_t>(y * resolution_ + x);
-                const PlanetSample sample = samplePlanetBase(settings, sphereDir, faceData.height[index]);
-
-                faceData.height[index] = sample.height;
-                faceData.waterDepth[index] = sample.waterDepth;
-                faceData.shoreMask[index] = sample.shoreMask;
-                faceData.temperature[index] = sample.temperature;
-                faceData.moisture[index] = sample.moisture;
-            }
-            if (advanceProgress) {
-                advanceProgress("Computing ocean, coast, temperature, and moisture");
-            }
-        }
-    }
-}
-
-void PlanetProceduralData::refineTerrainFromBiomeWeights(const PlanetRenderSettings& settings,
-                                                         const std::function<void(const char*)>& advanceProgress)
-{
-    // 初始 biome 反过来塑造地形：沙漠更平、湿地更低、岩雪区域更粗糙。
-    const float seaLevel = settings.seaLevelOffset;
-    for (std::size_t faceIndex = 0; faceIndex < faces_.size(); ++faceIndex) {
-        FaceData& faceData = faces_[faceIndex];
-
-        for (int y = 0; y < resolution_; ++y) {
-            for (int x = 0; x < resolution_; ++x) {
-                const glm::vec2 uv(
-                    (static_cast<float>(x) + 0.5f) / static_cast<float>(resolution_),
-                    (static_cast<float>(y) + 0.5f) / static_cast<float>(resolution_)
-                );
-                const glm::vec3 sphereDir = cubeSphereDirection(kFaces[faceIndex], uv);
-                const std::size_t index = static_cast<std::size_t>(y * resolution_ + x);
-
-                const glm::vec4 biomeA = faceData.biomeWeightA[index];
-                const glm::vec4 biomeB = faceData.biomeWeightB[index];
-                const float beach = glm::clamp(biomeA.r, 0.0f, 1.0f);
-                const float grass = glm::clamp(biomeA.g, 0.0f, 1.0f);
-                const float forest = glm::clamp(biomeA.b, 0.0f, 1.0f);
-                const float desert = glm::clamp(biomeA.a, 0.0f, 1.0f);
-                const float rock = glm::clamp(biomeB.r, 0.0f, 1.0f);
-                const float snow = glm::clamp(biomeB.g, 0.0f, 1.0f);
-                const float wetland = glm::clamp(biomeB.b, 0.0f, 1.0f);
-                const float mountainDomain = glm::clamp(faceData.domainWeight[index].x, 0.0f, 1.0f);
-                const float mountainProtect = glm::smoothstep(0.26f, 0.72f, mountainDomain);
-
-                const float dune = perlinNoise(sphereDir * 6.5f + glm::vec3(23.1f, 7.4f, 11.8f));
-                const float forestRelief = perlinNoise(sphereDir * 4.8f + glm::vec3(4.2f, 19.7f, 8.5f));
-                const float alpineRelief = perlinNoise(sphereDir * 4.2f + glm::vec3(17.2f, 3.6f, 21.4f));
-
-                float height = faceData.height[index];
-                const float lowPlainTarget = seaLevel + 0.055f + dune * 0.004f;
-                const float desertPlain = desert * (1.0f - glm::smoothstep(0.18f, 0.46f, height - seaLevel));
-                height = glm::mix(height, lowPlainTarget, desertPlain * 0.42f * (1.0f - mountainProtect * 0.82f));
-                height += desert * dune * 0.0025f;
-                height += grass * forestRelief * 0.0010f;
-                height += forest * forestRelief * 0.0015f;
-                height += (rock * 0.0035f + snow * 0.0026f + mountainProtect * 0.0045f) * std::max(alpineRelief, 0.0f);
-                height = glm::mix(height, seaLevel + 0.018f, wetland * 0.36f * (1.0f - mountainProtect * 0.90f));
-                height = glm::mix(height, seaLevel + 0.010f, beach * 0.48f * (1.0f - mountainProtect * 0.92f));
-
-                faceData.height[index] = height;
-            }
-            if (advanceProgress) {
-                advanceProgress("Refining plains, dunes, and alpine relief from initial biomes");
-            }
-        }
-    }
-}
-
-void PlanetProceduralData::updateHydrologyMoisture(const PlanetRenderSettings& settings)
-{
-    const int n = resolution_;
-    if (n <= 0) {
-        return;
-    }
-
-    const float seaLevel = settings.seaLevelOffset;
-    const auto indexOf = [n](int x, int y) {
-        return static_cast<std::size_t>(y * n + x);
-    };
-
-    std::array<std::vector<float>, 6> updatedMoisture;
-    for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
-        updatedMoisture[static_cast<std::size_t>(faceIndex)] =
-            faces_[static_cast<std::size_t>(faceIndex)].moisture;
-    }
-
-    for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
-        const FaceData& faceData = faces_[static_cast<std::size_t>(faceIndex)];
-        std::vector<float>& faceMoisture = updatedMoisture[static_cast<std::size_t>(faceIndex)];
-        for (int y = 0; y < n; ++y) {
-            for (int x = 0; x < n; ++x) {
-                const std::size_t center = indexOf(x, y);
-                const float height = faceData.height[center];
-                const float waterDepth = faceData.waterDepth[center];
-                const float shore = faceData.shoreMask[center];
-                const float lowland = 1.0f - glm::smoothstep(0.06f, 0.34f, height - seaLevel);
-                const float nearWater = glm::smoothstep(0.0f, 0.24f, waterDepth)
-                                      + shore * 0.55f
-                                      + lowland * shore * 0.35f;
-                const float drainage = faceData.flowMask[center] * 0.38f
-                                      + faceData.channelMask[center] * 0.30f
-                                      + faceData.depositionMask[center] * 0.24f;
-
-                // 查 5x5 邻域，水体/河道会向周围扩散湿度；neighborCell 处理跨面邻居。
-                float neighborWater = 0.0f;
-                float neighborFlow = 0.0f;
-                for (int oy = -2; oy <= 2; ++oy) {
-                    for (int ox = -2; ox <= 2; ++ox) {
-                        if (ox == 0 && oy == 0) {
-                            continue;
-                        }
-                        const CellRef neighbor = neighborCell(faceIndex, x + ox, y + oy, n);
-                        const FaceData& neighborFace = faces_[static_cast<std::size_t>(neighbor.face)];
-                        const float distance = std::sqrt(static_cast<float>(ox * ox + oy * oy));
-                        const float weight = 1.0f / std::max(distance, 1.0f);
-                        neighborWater += glm::smoothstep(0.001f, 0.10f, neighborFace.waterDepth[neighbor.index]) * weight;
-                        neighborFlow += (neighborFace.flowMask[neighbor.index] + neighborFace.channelMask[neighbor.index] * 0.65f) * weight;
-                    }
-                }
-                neighborWater = glm::clamp(neighborWater / 6.8f, 0.0f, 1.0f);
-                neighborFlow = glm::clamp(neighborFlow / 6.8f, 0.0f, 1.0f);
-
-                const float hydrologyMoisture = glm::clamp(
-                    nearWater * 0.55f
-                  + drainage * 0.55f
-                  + neighborWater * 0.30f
-                  + neighborFlow * 0.28f,
-                    0.0f,
-                    1.0f
-                );
-                const float aridInterior = (1.0f - shore)
-                                         * (1.0f - neighborWater)
-                                         * (1.0f - glm::smoothstep(0.0f, 0.22f, drainage));
-                float moisture = faceData.moisture[center];
-                moisture = glm::mix(moisture, 1.0f, hydrologyMoisture * 0.58f);
-                moisture *= 1.0f - aridInterior * glm::smoothstep(0.38f, 0.86f, height - seaLevel) * 0.18f;
-                faceMoisture[center] = glm::clamp(moisture, 0.0f, 1.0f);
-            }
-        }
-    }
-
-    for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
-        faces_[static_cast<std::size_t>(faceIndex)].moisture =
-            std::move(updatedMoisture[static_cast<std::size_t>(faceIndex)]);
-    }
-}
-
-void PlanetProceduralData::computeBiomeWeights(const PlanetRenderSettings& settings,
-                                               const std::function<void(const char*)>& advanceProgress)
-{
-    const int n = resolution_;
-    const std::size_t cellCount = static_cast<std::size_t>(n * n);
-    const auto indexOf = [n](int x, int y) {
-        return static_cast<std::size_t>(y * n + x);
-    };
-    const auto sampleCachedHeight = [&](const glm::vec3& dir) {
-        const CellRef ref = cellFromDirection(glm::normalize(dir), n);
-        return faces_[static_cast<std::size_t>(ref.face)].height[ref.index];
-    };
-    // 在球面切线方向做中心差分，得到坡度估计。
-    const auto computeSphericalSlope = [&](const glm::vec3& sphereDir) {
-        const glm::vec3 nDir = glm::normalize(sphereDir);
-        const glm::vec3 up = std::abs(nDir.y) < 0.9f
-            ? glm::vec3(0.0f, 1.0f, 0.0f)
-            : glm::vec3(1.0f, 0.0f, 0.0f);
-        const glm::vec3 tangent = glm::normalize(glm::cross(up, nDir));
-        const glm::vec3 bitangent = glm::normalize(glm::cross(nDir, tangent));
-        const float eps = std::max(1.5f / static_cast<float>(n), 0.0025f);
-
-        const float hL = sampleCachedHeight(glm::normalize(nDir - tangent * eps));
-        const float hR = sampleCachedHeight(glm::normalize(nDir + tangent * eps));
-        const float hD = sampleCachedHeight(glm::normalize(nDir - bitangent * eps));
-        const float hU = sampleCachedHeight(glm::normalize(nDir + bitangent * eps));
-        const float dhTangent = (hR - hL) / (2.0f * eps);
-        const float dhBitangent = (hU - hD) / (2.0f * eps);
-        return glm::clamp(std::sqrt(dhTangent * dhTangent + dhBitangent * dhBitangent) * 0.08f, 0.0f, 1.0f);
-    };
-    // 统计周围水体，额外估计海湾/浅湾遮蔽度，供 beach/wetland 权重使用。
-    const auto computeCoastalWater = [&](int faceIndex, int x, int y) {
-        float immediateWater = 0.0f;
-        float surroundingWater = 0.0f;
-        float totalWeight = 0.0f;
-
-        for (int oy = -2; oy <= 2; ++oy) {
-            for (int ox = -2; ox <= 2; ++ox) {
-                if (ox == 0 && oy == 0) {
-                    continue;
-                }
-
-                const CellRef neighbor = neighborCell(faceIndex, x + ox, y + oy, n);
-                const FaceData& neighborFace = faces_[static_cast<std::size_t>(neighbor.face)];
-                const float neighborWaterDepth = neighborFace.waterDepth[neighbor.index];
-                const float neighborBelowSea = settings.seaLevelOffset - neighborFace.height[neighbor.index];
-                const float neighborWater = glm::smoothstep(
-                    0.0005f,
-                    0.028f,
-                    std::max(neighborWaterDepth, neighborBelowSea)
-                );
-                const float dist2 = static_cast<float>(ox * ox + oy * oy);
-                const float weight = 1.0f / (1.0f + dist2 * 0.55f);
-
-                surroundingWater += neighborWater * weight;
-                totalWeight += weight;
-                if (std::abs(ox) <= 1 && std::abs(oy) <= 1) {
-                    immediateWater = std::max(immediateWater, neighborWater);
-                }
-            }
-        }
-
-        const float waterAround = surroundingWater / std::max(totalWeight, 0.0001f);
-        const float bayShelter = glm::smoothstep(0.18f, 0.52f, waterAround)
-                               * (1.0f - glm::smoothstep(0.88f, 1.0f, waterAround));
-        return glm::vec2(immediateWater, glm::clamp(bayShelter, 0.0f, 1.0f));
-    };
-
-    for (FaceData& faceData : faces_) {
-        faceData.biomeWeightA.assign(cellCount, glm::vec4(0.0f));
-        faceData.biomeWeightB.assign(cellCount, glm::vec4(0.0f));
-    }
-
-    for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
-        FaceData& faceData = faces_[static_cast<std::size_t>(faceIndex)];
-        for (int y = 0; y < n; ++y) {
-            for (int x = 0; x < n; ++x) {
-                const std::size_t i = indexOf(x, y);
-                const glm::vec2 uv(
-                    (static_cast<float>(x) + 0.5f) / static_cast<float>(n),
-                    (static_cast<float>(y) + 0.5f) / static_cast<float>(n)
-                );
-                const glm::vec3 sphereDir = cubeSphereDirection(kFaces[static_cast<std::size_t>(faceIndex)], uv);
-                PlanetSample sample = samplePlanetBase(settings, sphereDir, faceData.height[i]);
-                sample.slope = computeSphericalSlope(sphereDir);
-                sample.channel = faceData.channelMask[i];
-                sample.flow = faceData.flowMask[i];
-                sample.wear = faceData.wearMask[i];
-                sample.deposition = faceData.depositionMask[i];
-                const glm::vec2 coastalWater = computeCoastalWater(faceIndex, x, y);
-
-                const BiomeWeights biome = computeBiome(
-                    sample.height,
-                    sample.waterDepth,
-                    sample.shoreMask,
-                    coastalWater.x,
-                    coastalWater.y,
-                    sphereDir,
-                    settings.seaLevelOffset,
-                    sample.temperature,
-                    sample.moisture,
-                    sample.slope,
-                    sample.channel,
-                    sample.flow,
-                    sample.wear,
-                    sample.deposition
-                );
-
-                faceData.biomeWeightA[i] = glm::vec4(
-                    biome.beach,
-                    biome.grass,
-                    biome.forest,
-                    biome.desert
-                );
-                faceData.biomeWeightB[i] = glm::vec4(
-                    biome.rock,
-                    biome.snow,
-                    biome.wetland,
-                    biome.shallowWater
-                );
-            }
-            if (advanceProgress) {
-                advanceProgress("Computing grassland, forest, desert, rock, and snowline weights");
-            }
-        }
-    }
-}
-
-void PlanetProceduralData::smoothBiomeWeights(int radius, float blend)
-{
-    const int n = resolution_;
-    if (n <= 0 || radius <= 0 || blend <= 0.0f) {
-        return;
-    }
-
-    const float clampedBlend = glm::clamp(blend, 0.0f, 1.0f);
-    const auto indexOf = [n](int x, int y) {
-        return static_cast<std::size_t>(y * n + x);
-    };
-
-    std::array<std::vector<glm::vec4>, 6> smoothedA;
-    std::array<std::vector<glm::vec4>, 6> smoothedB;
-    const std::size_t cellCount = static_cast<std::size_t>(n * n);
-    for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
-        smoothedA[static_cast<std::size_t>(faceIndex)].assign(cellCount, glm::vec4(0.0f));
-        smoothedB[static_cast<std::size_t>(faceIndex)].assign(cellCount, glm::vec4(0.0f));
-    }
-
-    for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
-        const FaceData& faceData = faces_[static_cast<std::size_t>(faceIndex)];
-        for (int y = 0; y < n; ++y) {
-            for (int x = 0; x < n; ++x) {
-                glm::vec4 sumA(0.0f);
-                glm::vec4 sumB(0.0f);
-                float totalWeight = 0.0f;
-
-                for (int oy = -radius; oy <= radius; ++oy) {
-                    for (int ox = -radius; ox <= radius; ++ox) {
-                        const CellRef neighbor = neighborCell(faceIndex, x + ox, y + oy, n);
-                        const float d2 = static_cast<float>(ox * ox + oy * oy);
-                        const float weight = std::exp(-d2 * 0.70f);
-                        const FaceData& neighborFace = faces_[static_cast<std::size_t>(neighbor.face)];
-                        sumA += neighborFace.biomeWeightA[neighbor.index] * weight;
-                        sumB += neighborFace.biomeWeightB[neighbor.index] * weight;
-                        totalWeight += weight;
-                    }
-                }
-
-                const std::size_t index = indexOf(x, y);
-                // 高斯邻域平滑后重新归一化陆地权重，保持 shallowWater 与 land 权重总量稳定。
-                glm::vec4 a = glm::mix(faceData.biomeWeightA[index], sumA / std::max(totalWeight, 0.0001f), clampedBlend);
-                glm::vec4 b = glm::mix(faceData.biomeWeightB[index], sumB / std::max(totalWeight, 0.0001f), clampedBlend);
-
-                a = glm::max(a, glm::vec4(0.0f));
-                b = glm::max(b, glm::vec4(0.0f));
-                b.a = glm::clamp(b.a, 0.0f, 1.0f);
-
-                const float landTarget = glm::clamp(1.0f - b.a, 0.0f, 1.0f);
-                const float landSum = a.r + a.g + a.b + a.a + b.r + b.g + b.b;
-                if (landSum > 0.00001f) {
-                    const float inv = landTarget / landSum;
-                    a *= inv;
-                    b.r *= inv;
-                    b.g *= inv;
-                    b.b *= inv;
-                }
-
-                smoothedA[static_cast<std::size_t>(faceIndex)][index] = a;
-                smoothedB[static_cast<std::size_t>(faceIndex)][index] = b;
-            }
-        }
-    }
-
-    for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
-        faces_[static_cast<std::size_t>(faceIndex)].biomeWeightA =
-            std::move(smoothedA[static_cast<std::size_t>(faceIndex)]);
-        faces_[static_cast<std::size_t>(faceIndex)].biomeWeightB =
-            std::move(smoothedB[static_cast<std::size_t>(faceIndex)]);
-    }
-}
-
-void PlanetProceduralData::computeMeshPlanningFields(const PlanetRenderSettings& settings,
-                                                     const std::function<void(const char*)>& advanceProgress)
-{
-    const int n = resolution_;
-    if (n <= 0) {
-        return;
-    }
-
-    const std::size_t cellCount = static_cast<std::size_t>(n * n);
-    const float seaLevel = settings.seaLevelOffset;
-    const auto indexOf = [n](int x, int y) {
-        return static_cast<std::size_t>(y * n + x);
-    };
-
-    for (FaceData& faceData : faces_) {
-        faceData.regionId.assign(cellCount, 0.0f);
-        faceData.featureMask.assign(cellCount, 0.0f);
-        faceData.meshDensity.assign(cellCount, 0.0f);
-        faceData.geometricError.assign(cellCount, 0.0f);
-        if (faceData.domainWeight.size() != cellCount) {
-            faceData.domainWeight.assign(cellCount, glm::vec4(0.0f));
-        } else {
-            for (glm::vec4& domain : faceData.domainWeight) {
-                domain.y = 0.0f;
-                domain.z = 0.0f;
-                domain.w = 0.0f;
-            }
-        }
-    }
-
-    for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
-        FaceData& faceData = faces_[static_cast<std::size_t>(faceIndex)];
-        for (int y = 0; y < n; ++y) {
-            for (int x = 0; x < n; ++x) {
-                const std::size_t i = indexOf(x, y);
-                const glm::vec2 uv(
-                    (static_cast<float>(x) + 0.5f) / static_cast<float>(n),
-                    (static_cast<float>(y) + 0.5f) / static_cast<float>(n)
-                );
-                const glm::vec3 sphereDir = cubeSphereDirection(kFaces[static_cast<std::size_t>(faceIndex)], uv);
-
-                float neighborMin = faceData.height[i];
-                float neighborMax = faceData.height[i];
-                float neighborSum = 0.0f;
-                float totalWeight = 0.0f;
-                glm::vec4 biomeASum(0.0f);
-                glm::vec4 biomeBSum(0.0f);
-                for (int oy = -1; oy <= 1; ++oy) {
-                    for (int ox = -1; ox <= 1; ++ox) {
-                        if (ox == 0 && oy == 0) {
-                            continue;
-                        }
-                        const CellRef neighbor = neighborCell(faceIndex, x + ox, y + oy, n);
-                        const FaceData& neighborFace = faces_[static_cast<std::size_t>(neighbor.face)];
-                        const float h = neighborFace.height[neighbor.index];
-                        const float weight = (ox == 0 || oy == 0) ? 1.0f : 0.7071f;
-                        neighborMin = std::min(neighborMin, h);
-                        neighborMax = std::max(neighborMax, h);
-                        neighborSum += h * weight;
-                        totalWeight += weight;
-                        biomeASum += neighborFace.biomeWeightA[neighbor.index] * weight;
-                        biomeBSum += neighborFace.biomeWeightB[neighbor.index] * weight;
-                    }
-                }
-
-                const float height = faceData.height[i];
-                const float avgNeighborHeight = neighborSum / std::max(totalWeight, 0.0001f);
-                const float slope = glm::clamp((neighborMax - neighborMin) * settings.terrainHeightScale * 0.22f, 0.0f, 1.0f);
-                const float curvature = glm::clamp(std::abs(height - avgNeighborHeight) * settings.terrainHeightScale * 0.85f, 0.0f, 1.0f);
-                const glm::vec4 biomeA = glm::max(faceData.biomeWeightA[i], glm::vec4(0.0f));
-                const glm::vec4 biomeB = glm::max(faceData.biomeWeightB[i], glm::vec4(0.0f));
-                const glm::vec4 avgBiomeA = biomeASum / std::max(totalWeight, 0.0001f);
-                const glm::vec4 avgBiomeB = biomeBSum / std::max(totalWeight, 0.0001f);
-                const float biomeBoundary = glm::clamp(
-                    glm::length(biomeA - avgBiomeA) + glm::length(biomeB - avgBiomeB),
-                    0.0f,
-                    1.0f
-                );
-
-                const float waterMask = glm::smoothstep(0.001f, 0.075f, faceData.waterDepth[i]);
-                const float coastMask = glm::max(faceData.shoreMask[i], biomeA.r);
-                const float riverMask = glm::max(faceData.channelMask[i], faceData.flowMask[i]);
-                const float erosionMask = glm::max(faceData.erosionMask[i], glm::max(faceData.wearMask[i], faceData.depositionMask[i]));
-                const float heightfieldMountainMask = faceData.domainWeight.empty()
-                    ? 0.0f
-                    : glm::clamp(faceData.domainWeight[i].x, 0.0f, 1.0f);
-                const float terrainSteepnessMask = glm::clamp(biomeB.r * 0.32f + biomeB.g * 0.22f + slope * 0.20f, 0.0f, 1.0f);
-                const float mountainPlanningMask = glm::max(heightfieldMountainMask, terrainSteepnessMask);
-                const float wetlandMask = glm::clamp(biomeB.b + coastMask * faceData.moisture[i] * 0.45f, 0.0f, 1.0f);
-                const float aridMask = glm::clamp(biomeA.a + (1.0f - faceData.moisture[i]) * glm::smoothstep(0.08f, 0.35f, height - seaLevel) * 0.45f, 0.0f, 1.0f);
-
-                // Domain weights: x=mountain/ridge, y=hydrology, z=coast/wetland, w=arid/plain.
-                glm::vec4 domain(
-                    heightfieldMountainMask,
-                    glm::clamp(riverMask * 0.85f + erosionMask * 0.35f, 0.0f, 1.0f),
-                    glm::clamp(coastMask * 0.90f + wetlandMask * 0.45f, 0.0f, 1.0f),
-                    aridMask
-                );
-                const float domainMax = std::max(std::max(domain.x, domain.y), std::max(domain.z, domain.w));
-                float regionId = 0.0f;
-                if (domainMax == domain.y) {
-                    regionId = 2.0f;
-                } else if (domainMax == domain.z) {
-                    regionId = 3.0f;
-                } else if (domainMax == domain.w) {
-                    regionId = 4.0f;
-                } else {
-                    regionId = 1.0f;
-                }
-                if (waterMask > 0.75f && coastMask < 0.12f) {
-                    regionId = 5.0f;
-                }
-
-                const float macroRegionNoise = fbm(sphereDir * 2.35f + glm::vec3(19.2f, 7.1f, 31.4f), 4, 2.0f, 0.5f);
-                const float macroBoundary = glm::smoothstep(0.42f, 0.80f, std::abs(macroRegionNoise - 0.50f) * 2.0f);
-                const float featureMask = glm::clamp(
-                    slope * 0.28f
-                  + curvature * 0.30f
-                  + coastMask * 0.42f
-                  + riverMask * 0.62f
-                  + erosionMask * 0.42f
-                  + biomeBoundary * 0.32f
-                  + macroBoundary * 0.10f,
-                    0.0f,
-                    1.0f
-                );
-                const float meshDensity = glm::clamp(
-                    0.10f
-                  + featureMask * 0.66f
-                  + mountainPlanningMask * 0.16f
-                  + coastMask * 0.18f
-                  + riverMask * 0.24f
-                  - waterMask * (1.0f - coastMask) * 0.18f,
-                    0.0f,
-                    1.0f
-                );
-                const float geometricError = glm::clamp(
-                    (neighborMax - neighborMin) * settings.terrainHeightScale
-                  + curvature * settings.terrainHeightScale * 0.35f
-                  + riverMask * 0.70f
-                  + coastMask * 0.45f,
-                    0.0f,
-                    64.0f
-                );
-
-                faceData.regionId[i] = regionId;
-                faceData.domainWeight[i] = domain;
-                faceData.featureMask[i] = featureMask;
-                faceData.meshDensity[i] = meshDensity;
-                faceData.geometricError[i] = geometricError;
-            }
-            if (advanceProgress) {
-                advanceProgress("Planning feature-aware mesh density fields");
-            }
-        }
-    }
-}
-
-void PlanetProceduralData::applyErosion(const PlanetRenderSettings& settings,
-                                        const std::function<void(const char*)>& advanceProgress)
-{
-    const int iterations = std::clamp(settings.erosionIterations, 0, 256);
-    const float erosionStrength = std::max(settings.erosionStrength, 0.0f);
-    const float thermalStrength = std::max(settings.erosionThermalStrength, 0.0f);
-    const int n = resolution_;
-    const std::size_t cellCount = static_cast<std::size_t>(n * n);
-    const float talus = std::max(settings.erosionTalus, 0.0001f);
-    const float sedimentResponse = glm::clamp(settings.erosionSediment, 0.0f, 1.0f);
-    const float capacityFactor = glm::mix(1.8f, 5.8f, sedimentResponse);
-    const float depositionRate = glm::mix(0.045f, 0.22f, sedimentResponse);
-    const float rainAmount = 0.010f + erosionStrength * 0.045f;
-    const float evaporation = 0.045f;
-    const float flowFraction = 0.58f;
-    const float seaLevel = settings.seaLevelOffset;
-    const auto indexOf = [n](int x, int y) {
-        return static_cast<std::size_t>(y * n + x);
-    };
-    const auto normalizeMask = [](std::vector<float>& mask, float exponent) {
-        float maxValue = 0.0f;
-        for (float value : mask) {
-            maxValue = std::max(maxValue, value);
-        }
-        if (maxValue <= 0.000001f) {
-            return;
-        }
-        for (float& value : mask) {
-            value = std::pow(glm::clamp(value / maxValue, 0.0f, 1.0f), exponent);
-        }
-    };
-
-    for (FaceData& faceData : faces_) {
-        // 侵蚀 mask 重新生成，不沿用上一次 bake 的残留值。
-        faceData.erosionMask.assign(faceData.height.size(), 0.0f);
-        faceData.channelMask.assign(faceData.height.size(), 0.0f);
-        faceData.flowMask.assign(faceData.height.size(), 0.0f);
-        faceData.wearMask.assign(faceData.height.size(), 0.0f);
-        faceData.depositionMask.assign(faceData.height.size(), 0.0f);
-    }
-
-    if (iterations <= 0 || (erosionStrength <= 0.0f && thermalStrength <= 0.0f)) {
-        return;
-    }
-
-    std::array<std::vector<float>, 6> water;
-    std::array<std::vector<float>, 6> sediment;
-    std::array<std::vector<float>, 6> nextWater;
-    std::array<std::vector<float>, 6> nextSediment;
-    std::array<std::vector<float>, 6> delta;
-    for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
-        water[static_cast<std::size_t>(faceIndex)].assign(cellCount, 0.0f);
-        sediment[static_cast<std::size_t>(faceIndex)].assign(cellCount, 0.0f);
-        nextWater[static_cast<std::size_t>(faceIndex)].assign(cellCount, 0.0f);
-        nextSediment[static_cast<std::size_t>(faceIndex)].assign(cellCount, 0.0f);
-        delta[static_cast<std::size_t>(faceIndex)].assign(cellCount, 0.0f);
-    }
-
-    for (int iteration = 0; iteration < iterations; ++iteration) {
-        for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
-            std::fill(delta[static_cast<std::size_t>(faceIndex)].begin(), delta[static_cast<std::size_t>(faceIndex)].end(), 0.0f);
-            std::fill(nextWater[static_cast<std::size_t>(faceIndex)].begin(), nextWater[static_cast<std::size_t>(faceIndex)].end(), 0.0f);
-            std::fill(nextSediment[static_cast<std::size_t>(faceIndex)].begin(), nextSediment[static_cast<std::size_t>(faceIndex)].end(), 0.0f);
-        }
-
-        for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
-            FaceData& faceData = faces_[static_cast<std::size_t>(faceIndex)];
-            for (int y = 0; y < n; ++y) {
-                for (int x = 0; x < n; ++x) {
-                    const std::size_t center = indexOf(x, y);
-                    const float h = faceData.height[center];
-                    const float landMask = glm::smoothstep(seaLevel + 0.02f, seaLevel + 0.20f, h);
-                    if (landMask <= 0.001f) {
-                        continue;
-                    }
-
-                    std::vector<float>& faceWater = water[static_cast<std::size_t>(faceIndex)];
-                    std::vector<float>& faceSediment = sediment[static_cast<std::size_t>(faceIndex)];
-                    std::vector<float>& faceNextWater = nextWater[static_cast<std::size_t>(faceIndex)];
-                    std::vector<float>& faceNextSediment = nextSediment[static_cast<std::size_t>(faceIndex)];
-                    std::vector<float>& faceDelta = delta[static_cast<std::size_t>(faceIndex)];
-
-                    float currentWater = faceWater[center] + rainAmount * landMask;
-                    float currentSediment = faceSediment[center];
-                    const float currentSurface = h + currentWater;
-                    float totalDrop = 0.0f;
-                    float maxDrop = 0.0f;
-                    struct DownhillNeighbor {
-                        int face;
-                        std::size_t index;
-                        float drop;
-                    };
-                    DownhillNeighbor downhill[8];
-                    int downhillCount = 0;
-
-                    for (int oy = -1; oy <= 1; ++oy) {
-                        for (int ox = -1; ox <= 1; ++ox) {
-                            if (ox == 0 && oy == 0) {
-                                continue;
-                            }
-                            const CellRef neighbor = neighborCell(faceIndex, x + ox, y + oy, n);
-                            const float neighborSurface =
-                                faces_[static_cast<std::size_t>(neighbor.face)].height[neighbor.index]
-                              + water[static_cast<std::size_t>(neighbor.face)][neighbor.index];
-                            const float drop = currentSurface - neighborSurface;
-                            if (drop > 0.0f) {
-                                downhill[downhillCount++] = { neighbor.face, neighbor.index, drop };
-                                totalDrop += drop;
-                                maxDrop = std::max(maxDrop, drop);
-                            }
-                        }
-                    }
-
-                    if (downhillCount <= 0 || totalDrop <= 0.000001f) {
-                        // 没有下坡方向时水停留并少量沉积。
-                        const float standingDeposit = currentSediment * depositionRate * 0.18f;
-                        faceDelta[center] += standingDeposit;
-                        currentSediment -= standingDeposit;
-                        faceData.depositionMask[center] += standingDeposit;
-                        faceNextWater[center] += currentWater * (1.0f - evaporation);
-                        faceNextSediment[center] += currentSediment;
-                        continue;
-                    }
-
-                    for (int a = 0; a < downhillCount - 1; ++a) {
-                        for (int b = a + 1; b < downhillCount; ++b) {
-                            if (downhill[b].drop > downhill[a].drop) {
-                                std::swap(downhill[a], downhill[b]);
-                            }
-                        }
-                    }
-                    downhillCount = std::min(downhillCount, 2);
-                    totalDrop = 0.0f;
-                    for (int i = 0; i < downhillCount; ++i) {
-                        totalDrop += downhill[i].drop;
-                    }
-
-                    const float flowSpeed = glm::clamp(maxDrop * 6.0f, 0.0f, 1.0f);
-                    const float capacity = std::max(flowSpeed * currentWater * capacityFactor, 0.00003f);
-                    // sediment capacity 决定当前格是侵蚀还是沉积。
-                    if (currentSediment < capacity && erosionStrength > 0.0f) {
-                        const float erodeAmount = std::min(
-                            (capacity - currentSediment) * erosionStrength * landMask,
-                            maxDrop * 0.22f
-                        );
-                        faceDelta[center] -= erodeAmount;
-                        currentSediment += erodeAmount;
-                        faceData.wearMask[center] += erodeAmount;
-                    } else if (currentSediment > capacity) {
-                        const float depositAmount = (currentSediment - capacity) * depositionRate;
-                        faceDelta[center] += depositAmount;
-                        currentSediment -= depositAmount;
-                        faceData.depositionMask[center] += depositAmount;
-                    }
-
-                    const float movedWater = currentWater * flowFraction;
-                    const float keptWater = currentWater - movedWater;
-                    const float invWater = currentWater > 0.000001f ? 1.0f / currentWater : 0.0f;
-                    faceNextWater[center] += keptWater * (1.0f - evaporation);
-                    faceNextSediment[center] += currentSediment * keptWater * invWater;
-                    faceData.flowMask[center] += movedWater * flowSpeed;
-
-                    for (int i = 0; i < downhillCount; ++i) {
-                        // 只向最陡的两个方向分流水和沉积物，形成更清晰的流路。
-                        const float share = downhill[i].drop / totalDrop;
-                        const float waterShare = movedWater * share;
-                        const std::size_t neighborFaceIndex = static_cast<std::size_t>(downhill[i].face);
-                        nextWater[neighborFaceIndex][downhill[i].index] += waterShare * (1.0f - evaporation);
-                        nextSediment[neighborFaceIndex][downhill[i].index] += currentSediment * waterShare * invWater;
-                        faces_[neighborFaceIndex].flowMask[downhill[i].index] += waterShare * flowSpeed * 0.35f;
-                    }
-                }
-            }
-        }
-
-        for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
-            FaceData& faceData = faces_[static_cast<std::size_t>(faceIndex)];
-            std::vector<float>& faceDelta = delta[static_cast<std::size_t>(faceIndex)];
-            for (std::size_t i = 0; i < cellCount; ++i) {
-                faceData.height[i] += faceDelta[i];
-                faceData.erosionMask[i] += std::abs(faceDelta[i]);
-            }
-        }
-        for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
-            water[static_cast<std::size_t>(faceIndex)].swap(nextWater[static_cast<std::size_t>(faceIndex)]);
-            sediment[static_cast<std::size_t>(faceIndex)].swap(nextSediment[static_cast<std::size_t>(faceIndex)]);
-        }
-        if (advanceProgress) {
-            advanceProgress("Running hydraulic erosion");
-        }
-    }
-
-    const int thermalIterations = thermalStrength > 0.0f ? std::clamp(iterations / 3, 1, 80) : 0;
-    for (int iteration = 0; iteration < thermalIterations; ++iteration) {
-        for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
-            std::fill(delta[static_cast<std::size_t>(faceIndex)].begin(), delta[static_cast<std::size_t>(faceIndex)].end(), 0.0f);
-        }
-
-        for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
-            FaceData& faceData = faces_[static_cast<std::size_t>(faceIndex)];
-            std::vector<float>& faceDelta = delta[static_cast<std::size_t>(faceIndex)];
-            for (int y = 0; y < n; ++y) {
-                for (int x = 0; x < n; ++x) {
-                    const std::size_t center = indexOf(x, y);
-                    const float h = faceData.height[center];
-                    const float landMask = glm::smoothstep(seaLevel + 0.02f, seaLevel + 0.20f, h);
-                    if (landMask <= 0.001f) {
-                        continue;
-                    }
-
-                    for (int oy = -1; oy <= 1; ++oy) {
-                        for (int ox = -1; ox <= 1; ++ox) {
-                            if ((ox == 0 && oy == 0) || (ox != 0 && oy != 0)) {
-                                continue;
-                            }
-                            const CellRef neighbor = neighborCell(faceIndex, x + ox, y + oy, n);
-                            FaceData& neighborFace = faces_[static_cast<std::size_t>(neighbor.face)];
-                            const float slopeToNeighbor = h - neighborFace.height[neighbor.index];
-                            if (slopeToNeighbor > talus * 1.45f) {
-                                // 热力侵蚀：超过安息角的坡面向低邻居滑落。
-                                const float slide = std::min(
-                                    (slopeToNeighbor - talus * 1.45f) * thermalStrength * landMask,
-                                    slopeToNeighbor * 0.18f
-                                );
-                                faceDelta[center] -= slide;
-                                delta[static_cast<std::size_t>(neighbor.face)][neighbor.index] += slide;
-                                faceData.wearMask[center] += slide * 0.45f;
-                                neighborFace.depositionMask[neighbor.index] += slide * 0.35f;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
-            FaceData& faceData = faces_[static_cast<std::size_t>(faceIndex)];
-            std::vector<float>& faceDelta = delta[static_cast<std::size_t>(faceIndex)];
-            for (std::size_t i = 0; i < cellCount; ++i) {
-                faceData.height[i] += faceDelta[i];
-                faceData.erosionMask[i] += std::abs(faceDelta[i]);
-            }
-        }
-        if (advanceProgress) {
-            advanceProgress("Running thermal erosion");
-        }
-    }
-
-    for (FaceData& faceData : faces_) {
-        normalizeMask(faceData.erosionMask, 1.6f);
-        normalizeMask(faceData.flowMask, 1.35f);
-        normalizeMask(faceData.wearMask, 1.45f);
-        normalizeMask(faceData.depositionMask, 1.35f);
-    }
-
-    std::array<std::vector<float>, 6> channelRaw;
-    for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
-        channelRaw[static_cast<std::size_t>(faceIndex)].assign(cellCount, 0.0f);
-    }
-    for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
-        const FaceData& faceData = faces_[static_cast<std::size_t>(faceIndex)];
-        for (int y = 0; y < n; ++y) {
-            for (int x = 0; x < n; ++x) {
-                const std::size_t center = indexOf(x, y);
-                const float h = faceData.height[center];
-                float neighborSum = 0.0f;
-                float maxDiff = 0.0f;
-                int neighborCount = 0;
-
-                for (int oy = -1; oy <= 1; ++oy) {
-                    for (int ox = -1; ox <= 1; ++ox) {
-                        if (ox == 0 && oy == 0) {
-                            continue;
-                        }
-                        const CellRef neighbor = neighborCell(faceIndex, x + ox, y + oy, n);
-                        const float neighborHeight = faces_[static_cast<std::size_t>(neighbor.face)].height[neighbor.index];
-                        neighborSum += neighborHeight;
-                        maxDiff = std::max(maxDiff, std::abs(neighborHeight - h));
-                        ++neighborCount;
-                    }
-                }
-
-                const float avgNeighborHeight = neighborSum / std::max(neighborCount, 1);
-                const float concavity = std::max(avgNeighborHeight - h, 0.0f);
-                const float slopeGate = glm::smoothstep(0.006f, 0.055f, maxDiff);
-                const float concavityGate = glm::smoothstep(0.0015f, 0.020f, concavity);
-                const float flow = faceData.flowMask[center];
-                const float wear = faceData.wearMask[center];
-                // 河道 mask 偏向“凹陷 + 有流量 + 有坡差”的位置。
-                float channel = flow * concavityGate * slopeGate;
-                channel += wear * concavityGate * 0.18f;
-                channelRaw[static_cast<std::size_t>(faceIndex)][center] = std::pow(glm::clamp(channel, 0.0f, 1.0f), 1.8f);
-            }
-        }
-        if (advanceProgress) {
-            advanceProgress("Detecting channel flow");
-        }
-    }
-    for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
-        faces_[static_cast<std::size_t>(faceIndex)].channelMask = std::move(channelRaw[static_cast<std::size_t>(faceIndex)]);
-        normalizeMask(faces_[static_cast<std::size_t>(faceIndex)].channelMask, 1.2f);
-        for (float& value : faces_[static_cast<std::size_t>(faceIndex)].channelMask) {
-            value = glm::smoothstep(0.10f, 0.55f, value);
-        }
-    }
-}
-
-void PlanetProceduralData::extractPrimaryRiver(const PlanetRenderSettings& settings,
-                                               const std::function<void(const char*)>& advanceProgress)
-{
-    const int n = resolution_;
-    if (n <= 4) {
-        return;
-    }
-
-    const std::size_t cellCount = static_cast<std::size_t>(n * n);
-    const float seaLevel = settings.seaLevelOffset;
-    const auto indexOf = [n](int x, int y) {
-        return static_cast<std::size_t>(y * n + x);
-    };
-    const auto cellDirection = [this, n](int faceIndex, std::size_t index) {
-        const int x = static_cast<int>(index % static_cast<std::size_t>(n));
-        const int y = static_cast<int>(index / static_cast<std::size_t>(n));
-        const glm::vec2 uv(
-            (static_cast<float>(x) + 0.5f) / static_cast<float>(n),
-            (static_cast<float>(y) + 0.5f) / static_cast<float>(n)
-        );
-        return cubeSphereDirection(kFaces[static_cast<std::size_t>(faceIndex)], uv);
-    };
-
-    std::array<std::vector<float>, 6> baseFlow;
-    std::array<std::vector<float>, 6> baseChannel;
-    std::array<std::vector<float>, 6> baseWear;
-    for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
-        const FaceData& faceData = faces_[static_cast<std::size_t>(faceIndex)];
-        baseFlow[static_cast<std::size_t>(faceIndex)] = faceData.flowMask;
-        baseChannel[static_cast<std::size_t>(faceIndex)] = faceData.channelMask;
-        baseWear[static_cast<std::size_t>(faceIndex)] = faceData.wearMask;
-    }
-
-    struct Candidate {
-        int face = 0;
-        std::size_t index = 0;
-        float score = 0.0f;
-    };
-    std::vector<Candidate> candidates;
-    candidates.reserve(64);
-
-    for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
-        const FaceData& faceData = faces_[static_cast<std::size_t>(faceIndex)];
-        for (std::size_t index = 0; index < cellCount; ++index) {
-            const float height = faceData.height[index];
-            const float relativeHeight = height - seaLevel;
-            if (relativeHeight <= 0.16f || faceData.waterDepth[index] > 0.0f) {
-                continue;
-            }
-
-            const glm::vec3 dir = cellDirection(faceIndex, index);
-            const float basinNoise = fbm(dir * 2.25f + glm::vec3(19.4f, 7.1f, 31.6f), 4, 2.0f, 0.52f) * 0.5f + 0.5f;
-            const float shorePenalty = glm::smoothstep(0.02f, 0.40f, faceData.shoreMask[index]);
-            const float score = relativeHeight * 1.90f
-                              + baseFlow[static_cast<std::size_t>(faceIndex)][index] * 0.75f
-                              + baseWear[static_cast<std::size_t>(faceIndex)][index] * 0.26f
-                              + basinNoise * 0.20f
-                              - shorePenalty * 0.95f;
-            candidates.push_back({ faceIndex, index, score });
-        }
-    }
-
-    if (candidates.empty()) {
-        return;
-    }
-
-    std::sort(candidates.begin(), candidates.end(), [](const Candidate& a, const Candidate& b) {
-        return a.score > b.score;
-    });
-    const std::size_t candidateCount = std::min<std::size_t>(candidates.size(), 32);
-
-    struct RiverNode {
-        int face = 0;
-        std::size_t index = 0;
-    };
-    struct RiverTrace {
-        std::vector<RiverNode> nodes;
-        bool reachedSea = false;
-        float score = -std::numeric_limits<float>::max();
-    };
-
-    const auto traceRiver = [&](const Candidate& source) {
-        RiverTrace trace;
-        std::array<std::vector<std::uint8_t>, 6> visited;
-        for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
-            visited[static_cast<std::size_t>(faceIndex)].assign(cellCount, 0);
-        }
-
-        int currentFace = source.face;
-        std::size_t currentIndex = source.index;
-        const float sourceHeight = faces_[static_cast<std::size_t>(currentFace)].height[currentIndex];
-        const int maxSteps = std::max(n * 10, 128);
-
-        for (int step = 0; step < maxSteps; ++step) {
-            trace.nodes.push_back({ currentFace, currentIndex });
-            visited[static_cast<std::size_t>(currentFace)][currentIndex] = 1;
-
-            const FaceData& currentFaceData = faces_[static_cast<std::size_t>(currentFace)];
-            const float currentHeight = currentFaceData.height[currentIndex];
-            if (trace.nodes.size() > static_cast<std::size_t>(std::max(n / 3, 18))
-                && currentHeight <= seaLevel + 0.010f) {
-                trace.reachedSea = true;
-                break;
-            }
-
-            const int cx = static_cast<int>(currentIndex % static_cast<std::size_t>(n));
-            const int cy = static_cast<int>(currentIndex / static_cast<std::size_t>(n));
-            float bestScore = -std::numeric_limits<float>::max();
-            CellRef bestNeighbor{ currentFace, currentIndex };
-
-            for (int oy = -1; oy <= 1; ++oy) {
-                for (int ox = -1; ox <= 1; ++ox) {
-                    if (ox == 0 && oy == 0) {
-                        continue;
-                    }
-
-                    const CellRef neighbor = neighborCell(currentFace, cx + ox, cy + oy, n);
-                    const std::size_t neighborFace = static_cast<std::size_t>(neighbor.face);
-                    const FaceData& neighborFaceData = faces_[neighborFace];
-                    const float neighborHeight = neighborFaceData.height[neighbor.index];
-                    const float drop = currentHeight - neighborHeight;
-                    const glm::vec3 dir = cellDirection(neighbor.face, neighbor.index);
-                    const float meander = fbm(dir * 6.8f + glm::vec3(4.7f, 23.1f, 9.6f), 3, 2.0f, 0.50f) * 0.5f + 0.5f;
-                    const float oldDrainage = baseFlow[neighborFace][neighbor.index] * 0.78f
-                                            + baseChannel[neighborFace][neighbor.index] * 1.05f;
-                    const float seaBonus = neighborHeight <= seaLevel + 0.008f
-                        ? (trace.nodes.size() > static_cast<std::size_t>(n / 2) ? 1.65f : -2.20f)
-                        : 0.0f;
-                    const float loopPenalty = visited[neighborFace][neighbor.index] != 0 ? 4.0f : 0.0f;
-                    const float diagonalPenalty = (ox != 0 && oy != 0) ? 0.035f : 0.0f;
-                    const float score = drop * 3.10f
-                                      - neighborHeight * 0.72f
-                                      + oldDrainage
-                                      + baseWear[neighborFace][neighbor.index] * 0.18f
-                                      + meander * 0.10f
-                                      + seaBonus
-                                      - loopPenalty
-                                      - diagonalPenalty;
-                    if (score > bestScore) {
-                        bestScore = score;
-                        bestNeighbor = neighbor;
-                    }
-                }
-            }
-
-            if (bestNeighbor.face == currentFace && bestNeighbor.index == currentIndex) {
-                break;
-            }
-            if (visited[static_cast<std::size_t>(bestNeighbor.face)][bestNeighbor.index] != 0) {
-                break;
-            }
-
-            currentFace = bestNeighbor.face;
-            currentIndex = bestNeighbor.index;
-        }
-
-        const RiverNode& endNode = trace.nodes.back();
-        const float endHeight = faces_[static_cast<std::size_t>(endNode.face)].height[endNode.index];
-        const float length01 = static_cast<float>(trace.nodes.size()) / static_cast<float>(std::max(n, 1));
-        const float altitudeDrop = std::max(sourceHeight - endHeight, 0.0f);
-        trace.score = length01 * 1.35f
-                    + altitudeDrop * 2.25f
-                    + (trace.reachedSea ? 2.40f : 0.0f)
-                    + source.score * 0.10f;
-        return trace;
-    };
-
-    RiverTrace bestTrace;
-    for (std::size_t i = 0; i < candidateCount; ++i) {
-        RiverTrace trace = traceRiver(candidates[i]);
-        if (trace.nodes.size() > bestTrace.nodes.size() && trace.score + 0.45f > bestTrace.score) {
-            bestTrace = std::move(trace);
-        } else if (trace.score > bestTrace.score) {
-            bestTrace = std::move(trace);
-        }
-    }
-
-    const int minimumTraceLength = std::max(n / 3, 18);
-    if (bestTrace.nodes.size() < static_cast<std::size_t>(minimumTraceLength)) {
-        return;
-    }
-
-    std::array<std::vector<float>, 6> primaryChannel;
-    std::array<std::vector<float>, 6> primaryFlow;
-    for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
-        primaryChannel[static_cast<std::size_t>(faceIndex)].assign(cellCount, 0.0f);
-        primaryFlow[static_cast<std::size_t>(faceIndex)].assign(cellCount, 0.0f);
-        FaceData& faceData = faces_[static_cast<std::size_t>(faceIndex)];
-        for (std::size_t i = 0; i < cellCount; ++i) {
-            const float oldWetTrace = std::pow(glm::clamp(baseFlow[static_cast<std::size_t>(faceIndex)][i], 0.0f, 1.0f), 1.85f);
-            faceData.flowMask[i] = oldWetTrace * 0.10f;
-            faceData.channelMask[i] = 0.0f;
-        }
-    }
-
-    std::array<std::vector<std::uint8_t>, 6> trunkMask;
-    for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
-        trunkMask[static_cast<std::size_t>(faceIndex)].assign(cellCount, 0);
-    }
-    for (const RiverNode& node : bestTrace.nodes) {
-        trunkMask[static_cast<std::size_t>(node.face)][node.index] = 1;
-    }
-
-    const int trunkCoreRadius = glm::clamp(n / 110, 1, 3);
-    const int trunkBankRadius = trunkCoreRadius + 3;
-    const int tributaryCoreRadius = 1;
-    const int tributaryBankRadius = glm::clamp(n / 96, 2, 4);
-
-    const auto paintRiver = [&](const RiverNode& node, float downstream, float scale, bool tributary) {
-        const int centerX = static_cast<int>(node.index % static_cast<std::size_t>(n));
-        const int centerY = static_cast<int>(node.index / static_cast<std::size_t>(n));
-        const int coreRadius = tributary ? tributaryCoreRadius : trunkCoreRadius;
-        const int bankRadius = tributary ? tributaryBankRadius : trunkBankRadius;
-        const float coreSigma = std::max(static_cast<float>(coreRadius) * (0.52f + downstream * 0.30f), 0.72f);
-        const float bankSigma = std::max(static_cast<float>(bankRadius) * (0.56f + downstream * 0.34f), 1.0f);
-        const float channelStrength = glm::mix(0.48f, 1.0f, downstream) * scale;
-        const float flowStrength = glm::mix(0.32f, 1.0f, downstream) * scale;
-
-        for (int oy = -bankRadius; oy <= bankRadius; ++oy) {
-            for (int ox = -bankRadius; ox <= bankRadius; ++ox) {
-                const float d2 = static_cast<float>(ox * ox + oy * oy);
-                if (d2 > static_cast<float>(bankRadius * bankRadius)) {
-                    continue;
-                }
-
-                const CellRef target = neighborCell(node.face, centerX + ox, centerY + oy, n);
-                const std::size_t targetFace = static_cast<std::size_t>(target.face);
-                const float core = std::exp(-d2 / (2.0f * coreSigma * coreSigma));
-                const float bank = std::exp(-d2 / (2.0f * bankSigma * bankSigma));
-                primaryChannel[targetFace][target.index] = std::max(
-                    primaryChannel[targetFace][target.index],
-                    channelStrength * core
-                );
-                primaryFlow[targetFace][target.index] = std::max(
-                    primaryFlow[targetFace][target.index],
-                    flowStrength * bank
-                );
-
-                FaceData& targetFaceData = faces_[targetFace];
-                const float carve = (tributary ? 0.0012f : 0.0018f) + downstream * (tributary ? 0.0020f : 0.0038f);
-                const float carveAmount = carve * core * channelStrength;
-                if (targetFaceData.height[target.index] > seaLevel + 0.006f) {
-                    targetFaceData.height[target.index] = std::max(
-                        targetFaceData.height[target.index] - carveAmount,
-                        seaLevel + 0.006f
-                    );
-                }
-                targetFaceData.wearMask[target.index] = std::max(
-                    targetFaceData.wearMask[target.index],
-                    core * channelStrength * 0.82f
-                );
-                targetFaceData.erosionMask[target.index] = std::max(
-                    targetFaceData.erosionMask[target.index],
-                    bank * flowStrength * 0.46f
-                );
-            }
-        }
-    };
-
-    for (std::size_t i = 0; i < bestTrace.nodes.size(); ++i) {
-        const float downstream = bestTrace.nodes.size() > 1
-            ? static_cast<float>(i) / static_cast<float>(bestTrace.nodes.size() - 1)
-            : 1.0f;
-        paintRiver(bestTrace.nodes[i], downstream, 1.0f, false);
-    }
-
-    const auto traceTributary = [&](const Candidate& source, int maxSteps) {
-        RiverTrace trace;
-        std::array<std::vector<std::uint8_t>, 6> visited;
-        for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
-            visited[static_cast<std::size_t>(faceIndex)].assign(cellCount, 0);
-        }
-
-        int currentFace = source.face;
-        std::size_t currentIndex = source.index;
-        for (int step = 0; step < maxSteps; ++step) {
-            trace.nodes.push_back({ currentFace, currentIndex });
-            visited[static_cast<std::size_t>(currentFace)][currentIndex] = 1;
-            if (trunkMask[static_cast<std::size_t>(currentFace)][currentIndex] != 0
-                && trace.nodes.size() > static_cast<std::size_t>(std::max(n / 8, 10))) {
-                trace.reachedSea = true;
-                break;
-            }
-
-            const FaceData& currentFaceData = faces_[static_cast<std::size_t>(currentFace)];
-            const float currentHeight = currentFaceData.height[currentIndex];
-            const int cx = static_cast<int>(currentIndex % static_cast<std::size_t>(n));
-            const int cy = static_cast<int>(currentIndex / static_cast<std::size_t>(n));
-            float bestScore = -std::numeric_limits<float>::max();
-            CellRef bestNeighbor{ currentFace, currentIndex };
-
-            for (int oy = -1; oy <= 1; ++oy) {
-                for (int ox = -1; ox <= 1; ++ox) {
-                    if (ox == 0 && oy == 0) {
-                        continue;
-                    }
-
-                    const CellRef neighbor = neighborCell(currentFace, cx + ox, cy + oy, n);
-                    const std::size_t neighborFace = static_cast<std::size_t>(neighbor.face);
-                    const FaceData& neighborFaceData = faces_[neighborFace];
-                    const float neighborHeight = neighborFaceData.height[neighbor.index];
-                    const float drop = currentHeight - neighborHeight;
-                    const glm::vec3 dir = cellDirection(neighbor.face, neighbor.index);
-                    const float branchNoise = fbm(dir * 11.5f + glm::vec3(31.7f, 5.2f, 18.9f), 3, 2.0f, 0.52f) * 0.5f + 0.5f;
-                    const float oldDrainage = baseFlow[neighborFace][neighbor.index] * 0.95f
-                                            + baseChannel[neighborFace][neighbor.index] * 0.55f;
-                    const float trunkBonus = trunkMask[neighborFace][neighbor.index] != 0 ? 3.2f : 0.0f;
-                    const float seaPenalty = neighborHeight <= seaLevel + 0.004f ? 1.8f : 0.0f;
-                    const float loopPenalty = visited[neighborFace][neighbor.index] != 0 ? 4.5f : 0.0f;
-                    const float score = drop * 2.20f
-                                      - neighborHeight * 0.40f
-                                      + oldDrainage
-                                      + branchNoise * 0.20f
-                                      + trunkBonus
-                                      - seaPenalty
-                                      - loopPenalty;
-                    if (score > bestScore) {
-                        bestScore = score;
-                        bestNeighbor = neighbor;
-                    }
-                }
-            }
-
-            if (visited[static_cast<std::size_t>(bestNeighbor.face)][bestNeighbor.index] != 0) {
-                break;
-            }
-
-            currentFace = bestNeighbor.face;
-            currentIndex = bestNeighbor.index;
-        }
-        return trace;
-    };
-
-    int tributariesPainted = 0;
-    const int maxTributaries = 18;
-    const int tributaryMaxSteps = std::max(n * 2, 64);
-    for (std::size_t i = 0; i < candidates.size() && tributariesPainted < maxTributaries; ++i) {
-        const Candidate& candidate = candidates[i];
-        if (trunkMask[static_cast<std::size_t>(candidate.face)][candidate.index] != 0) {
-            continue;
-        }
-        const glm::vec3 sourceDir = cellDirection(candidate.face, candidate.index);
-        bool tooCloseToTrunkSource = false;
-        const std::size_t stride = std::max<std::size_t>(bestTrace.nodes.size() / 24, 1);
-        for (std::size_t j = 0; j < bestTrace.nodes.size(); j += stride) {
-            const RiverNode& trunkNode = bestTrace.nodes[j];
-            const glm::vec3 trunkDir = cellDirection(trunkNode.face, trunkNode.index);
-            if (glm::dot(sourceDir, trunkDir) > 0.995f) {
-                tooCloseToTrunkSource = true;
-                break;
-            }
-        }
-        if (tooCloseToTrunkSource) {
-            continue;
-        }
-
-        RiverTrace tributary = traceTributary(candidate, tributaryMaxSteps);
-        if (tributary.nodes.size() < static_cast<std::size_t>(std::max(n / 7, 14))) {
-            continue;
-        }
-
-        const float branchScale = glm::mix(0.44f, 0.82f, glm::clamp(candidate.score * 0.32f, 0.0f, 1.0f));
-        for (std::size_t j = 0; j < tributary.nodes.size(); ++j) {
-            const float downstream = tributary.nodes.size() > 1
-                ? static_cast<float>(j) / static_cast<float>(tributary.nodes.size() - 1)
-                : 1.0f;
-            paintRiver(tributary.nodes[j], downstream, branchScale, true);
-        }
-        ++tributariesPainted;
-    }
-
-    for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
-        FaceData& faceData = faces_[static_cast<std::size_t>(faceIndex)];
-        for (std::size_t i = 0; i < cellCount; ++i) {
-            faceData.channelMask[i] = glm::smoothstep(0.26f, 0.86f, primaryChannel[static_cast<std::size_t>(faceIndex)][i]);
-            faceData.flowMask[i] = std::max(
-                faceData.flowMask[i],
-                glm::smoothstep(0.08f, 0.70f, primaryFlow[static_cast<std::size_t>(faceIndex)][i])
-            );
-        }
-    }
-
-    if (advanceProgress) {
-        advanceProgress("Extracting fractal tributary river network");
-    }
+    // 濠€鍨 = 婢堆冩槀鎼达箑娅旀竟?+ 濞村嘲鍝洪崝鐘崇畭 + 鏉炶浜曠痪顒€瀹虫穱顔筋劀閿涙稐闀滈摀鈧崥搴ょ箷娴兼俺顫﹀瀛樻瀮閸愬秵顐兼穱顔筋劀閵?
+    const float moistureNoise = fbm(sphereDir * 4.0f + glm::vec3(1.2f, 9.3f, 4.8f), 5, 2.0f, 0.5f) * 0.5f + 0.5f;
+    const float shoreMoisture = shoreMask * 0.35f;
+    const float latitudeMoisture = 1.0f - std::abs(sphereDir.y) * 0.25f;
+    return glm::clamp(moistureNoise * 0.65f + shoreMoisture + latitudeMoisture * 0.15f, 0.0f, 1.0f);
 }
 
 glm::vec3 PlanetProceduralData::cubeSphereDirection(const FaceBasis& face, const glm::vec2& uv)
@@ -4530,7 +1929,6 @@ int PlanetProceduralData::faceIndexFromDirection(const glm::vec3& dir)
 
 PlanetProceduralData::CellRef PlanetProceduralData::cellFromDirection(const glm::vec3& dir, int resolution)
 {
-    // 球面方向 -> 主轴最大的 cube face -> 该 face 的 UV/cell。
     const int n = std::max(resolution, 1);
     const glm::vec3 d = glm::normalize(dir);
     const int mappedFace = faceIndexFromDirection(d);
@@ -4554,7 +1952,6 @@ PlanetProceduralData::CellRef PlanetProceduralData::neighborCell(int faceIndex, 
         return CellRef{ faceIndex, static_cast<std::size_t>(y * n + x) };
     }
 
-    // 越界时先把越界 UV 转回球面方向，再重新映射到正确 face。
     const glm::vec2 uv(
         (static_cast<float>(x) + 0.5f) / static_cast<float>(n),
         (static_cast<float>(y) + 0.5f) / static_cast<float>(n)
@@ -4575,7 +1972,6 @@ glm::vec3 PlanetProceduralData::hash3(const glm::vec3& p)
 
 float PlanetProceduralData::gradientNoise(const glm::vec3& p)
 {
-    // 3D gradient noise：每个晶格角点用 hash3 生成伪随机梯度，再做平滑插值。
     const glm::vec3 i = glm::floor(p);
     const glm::vec3 f = glm::fract(p);
     const glm::vec3 u = f * f * f * (f * (f * 6.0f - 15.0f) + 10.0f);
@@ -4600,48 +1996,7 @@ float PlanetProceduralData::gradientNoise(const glm::vec3& p)
 
 float PlanetProceduralData::perlinNoise(const glm::vec3& p)
 {
-    const glm::vec3 i = glm::floor(p);
-    const glm::vec3 f = glm::fract(p);
-    const glm::vec3 u = f * f * f * (f * (f * 6.0f - 15.0f) + 10.0f);
-    constexpr glm::vec3 gradients[12] = {
-        glm::vec3( 1.0f,  1.0f,  0.0f), glm::vec3(-1.0f,  1.0f,  0.0f),
-        glm::vec3( 1.0f, -1.0f,  0.0f), glm::vec3(-1.0f, -1.0f,  0.0f),
-        glm::vec3( 1.0f,  0.0f,  1.0f), glm::vec3(-1.0f,  0.0f,  1.0f),
-        glm::vec3( 1.0f,  0.0f, -1.0f), glm::vec3(-1.0f,  0.0f, -1.0f),
-        glm::vec3( 0.0f,  1.0f,  1.0f), glm::vec3( 0.0f, -1.0f,  1.0f),
-        glm::vec3( 0.0f,  1.0f, -1.0f), glm::vec3( 0.0f, -1.0f, -1.0f)
-    };
-
-    const auto gradientAt = [&](const glm::vec3& lattice) {
-        const glm::vec3 h = glm::floor(glm::abs(glm::sin(glm::vec3(
-            glm::dot(lattice, glm::vec3(127.1f, 311.7f, 74.7f)),
-            glm::dot(lattice, glm::vec3(269.5f, 183.3f, 246.1f)),
-            glm::dot(lattice, glm::vec3(113.5f, 271.9f, 124.6f))
-        )) * 43758.5453f));
-        const int index = static_cast<int>(static_cast<std::uint32_t>(h.x + h.y * 7.0f + h.z * 13.0f) % 12u);
-        return glm::normalize(gradients[index]);
-    };
-    const auto corner = [&](float x, float y, float z) {
-        const glm::vec3 offset(x, y, z);
-        return glm::dot(gradientAt(i + offset), f - offset);
-    };
-
-    const float n000 = corner(0.0f, 0.0f, 0.0f);
-    const float n100 = corner(1.0f, 0.0f, 0.0f);
-    const float n010 = corner(0.0f, 1.0f, 0.0f);
-    const float n110 = corner(1.0f, 1.0f, 0.0f);
-    const float n001 = corner(0.0f, 0.0f, 1.0f);
-    const float n101 = corner(1.0f, 0.0f, 1.0f);
-    const float n011 = corner(0.0f, 1.0f, 1.0f);
-    const float n111 = corner(1.0f, 1.0f, 1.0f);
-
-    const float nx00 = glm::mix(n000, n100, u.x);
-    const float nx10 = glm::mix(n010, n110, u.x);
-    const float nx01 = glm::mix(n001, n101, u.x);
-    const float nx11 = glm::mix(n011, n111, u.x);
-    const float nxy0 = glm::mix(nx00, nx10, u.y);
-    const float nxy1 = glm::mix(nx01, nx11, u.y);
-    return glm::clamp(glm::mix(nxy0, nxy1, u.z) * 1.45f, -1.0f, 1.0f);
+    return gradientNoise(p);
 }
 
 float PlanetProceduralData::perlinFbm(const glm::vec3& p, int octaves, float lacunarity, float gain)
@@ -4663,7 +2018,6 @@ float PlanetProceduralData::perlinFbm(const glm::vec3& p, int octaves, float lac
 
 float PlanetProceduralData::fbm(const glm::vec3& p, int octaves, float lacunarity, float gain)
 {
-    // fBM = 多个 octave 的 gradientNoise 叠加；频率逐层升高、振幅逐层降低。
     float value = 0.0f;
     float amplitude = 0.5f;
     float frequency = 1.0f;
@@ -4710,130 +2064,348 @@ float PlanetProceduralData::altitudeBandWeight(float startAltitude, float endAlt
     return 1.0f - glm::smoothstep(startAltitude, endAltitude, 0.0f);
 }
 
-float PlanetProceduralData::terrainHeight(const PlanetRenderSettings& settings, const glm::vec3& sphereDir)
+void PlanetProceduralData::computeWaterClimateFields(const PlanetRenderSettings& settings,
+                                                     const std::function<void(const char*)>& advanceProgress)
 {
-    // 基础高度合成顺序：大陆轮廓 -> 高地/盆地 -> 山脉/峰顶 -> 海底地貌。
-    const glm::vec3 p = sphereDir * settings.terrainNoiseScale;
-
-    const glm::vec3 seaLandP = sphereDir * 1.05f;
-    const glm::vec3 seaLandWarp(
-        perlinNoise(seaLandP * 0.55f + glm::vec3(3.1f, 0.0f, 0.0f)),
-        perlinNoise(seaLandP * 0.55f + glm::vec3(0.0f, 4.7f, 0.0f)),
-        perlinNoise(seaLandP * 0.55f + glm::vec3(0.0f, 0.0f, 5.3f))
-    );
-
-    const float macroLand = perlinNoise(seaLandP + seaLandWarp * 0.65f);
-    const float regionalLand = perlinNoise(seaLandP * 1.85f + seaLandWarp * 0.28f + glm::vec3(6.8f, 2.1f, 11.7f));
-    const float coastBand = 1.0f - glm::smoothstep(0.08f, 0.30f, std::abs(macroLand + regionalLand * 0.16f));
-    const float coastDetail = perlinNoise(seaLandP * 3.50f + seaLandWarp * 0.16f + glm::vec3(17.6f, 9.4f, 3.2f));
-    const float continents = macroLand * 0.84f + regionalLand * 0.16f + coastDetail * coastBand * 0.040f;
-    const float baseHeight = continents * 0.44f - 0.012f;
-    const float baseRelativeToSea = baseHeight - settings.seaLevelOffset;
-    const float coastalLandMask = glm::smoothstep(-0.010f, 0.045f, baseRelativeToSea);
-    const float stableLandMask = glm::smoothstep(0.045f, 0.180f, baseRelativeToSea);
-    const float continentalShelf = glm::smoothstep(-0.34f, 0.36f, continents);
-    const float landCore = stableLandMask;
-    const glm::vec3 warp(
-        perlinNoise(p * 0.18f + glm::vec3(31.1f, 4.2f, 11.8f)),
-        perlinNoise(p * 0.18f + glm::vec3(9.6f, 27.4f, 3.2f)),
-        perlinNoise(p * 0.18f + glm::vec3(5.1f, 8.7f, 24.6f))
-    );
-    const float highlandRaw = perlinNoise(p * 0.22f + warp * 0.20f + glm::vec3(18.2f, 3.8f, 27.6f)) * 0.5f + 0.5f;
-    float highlandShoulder = glm::smoothstep(0.50f, 0.78f, highlandRaw) * continentalShelf * landCore;
-    float highlandCore = glm::smoothstep(0.68f, 0.90f, highlandRaw) * continentalShelf * landCore;
-    highlandShoulder = std::pow(glm::clamp(highlandShoulder, 0.0f, 1.0f), 1.85f);
-    highlandCore = std::pow(glm::clamp(highlandCore, 0.0f, 1.0f), 2.40f);
-    const float highlandMask = glm::clamp(highlandShoulder * 0.65f + highlandCore, 0.0f, 1.0f);
-    const float highlandVariation = perlinNoise(p * 0.55f + warp * 0.18f + glm::vec3(7.4f, 22.1f, 4.3f)) * 0.5f + 0.5f;
-
-    float basinMask = perlinNoise(p * 0.34f + warp * 0.12f + glm::vec3(8.7f, 2.4f, 13.1f)) * 0.5f + 0.5f;
-    basinMask = glm::smoothstep(0.70f, 0.92f, basinMask) * stableLandMask * (1.0f - highlandCore * 0.85f);
-
-    float h = baseHeight;
-    h += highlandShoulder * stableLandMask * (0.026f + highlandVariation * 0.009f);
-    h += highlandCore * stableLandMask * (0.070f + highlandVariation * 0.024f);
-    h -= basinMask * (0.012f + (1.0f - highlandVariation) * 0.008f);
-    h = (h < 0.0f ? -1.0f : 1.0f) * std::pow(std::abs(h), 1.15f);
-
-    const float relativeToSea = h - settings.seaLevelOffset;
-    const float landUpliftMask = coastalLandMask * continentalShelf;
-    if (landUpliftMask > 0.0f) {
-        const float lowlandMask = coastalLandMask * (1.0f - glm::smoothstep(0.16f, 0.34f, baseRelativeToSea));
-        const float plateauMask = highlandMask * glm::smoothstep(0.10f, 0.34f, relativeToSea);
-        const float continentalInterior = glm::smoothstep(0.18f, 0.70f, continentalShelf);
-        const float uplift =
-            0.018f * lowlandMask +
-            0.018f * highlandShoulder * highlandVariation * continentalInterior +
-            0.042f * highlandCore;
-        h += uplift * landUpliftMask;
+    PROFILE_SCOPE("Compute Water and Climate Fields");
+    if (resolution_ <= 0) {
+        return;
     }
 
-    const float signedWaterDepth = settings.seaLevelOffset - h;
-    const float oceanMask = glm::smoothstep(0.0f, 0.045f, signedWaterDepth);
-    if (oceanMask > 0.0f) {
-        // 海面以下继续塑造大陆架、深海盆地、中洋脊和海沟。
-        const float shoreRamp = glm::smoothstep(0.0f, 0.075f, signedWaterDepth);
-        const float shelfMask = glm::smoothstep(0.015f, 0.20f, signedWaterDepth);
-        const float basinMask = glm::smoothstep(0.16f, 0.56f, signedWaterDepth);
-        const float abyssalMask = glm::smoothstep(0.40f, 0.90f, signedWaterDepth);
-        const float basinNoise = perlinNoise(p * 0.72f + warp * 0.28f + glm::vec3(21.4f, 6.2f, 13.8f)) * 0.5f + 0.5f;
-        const float ridgeNoise = 1.0f - std::abs(gradientNoise(p * 5.6f + warp * 2.2f + glm::vec3(2.6f, 19.1f, 8.4f)));
-        const float trenchNoise = 1.0f - std::abs(gradientNoise(p * 3.4f + warp * 1.6f + glm::vec3(31.7f, 4.9f, 11.2f)));
-        const float oceanFloorDrop =
-            0.06f * oceanMask +
-            0.16f * shelfMask +
-            0.22f * basinMask +
-            0.14f * abyssalMask +
-            basinNoise * 0.12f * basinMask;
-        const float midOceanRidge = std::pow(glm::clamp(ridgeNoise, 0.0f, 1.0f), 3.2f) * basinMask * 0.08f;
-        const float trenchDrop = std::pow(glm::clamp(trenchNoise, 0.0f, 1.0f), 5.0f) * abyssalMask * 0.12f;
-        h -= oceanFloorDrop * shoreRamp;
-        h += midOceanRidge;
-        h -= trenchDrop;
+    const std::size_t cellCount = static_cast<std::size_t>(resolution_ * resolution_);
+    for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
+        FaceData& faceData = faces_[static_cast<std::size_t>(faceIndex)];
+        for (int y = 0; y < resolution_; ++y) {
+            for (int x = 0; x < resolution_; ++x) {
+                const std::size_t index = static_cast<std::size_t>(y * resolution_ + x);
+                const glm::vec2 uv(
+                    (static_cast<float>(x) + 0.5f) / static_cast<float>(resolution_),
+                    (static_cast<float>(y) + 0.5f) / static_cast<float>(resolution_)
+                );
+                const glm::vec3 sphereDir = cubeSphereDirection(kFaces[static_cast<std::size_t>(faceIndex)], uv);
+                const PlanetSample sample = samplePlanetBase(settings, sphereDir, faceData.height[index]);
+                faceData.waterDepth[index] = sample.waterDepth;
+                faceData.shoreMask[index] = sample.shoreMask;
+                faceData.temperature[index] = sample.temperature;
+                faceData.moisture[index] = sample.moisture;
+
+                const float dx = sampleFaceLayerBilinear(faceData.height, resolution_, glm::clamp(uv + glm::vec2(1.0f / resolution_, 0.0f), glm::vec2(0.0f), glm::vec2(0.999999f)))
+                               - sampleFaceLayerBilinear(faceData.height, resolution_, glm::clamp(uv - glm::vec2(1.0f / resolution_, 0.0f), glm::vec2(0.0f), glm::vec2(0.999999f)));
+                const float dy = sampleFaceLayerBilinear(faceData.height, resolution_, glm::clamp(uv + glm::vec2(0.0f, 1.0f / resolution_), glm::vec2(0.0f), glm::vec2(0.999999f)))
+                               - sampleFaceLayerBilinear(faceData.height, resolution_, glm::clamp(uv - glm::vec2(0.0f, 1.0f / resolution_), glm::vec2(0.0f), glm::vec2(0.999999f)));
+                const float slope = glm::clamp(std::sqrt(dx * dx + dy * dy) * 18.0f, 0.0f, 1.0f);
+                faceData.erosionMask[index] = glm::max(faceData.erosionMask[index], slope * (1.0f - sample.waterDepth));
+                faceData.featureMask[index] = glm::max(faceData.featureMask[index], sample.shoreMask * 0.25f);
+            }
+        }
+        if (advanceProgress) {
+            advanceProgress("Sampling water and climate fields");
+        }
+        (void)cellCount;
     }
-    return h;
 }
 
-PlanetProceduralData::PlanetSample PlanetProceduralData::samplePlanetBase(const PlanetRenderSettings& settings,
-                                                                          const glm::vec3& sphereDir)
+void PlanetProceduralData::removeSmallTerrainSpikes(const PlanetRenderSettings& /*settings*/,
+                                                    int iterations,
+                                                    float threshold,
+                                                    float blend)
 {
-    return samplePlanetBase(settings, sphereDir, terrainHeight(settings, glm::normalize(sphereDir)));
+    if (resolution_ <= 1) {
+        return;
+    }
+
+    const int n = resolution_;
+    const std::size_t count = static_cast<std::size_t>(n * n);
+    for (int iteration = 0; iteration < iterations; ++iteration) {
+        for (FaceData& faceData : faces_) {
+            std::vector<float> next = faceData.height;
+            for (int y = 0; y < n; ++y) {
+                for (int x = 0; x < n; ++x) {
+                    const std::size_t index = static_cast<std::size_t>(y * n + x);
+                    const float center = faceData.height[index];
+                    float sum = 0.0f;
+                    int samples = 0;
+                    for (int oy = -1; oy <= 1; ++oy) {
+                        for (int ox = -1; ox <= 1; ++ox) {
+                            if (ox == 0 && oy == 0) {
+                                continue;
+                            }
+                            const int sx = glm::clamp(x + ox, 0, n - 1);
+                            const int sy = glm::clamp(y + oy, 0, n - 1);
+                            sum += faceData.height[static_cast<std::size_t>(sy * n + sx)];
+                            ++samples;
+                        }
+                    }
+                    const float average = sum / static_cast<float>(samples);
+                    const float delta = average - center;
+                    if (std::abs(delta) > threshold) {
+                        next[index] = glm::mix(center, average, blend);
+                    }
+                }
+            }
+            faceData.height = std::move(next);
+        }
+        (void)count;
+    }
 }
 
-PlanetProceduralData::PlanetSample PlanetProceduralData::samplePlanetBase(const PlanetRenderSettings& settings,
-                                                                          const glm::vec3& sphereDir,
-                                                                          float height)
+void PlanetProceduralData::smoothSmallTerrainBumps(const PlanetRenderSettings& /*settings*/,
+                                                   int iterations,
+                                                   float blend)
 {
-    // 基础采样只依赖当前高度和球面方向，供多轮生成阶段重复使用。
-    const glm::vec3 n = glm::normalize(sphereDir);
-    PlanetSample sample;
-    sample.height = height;
+    if (resolution_ <= 1) {
+        return;
+    }
 
-    const float signedWaterDepth = (settings.seaLevelOffset - height) * settings.terrainHeightScale;
-    sample.waterDepth = std::max(signedWaterDepth, 0.0f);
-
-    const float shoreWidth = std::max(settings.oceanShoreBlendWidth, 0.001f);
-    sample.shoreMask = 1.0f - glm::smoothstep(0.0f, shoreWidth, std::abs(signedWaterDepth));
-    sample.temperature = temperature(settings, n, height);
-    sample.moisture = moisture(n, sample.shoreMask);
-    return sample;
+    const int n = resolution_;
+    for (int iteration = 0; iteration < iterations; ++iteration) {
+        for (FaceData& faceData : faces_) {
+            std::vector<float> next = faceData.height;
+            for (int y = 0; y < n; ++y) {
+                for (int x = 0; x < n; ++x) {
+                    const std::size_t index = static_cast<std::size_t>(y * n + x);
+                    float sum = faceData.height[index];
+                    int samples = 1;
+                    if (x > 0) {
+                        sum += faceData.height[static_cast<std::size_t>(y * n + x - 1)];
+                        ++samples;
+                    }
+                    if (x + 1 < n) {
+                        sum += faceData.height[static_cast<std::size_t>(y * n + x + 1)];
+                        ++samples;
+                    }
+                    if (y > 0) {
+                        sum += faceData.height[static_cast<std::size_t>((y - 1) * n + x)];
+                        ++samples;
+                    }
+                    if (y + 1 < n) {
+                        sum += faceData.height[static_cast<std::size_t>((y + 1) * n + x)];
+                        ++samples;
+                    }
+                    const float average = sum / static_cast<float>(samples);
+                    next[index] = glm::mix(faceData.height[index], average, blend);
+                }
+            }
+            faceData.height = std::move(next);
+        }
+    }
 }
 
-float PlanetProceduralData::temperature(const PlanetRenderSettings& settings, const glm::vec3& sphereDir, float height)
+void PlanetProceduralData::relaxExtremeTerrainSlopes(const PlanetRenderSettings& /*settings*/,
+                                                     int iterations,
+                                                     float maxStep,
+                                                     float blend)
 {
-    // 温度 = 纬度主导 + 海拔降温 + 少量 fBM 扰动。
-    const float latitude01 = std::abs(sphereDir.y);
-    const float latitudeTemperature = 1.0f - latitude01;
-    const float heightCooling = std::max(height - settings.seaLevelOffset, 0.0f) * 0.35f;
-    const float temperatureNoise = fbm(sphereDir * 3.0f + glm::vec3(8.1f, 2.7f, 5.4f), 4, 2.0f, 0.5f) * 0.12f;
-    return glm::clamp(latitudeTemperature - heightCooling + temperatureNoise, 0.0f, 1.0f);
+    if (resolution_ <= 1) {
+        return;
+    }
+
+    const int n = resolution_;
+    for (int iteration = 0; iteration < iterations; ++iteration) {
+        for (FaceData& faceData : faces_) {
+            std::vector<float> next = faceData.height;
+            for (int y = 0; y < n; ++y) {
+                for (int x = 0; x < n; ++x) {
+                    const std::size_t index = static_cast<std::size_t>(y * n + x);
+                    const float center = faceData.height[index];
+                    float localMaxStep = 0.0f;
+                    float localAverage = center;
+                    int samples = 1;
+                    const auto accumulate = [&](int sx, int sy) {
+                        const float neighbor = faceData.height[static_cast<std::size_t>(sy * n + sx)];
+                        localAverage += neighbor;
+                        ++samples;
+                        localMaxStep = std::max(localMaxStep, std::abs(neighbor - center));
+                    };
+                    if (x > 0) accumulate(x - 1, y);
+                    if (x + 1 < n) accumulate(x + 1, y);
+                    if (y > 0) accumulate(x, y - 1);
+                    if (y + 1 < n) accumulate(x, y + 1);
+                    localAverage /= static_cast<float>(samples);
+                    if (localMaxStep > maxStep) {
+                        next[index] = glm::mix(center, localAverage, blend);
+                    }
+                }
+            }
+            faceData.height = std::move(next);
+        }
+    }
 }
 
-float PlanetProceduralData::moisture(const glm::vec3& sphereDir, float shoreMask)
+void PlanetProceduralData::refineTerrainFromBiomeWeights(const PlanetRenderSettings& /*settings*/,
+                                                         const std::function<void(const char*)>& advanceProgress)
 {
-    // 湿度 = 大尺度噪声 + 海岸加湿 + 轻微纬度修正；侵蚀后还会被水文再次修正。
-    const float moistureNoise = fbm(sphereDir * 4.0f + glm::vec3(1.2f, 9.3f, 4.8f), 5, 2.0f, 0.5f) * 0.5f + 0.5f;
-    const float shoreMoisture = shoreMask * 0.35f;
-    const float latitudeMoisture = 1.0f - std::abs(sphereDir.y) * 0.25f;
-    return glm::clamp(moistureNoise * 0.65f + shoreMoisture + latitudeMoisture * 0.15f, 0.0f, 1.0f);
+    PROFILE_SCOPE("Refine Terrain From Biomes");
+    for (std::size_t faceIndex = 0; faceIndex < faces_.size(); ++faceIndex) {
+        FaceData& faceData = faces_[faceIndex];
+        for (std::size_t i = 0; i < faceData.height.size(); ++i) {
+            const glm::vec4 a = faceData.biomeWeightA[i];
+            const glm::vec4 b = faceData.biomeWeightB[i];
+            const float landBias = glm::clamp(a.y * 0.35f + a.z * 0.28f + b.x * 0.52f + b.y * 0.30f, 0.0f, 1.0f);
+            const float depressionBias = glm::clamp(a.w * 0.20f + b.z * 0.26f + b.w * 0.38f, 0.0f, 1.0f);
+            faceData.height[i] += landBias * 0.004f - depressionBias * 0.003f;
+        }
+        if (advanceProgress) {
+            advanceProgress("Refining terrain from biome weights");
+        }
+    }
+}
+
+void PlanetProceduralData::applyErosion(const PlanetRenderSettings& /*settings*/,
+                                        const std::function<void(const char*)>& advanceProgress)
+{
+    PROFILE_SCOPE("Apply Erosion");
+    for (std::size_t faceIndex = 0; faceIndex < faces_.size(); ++faceIndex) {
+        FaceData& faceData = faces_[faceIndex];
+        for (std::size_t i = 0; i < faceData.height.size(); ++i) {
+            const float slope = glm::clamp(faceData.erosionMask[i], 0.0f, 1.0f);
+            const float wear = slope * 0.18f;
+            faceData.wearMask[i] = glm::max(faceData.wearMask[i], wear);
+            faceData.depositionMask[i] = glm::max(faceData.depositionMask[i], glm::smoothstep(0.24f, 0.72f, 1.0f - slope) * 0.25f);
+            faceData.height[i] -= wear * 0.006f;
+        }
+        if (advanceProgress) {
+            advanceProgress("Applying erosion");
+        }
+    }
+}
+
+void PlanetProceduralData::extractPrimaryRiver(const PlanetRenderSettings& /*settings*/,
+                                               const std::function<void(const char*)>& advanceProgress)
+{
+    PROFILE_SCOPE("Extract Primary River");
+    for (std::size_t faceIndex = 0; faceIndex < faces_.size(); ++faceIndex) {
+        FaceData& faceData = faces_[faceIndex];
+        for (std::size_t i = 0; i < faceData.height.size(); ++i) {
+            const float channel = glm::clamp(faceData.moisture[i] * 0.44f + faceData.erosionMask[i] * 0.56f, 0.0f, 1.0f);
+            faceData.channelMask[i] = glm::max(faceData.channelMask[i], channel);
+            faceData.flowMask[i] = glm::max(faceData.flowMask[i], glm::smoothstep(0.18f, 0.82f, channel));
+        }
+        if (advanceProgress) {
+            advanceProgress("Extracting river paths");
+        }
+    }
+}
+
+void PlanetProceduralData::updateHydrologyMoisture(const PlanetRenderSettings& /*settings*/)
+{
+    for (FaceData& faceData : faces_) {
+        for (std::size_t i = 0; i < faceData.moisture.size(); ++i) {
+            faceData.moisture[i] = glm::clamp(
+                faceData.moisture[i] + faceData.channelMask[i] * 0.18f + faceData.shoreMask[i] * 0.10f,
+                0.0f,
+                1.0f
+            );
+        }
+    }
+}
+
+void PlanetProceduralData::computeBiomeWeights(const PlanetRenderSettings& settings,
+                                               const std::function<void(const char*)>& advanceProgress)
+{
+    PROFILE_SCOPE("Compute Biome Weights");
+    for (std::size_t faceIndex = 0; faceIndex < faces_.size(); ++faceIndex) {
+        FaceData& faceData = faces_[faceIndex];
+        for (int y = 0; y < resolution_; ++y) {
+            for (int x = 0; x < resolution_; ++x) {
+                const std::size_t index = static_cast<std::size_t>(y * resolution_ + x);
+                const glm::vec2 uv(
+                    (static_cast<float>(x) + 0.5f) / static_cast<float>(resolution_),
+                    (static_cast<float>(y) + 0.5f) / static_cast<float>(resolution_)
+                );
+                const glm::vec3 sphereDir = cubeSphereDirection(kFaces[faceIndex], uv);
+                const PlanetSample sample = samplePlanetBase(settings, sphereDir, faceData.height[index]);
+                const float dx = x > 0 && x + 1 < resolution_
+                    ? faceData.height[static_cast<std::size_t>(y * resolution_ + (x + 1))]
+                    - faceData.height[static_cast<std::size_t>(y * resolution_ + (x - 1))]
+                    : 0.0f;
+                const float dy = y > 0 && y + 1 < resolution_
+                    ? faceData.height[static_cast<std::size_t>((y + 1) * resolution_ + x)]
+                    - faceData.height[static_cast<std::size_t>((y - 1) * resolution_ + x)]
+                    : 0.0f;
+                const float slope = glm::clamp(std::sqrt(dx * dx + dy * dy) * 10.0f, 0.0f, 1.0f);
+                const float channel = faceData.channelMask[index];
+                const float flow = faceData.flowMask[index];
+                const float wear = faceData.wearMask[index];
+                const float deposition = faceData.depositionMask[index];
+                const BiomeWeights biome = computeBiome(
+                    faceData.height[index],
+                    faceData.waterDepth[index],
+                    faceData.shoreMask[index],
+                    faceData.waterDepth[index],
+                    coastalShelter(sphereDir),
+                    sphereDir,
+                    settings.seaLevelOffset,
+                    sample.temperature,
+                    sample.moisture,
+                    slope,
+                    channel,
+                    flow,
+                    wear,
+                    deposition
+                );
+                faceData.biomeWeightA[index] = glm::vec4(biome.beach, biome.grass, biome.forest, biome.desert);
+                faceData.biomeWeightB[index] = glm::vec4(biome.rock, biome.snow, biome.wetland, biome.shallowWater);
+                faceData.domainWeight[index] = glm::vec4(sample.temperature, sample.moisture, slope, glm::clamp(channel + flow, 0.0f, 1.0f));
+            }
+        }
+        if (advanceProgress) {
+            advanceProgress("Computing biome weights");
+        }
+    }
+}
+
+void PlanetProceduralData::computeMeshPlanningFields(const PlanetRenderSettings& /*settings*/,
+                                                     const std::function<void(const char*)>& advanceProgress)
+{
+    PROFILE_SCOPE("Compute Mesh Planning Fields");
+    for (FaceData& faceData : faces_) {
+        for (std::size_t i = 0; i < faceData.height.size(); ++i) {
+            const float slope = glm::clamp(faceData.erosionMask[i] * 0.75f + faceData.flowMask[i] * 0.35f, 0.0f, 1.0f);
+            const float feature = glm::clamp(faceData.featureMask[i] + faceData.channelMask[i] * 0.22f + faceData.shoreMask[i] * 0.12f, 0.0f, 1.0f);
+            faceData.meshDensity[i] = glm::clamp(0.22f + slope * 0.58f + feature * 0.40f, 0.0f, 1.0f);
+            faceData.geometricError[i] = glm::clamp(0.15f + slope * 0.52f + feature * 0.28f, 0.0f, 1.0f);
+        }
+        if (advanceProgress) {
+            advanceProgress("Computing mesh planning fields");
+        }
+    }
+}
+
+void PlanetProceduralData::smoothBiomeWeights(int radius, float blend)
+{
+    if (radius <= 0 || resolution_ <= 1) {
+        return;
+    }
+
+    const int n = resolution_;
+    const int r = std::max(radius, 1);
+    for (FaceData& faceData : faces_) {
+        std::vector<glm::vec4> nextA = faceData.biomeWeightA;
+        std::vector<glm::vec4> nextB = faceData.biomeWeightB;
+        for (int y = 0; y < n; ++y) {
+            for (int x = 0; x < n; ++x) {
+                glm::vec4 sumA(0.0f);
+                glm::vec4 sumB(0.0f);
+                int samples = 0;
+                for (int oy = -r; oy <= r; ++oy) {
+                    for (int ox = -r; ox <= r; ++ox) {
+                        const int sx = glm::clamp(x + ox, 0, n - 1);
+                        const int sy = glm::clamp(y + oy, 0, n - 1);
+                        const std::size_t index = static_cast<std::size_t>(sy * n + sx);
+                        sumA += faceData.biomeWeightA[index];
+                        sumB += faceData.biomeWeightB[index];
+                        ++samples;
+                    }
+                }
+                const std::size_t index = static_cast<std::size_t>(y * n + x);
+                const glm::vec4 avgA = sumA / static_cast<float>(samples);
+                const glm::vec4 avgB = sumB / static_cast<float>(samples);
+                nextA[index] = glm::mix(faceData.biomeWeightA[index], avgA, blend);
+                nextB[index] = glm::mix(faceData.biomeWeightB[index], avgB, blend);
+            }
+        }
+        faceData.biomeWeightA = std::move(nextA);
+        faceData.biomeWeightB = std::move(nextB);
+    }
 }
