@@ -12,14 +12,14 @@ LightingData evaluateLighting(SurfaceData surface, vec3 worldPos, vec3 shadingNo
     vec3 H = normalize(L + V);
 
     float ndotl = max(dot(N, L), 0.0);
-    float specular = pow(max(dot(N, H), 0.0), 32.0) * 0.08;
+    float specular = pow(max(dot(N, H), 0.0), 42.0) * surface.specularStrength;
     float riverSpecular = pow(max(dot(N, H), 0.0), 96.0) * surface.riverSpecular * 0.75;
 
-    vec3 sunColor = vec3(1.0, 0.95, 0.85);
-    vec3 groundBounce = vec3(0.10, 0.08, 0.06);
+    vec3 sunColor = vec3(1.08, 1.00, 0.88);
+    vec3 groundBounce = vec3(0.13, 0.105, 0.075);
 
-    vec3 ambientLight = mix(groundBounce, skyColor * 0.24, surface.radialAlignment);
-    ambientLight += vec3(0.035);
+    vec3 ambientLight = mix(groundBounce, skyColor * 0.10, surface.radialAlignment);
+    ambientLight += vec3(0.040, 0.035, 0.028);
 
     vec3 color = surface.baseColor * (ambientLight + ndotl * sunColor) + (specular + riverSpecular) * sunColor;
 

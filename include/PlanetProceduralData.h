@@ -197,6 +197,7 @@ private:
     static float terrainHeight(const PlanetRenderSettings& settings, const glm::vec3& sphereDir);
     static PlanetSample samplePlanetBase(const PlanetRenderSettings& settings, const glm::vec3& sphereDir);
     static PlanetSample samplePlanetBase(const PlanetRenderSettings& settings, const glm::vec3& sphereDir, float height);
+    void generateDemPrototype(const PlanetRenderSettings& settings, const ProgressCallback& progressCallback);
     void computeWaterClimateFields(const PlanetRenderSettings& settings, const std::function<void(const char*)>& advanceProgress);
     void removeSmallTerrainSpikes(const PlanetRenderSettings& settings, int iterations, float threshold, float blend);
     void smoothSmallTerrainBumps(const PlanetRenderSettings& settings, int iterations, float blend);

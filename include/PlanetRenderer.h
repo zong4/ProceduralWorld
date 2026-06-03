@@ -55,18 +55,18 @@ struct PlanetRenderSettings {
     float mountainMaskStrength = 1.90f;
     float mountainMaskScale = 3.35f;
     float mountainRidgeSharpness = 3.80f;
-    int erosionIterations = 96;
-    float erosionStrength = 0.055f;
+    int erosionIterations = 128;
+    float erosionStrength = 0.075f;
     float erosionTalus = 0.028f;
     float erosionSediment = 0.58f;
-    float erosionThermalStrength = 0.014f;
+    float erosionThermalStrength = 0.018f;
     // 鍦拌〃鏉愯川棰滆壊涓?biome/slope 闃堝€笺€?
-    glm::vec3 terrainLowlandColor = glm::vec3(0.23f, 0.44f, 0.18f);
-    glm::vec3 terrainForestColor = glm::vec3(0.10f, 0.30f, 0.12f);
-    glm::vec3 terrainDesertColor = glm::vec3(0.70f, 0.57f, 0.32f);
-    glm::vec3 terrainRockColor = glm::vec3(0.42f, 0.38f, 0.32f);
-    glm::vec3 terrainBeachColor = glm::vec3(0.72f, 0.66f, 0.46f);
-    glm::vec3 terrainSnowColor = glm::vec3(0.90f, 0.94f, 0.98f);
+    glm::vec3 terrainLowlandColor = glm::vec3(0.20f, 0.46f, 0.30f);
+    glm::vec3 terrainForestColor = glm::vec3(0.08f, 0.28f, 0.18f);
+    glm::vec3 terrainDesertColor = glm::vec3(0.64f, 0.55f, 0.34f);
+    glm::vec3 terrainRockColor = glm::vec3(0.44f, 0.47f, 0.48f);
+    glm::vec3 terrainBeachColor = glm::vec3(0.79f, 0.68f, 0.43f);
+    glm::vec3 terrainSnowColor = glm::vec3(0.94f, 0.97f, 0.98f);
     float terrainBeachWidth = 0.045f;
     float terrainRockSlopeStart = 0.24f;
     float terrainRockSlopeEnd = 0.62f;

@@ -564,9 +564,9 @@ void readSettings(const SessionValues& values, const std::string& prefix, Planet
 
     settings.featureOverlayMode = TerrainFeatureOverlayMode::None;
 
-    settings.erosionIterations = 96;
-    settings.erosionStrength = 0.055f;
-    settings.erosionThermalStrength = 0.014f;
+    settings.erosionIterations = 128;
+    settings.erosionStrength = 0.075f;
+    settings.erosionThermalStrength = 0.018f;
     settings.terrainMaterialNoiseStrength = 0.0f;
     settings.oceanFftCascadeCount = glm::clamp(settings.oceanFftCascadeCount, 1, 3);
     settings.oceanFftFrameStride = glm::max(settings.oceanFftFrameStride, 1);
@@ -1181,10 +1181,10 @@ void drawProceduralPanel(ApplicationState& state)
         settings.mountainMaskStrength = 1.90f;
         settings.mountainMaskScale = 3.35f;
         settings.mountainRidgeSharpness = 3.80f;
-        settings.erosionIterations = 96;
-        settings.erosionStrength = 0.055f;
+        settings.erosionIterations = 128;
+        settings.erosionStrength = 0.075f;
         settings.erosionSediment = 0.72f;
-        settings.erosionThermalStrength = 0.014f;
+        settings.erosionThermalStrength = 0.018f;
         settings.terrainMaterialNoiseStrength = 0.0f;
         settings.riverVisibility = 1.70f;
         settings.riverWidth = 0.72f;

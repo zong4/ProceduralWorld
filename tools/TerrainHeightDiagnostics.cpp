@@ -5,8 +5,10 @@
 #include <cmath>
 #include <cstdint>
 #include <fstream>
+#include <functional>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <numeric>
 #include <string>
 #include <chrono>
@@ -164,6 +166,64 @@ void writeHeightAtlas(const PlanetProceduralData& planet, const std::string& pat
     out.write(reinterpret_cast<const char*>(pixels.data()), static_cast<std::streamsize>(pixels.size()));
 }
 
+void writeDebugLayerAtlas(const PlanetProceduralData& planet,
+                          const std::string& path,
+                          const std::function<float(const PlanetProceduralData::FaceData&, std::size_t)>& sample)
+{
+    const auto& faces = planet.faces();
+    const int n = planet.resolution();
+    const int atlasW = n * 3;
+    const int atlasH = n * 2;
+    std::vector<float> values(static_cast<std::size_t>(atlasW * atlasH), 0.0f);
+    std::vector<unsigned char> pixels(static_cast<std::size_t>(atlasW * atlasH), 0);
+    float minValue = std::numeric_limits<float>::max();
+    float maxValue = std::numeric_limits<float>::lowest();
+
+    for (int face = 0; face < 6; ++face) {
+        const int ox = (face % 3) * n;
+        const int oy = (face / 3) * n;
+        const auto& data = faces[static_cast<std::size_t>(face)];
+        for (int y = 0; y < n; ++y) {
+            for (int x = 0; x < n; ++x) {
+                const std::size_t source = static_cast<std::size_t>(y * n + x);
+                const float v = sample(data, source);
+                values[static_cast<std::size_t>((oy + y) * atlasW + ox + x)] = v;
+                minValue = std::min(minValue, v);
+                maxValue = std::max(maxValue, v);
+            }
+        }
+    }
+
+    const float invRange = 1.0f / std::max(maxValue - minValue, 0.00001f);
+    for (std::size_t i = 0; i < values.size(); ++i) {
+        const float v = std::clamp((values[i] - minValue) * invRange, 0.0f, 1.0f);
+        pixels[i] = static_cast<unsigned char>(std::round(v * 255.0f));
+    }
+
+    std::ofstream out(path, std::ios::binary);
+    out << "P5\n" << atlasW << " " << atlasH << "\n255\n";
+    out.write(reinterpret_cast<const char*>(pixels.data()), static_cast<std::streamsize>(pixels.size()));
+}
+
+void writeDemDebugAtlases(const PlanetProceduralData& planet, const std::string& prefix)
+{
+    writeDebugLayerAtlas(planet, prefix + "_channel.pgm", [](const auto& face, std::size_t i) {
+        return face.channelMask[i];
+    });
+    writeDebugLayerAtlas(planet, prefix + "_flow.pgm", [](const auto& face, std::size_t i) {
+        return face.flowMask[i];
+    });
+    writeDebugLayerAtlas(planet, prefix + "_wear.pgm", [](const auto& face, std::size_t i) {
+        return face.wearMask[i];
+    });
+    writeDebugLayerAtlas(planet, prefix + "_uplift.pgm", [](const auto& face, std::size_t i) {
+        return face.domainWeight.empty() ? 0.0f : face.domainWeight[i].x;
+    });
+    writeDebugLayerAtlas(planet, prefix + "_slope.pgm", [](const auto& face, std::size_t i) {
+        return face.domainWeight.empty() ? 0.0f : face.domainWeight[i].z;
+    });
+}
+
 void analyze(const PlanetProceduralData& planet, const std::string& label)
 {
     const auto& faces = planet.faces();
@@ -231,11 +291,19 @@ void analyze(const PlanetProceduralData& planet, const std::string& label)
     }
 
     std::cout << "== " << label << " ==\n";
+    int tinChunks = 0;
+    for (const auto& chunk : planet.terrainChunks()) {
+        if (chunk.vertices.size() != static_cast<std::size_t>((24 + 1) * (24 + 1))) {
+            ++tinChunks;
+        }
+    }
     std::cout << "resolution " << n
               << " min " << planet.minHeight()
               << " max " << planet.maxHeight()
               << " waterCoverage " << planet.waterCoverage()
-              << " shoreCoverage " << planet.shoreCoverage() << "\n";
+              << " shoreCoverage " << planet.shoreCoverage()
+              << " chunks " << planet.terrainChunks().size()
+              << " tinChunks " << tinChunks << "\n";
     std::cout << "height p01/p50/p99 "
               << percentile(heights, 0.01f) << " "
               << percentile(heights, 0.50f) << " "
@@ -367,9 +435,9 @@ int main(int argc, char** argv)
     settings.mountainMaskStrength = 1.90f;
     settings.mountainMaskScale = 3.35f;
     settings.mountainRidgeSharpness = 3.80f;
-    settings.erosionIterations = 96;
-    settings.erosionStrength = 0.055f;
-    settings.erosionThermalStrength = 0.014f;
+    settings.erosionIterations = 128;
+    settings.erosionStrength = 0.075f;
+    settings.erosionThermalStrength = 0.018f;
 
     if (mode == "raw") {
         analyzeRawTerrain(settings, resolution);
@@ -382,14 +450,16 @@ int main(int argc, char** argv)
     PlanetProceduralData noErosion = generatePlanet(settings, resolution, "no_erosion");
     analyze(noErosion, "no_erosion");
     writeHeightAtlas(noErosion, "terrain_height_no_erosion.pgm");
+    writeDemDebugAtlases(noErosion, "terrain_no_erosion");
 
     if (fullMode) {
-        settings.erosionIterations = 96;
-        settings.erosionStrength = 0.055f;
-        settings.erosionThermalStrength = 0.014f;
+        settings.erosionIterations = 128;
+        settings.erosionStrength = 0.075f;
+        settings.erosionThermalStrength = 0.018f;
         PlanetProceduralData full = generatePlanet(settings, resolution, "full");
         analyze(full, "full");
         writeHeightAtlas(full, "terrain_height_full.pgm");
+        writeDemDebugAtlases(full, "terrain_full");
     }
     return 0;
 }

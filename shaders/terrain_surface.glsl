@@ -114,6 +114,7 @@ struct PlanetSample
     vec4 erosionData;
     vec4 biomeA;
     vec4 biomeB;
+    vec4 domainWeight;
 };
 
 PlanetSample samplePlanet(vec3 sphereDir, float finalHeight)
@@ -133,6 +134,7 @@ PlanetSample samplePlanet(vec3 sphereDir, float finalHeight)
     planetSample.erosionData = sampleVec4ArraySeamless(proceduralErosionMaskTexture, sphereDir);
     planetSample.biomeA = sampleVec4ArraySeamless(proceduralBiomeWeightATexture, sphereDir);
     planetSample.biomeB = sampleVec4ArraySeamless(proceduralBiomeWeightBTexture, sphereDir);
+    planetSample.domainWeight = sampleVec4ArraySeamless(proceduralDomainWeightTexture, sphereDir);
     return planetSample;
 }
 
@@ -141,6 +143,7 @@ SurfaceData sampleSurfaceData(float height, vec3 worldPos, vec3 shadingNormal, v
     SurfaceData surface;
     surface.riverMask = 0.0;
     surface.riverSpecular = 0.0;
+    surface.specularStrength = 0.010;
     PlanetSample planet = samplePlanet(sphereDir, height);
 
     // slope 由真实法线和径向方向计算，后面用于裸岩/雪线/植被剔除。
@@ -155,6 +158,10 @@ SurfaceData sampleSurfaceData(float height, vec3 worldPos, vec3 shadingNormal, v
     float flowMask = clamp(erosionData.g, 0.0, 1.0);
     float wearMask = clamp(erosionData.b, 0.0, 1.0);
     float depositionMask = clamp(erosionData.a, 0.0, 1.0);
+    float upliftMask = clamp(planet.domainWeight.x, 0.0, 1.0);
+    float geomChannel = clamp(max(planet.domainWeight.y, channelMask), 0.0, 1.0);
+    float geomSlope = clamp(max(planet.domainWeight.z, surface.slope), 0.0, 1.0);
+    float geomLand = clamp(planet.domainWeight.w, 0.0, 1.0);
     float waterDepth = planet.waterDepth;
     float signedHeightFromSea = planet.signedHeightFromSea;
     float relativeHeight = height - seaLevelOffset;
@@ -164,6 +171,106 @@ SurfaceData sampleSurfaceData(float height, vec3 worldPos, vec3 shadingNormal, v
     float coastShelter = coastalShelter(sphereDir);
     float coastExposure = 1.0 - coastShelter;
 
+    float mHeight = clamp(relativeHeight / 0.42, 0.0, 1.0);
+    float mHigh = smoothstep(0.34, 0.82, mHeight);
+    float mAlpine = smoothstep(0.58, 0.96, mHeight);
+    float mPeak = smoothstep(0.80, 1.0, mHeight);
+    float mCliff = smoothstep(0.24, 0.70, geomSlope + wearMask * 0.20 + upliftMask * 0.08);
+    float mValley = smoothstep(0.10, 0.76, geomChannel + flowMask * 0.24);
+    float mShore = runtimeShore * runtimeLand;
+
+    float mMacro = fbm3(radialUp * 3.6 + vec3(19.0, 4.0, 11.0));
+    float mPatch = fbm3(radialUp * 9.5 + vec3(2.7, 41.0, 6.0));
+    float mVegNoise = fbm3(radialUp * 30.0 + vec3(7.0, 13.0, 29.0));
+    float mMineral = fbm3(radialUp * 68.0 + vec3(31.0, 4.0, 18.0));
+    float mGrainA = fbm3(radialUp * 220.0 + vec3(5.0, 17.0, 23.0));
+    float mGrainB = fbm3(radialUp * 680.0 + vec3(43.0, 3.0, 9.0));
+    float mCrack = 1.0 - abs(fbm3(radialUp * 150.0 + vec3(12.0, 8.0, 41.0)) * 2.0 - 1.0);
+    float mMaterialNoise = fbm3(radialUp * (terrainMaterialNoiseScale * 200.0));
+    float mColorVariation = mix(1.0 - terrainMaterialNoiseStrength, 1.0 + terrainMaterialNoiseStrength, mMaterialNoise);
+
+    float mDry = clamp((1.0 - moisture) * 0.74 + temperature * 0.34 + mMacro * 0.34, 0.0, 1.0);
+    float mLush = clamp(moisture * 0.78 + (1.0 - temperature) * 0.10 + (1.0 - mMacro) * 0.24 + mPatch * 0.18, 0.0, 1.0);
+    float mCold = clamp((1.0 - temperature) * 0.90 + mHigh * 0.22, 0.0, 1.0);
+    float mPlain = runtimeLand * (1.0 - mCliff) * (1.0 - mAlpine * 0.65);
+    float mForest = smoothstep(0.34, 0.62, mLush) * smoothstep(0.12, 0.52, mVegNoise) * mPlain;
+    float mSavanna = smoothstep(0.34, 0.62, mDry) * smoothstep(0.18, 0.58, moisture + mPatch * 0.24) * mPlain;
+    float mArid = smoothstep(0.46, 0.72, mDry) * (1.0 - smoothstep(0.30, 0.62, moisture + mVegNoise * 0.16)) * mPlain;
+    float mTundra = smoothstep(0.48, 0.78, mCold) * (1.0 - mPeak) * mPlain;
+    float mWet = mValley * runtimeLand * smoothstep(0.34, 0.82, moisture);
+    float mRiverBed = clamp(max(channelMask, flowMask * 0.74) * runtimeLand, 0.0, 1.0);
+
+    vec3 mLowGrass = vec3(0.20, 0.67, 0.16);
+    vec3 mMeadow = vec3(0.64, 0.78, 0.16);
+    vec3 mForestDark = vec3(0.030, 0.23, 0.070);
+    vec3 mForestWarm = vec3(0.11, 0.43, 0.09);
+    vec3 mSavannaColor = vec3(0.76, 0.66, 0.20);
+    vec3 mDrySoil = vec3(0.68, 0.36, 0.15);
+    vec3 mOchre = vec3(0.92, 0.60, 0.22);
+    vec3 mWetGreen = vec3(0.08, 0.35, 0.25);
+    vec3 mTundraColor = vec3(0.55, 0.63, 0.42);
+    vec3 mBrownSlope = vec3(0.50, 0.30, 0.16);
+    vec3 mRedSoil = vec3(0.62, 0.22, 0.10);
+    vec3 mRockWarm = vec3(0.55, 0.43, 0.32);
+    vec3 mRockCool = vec3(0.52, 0.56, 0.50);
+    vec3 mRockDark = vec3(0.18, 0.17, 0.15);
+    vec3 mPaleStone = vec3(0.78, 0.76, 0.62);
+    vec3 mSnow = vec3(0.93, 0.96, 0.94);
+    vec3 mBeach = vec3(0.78, 0.66, 0.38);
+    vec3 mRiverBedColor = vec3(0.19, 0.16, 0.11);
+    vec3 mShallowSeabed = vec3(0.39, 0.49, 0.42);
+    vec3 mDeepSeabed = vec3(0.12, 0.15, 0.17);
+
+    vec3 mEco = mix(mLowGrass, mMeadow, smoothstep(0.08, 0.36, mHeight));
+    mEco = mix(mEco, mForestDark, mForest * 0.94);
+    mEco = mix(mEco, mForestWarm, mForest * (1.0 - mCold) * 0.34);
+    mEco = mix(mEco, mSavannaColor, mSavanna * 0.86);
+    mEco = mix(mEco, mix(mDrySoil, mOchre, mMacro), mArid * 0.96);
+    mEco = mix(mEco, mTundraColor, mTundra * 0.82);
+    mEco = mix(mEco, mWetGreen, mWet * 0.78);
+
+    float mSoilStripe = smoothstep(0.35, 0.78, mCrack + wearMask * 0.30 + channelMask * 0.18);
+    float mMineralStripe = smoothstep(0.40, 0.82, mMineral + mCliff * 0.22 + upliftMask * 0.10);
+    float mScree = clamp(mCliff * 0.62 + mAlpine * 0.28 + wearMask * 0.38, 0.0, 1.0) * runtimeLand;
+    float mCapRock = smoothstep(0.42, 0.88, mHeight + geomSlope * 0.32 + upliftMask * 0.12) * runtimeLand;
+    vec3 mSoil = mix(mBrownSlope, mRedSoil, mDry * 0.62 + mMacro * 0.22);
+    vec3 mRock = mix(mRockWarm, mRockCool, mCold * 0.45 + mMineral * 0.35);
+    mRock = mix(mRock, mRockDark, mSoilStripe * mCliff * 0.35);
+    mRock = mix(mRock, mPaleStone, mCapRock * mMineralStripe * 0.36);
+
+    vec3 mLandColor = mEco;
+    mLandColor = mix(mLandColor, mSoil, clamp(mScree * 0.34 + mSoilStripe * mHigh * 0.22, 0.0, 0.62));
+    mLandColor = mix(mLandColor, mRock, clamp(mScree * 0.60 + mCapRock * 0.34, 0.0, 0.86));
+    mLandColor = mix(mLandColor, mRiverBedColor, mRiverBed * 0.62);
+    mLandColor = mix(mLandColor, mSnow, mPeak * smoothstep(0.52, 0.86, mCold) * 0.56);
+    mLandColor = mix(mLandColor, mBeach, mShore * (1.0 - mCliff) * 0.82);
+
+    vec3 mDetail = vec3(1.0);
+    mDetail *= mix(vec3(0.86), vec3(1.22), mGrainA);
+    mDetail *= mix(vec3(1.0), vec3(0.62, 0.84, 0.52), mForest * smoothstep(0.50, 0.88, mGrainB) * 0.34);
+    mDetail *= mix(vec3(1.0), vec3(1.30, 1.08, 0.66), mArid * smoothstep(0.42, 0.84, mGrainB) * 0.34);
+    mDetail *= mix(vec3(1.0), vec3(0.54, 0.52, 0.48), mScree * smoothstep(0.38, 0.84, mCrack) * 0.38);
+    mDetail *= mix(vec3(1.0), vec3(0.82, 0.94, 0.76), mWet * 0.18);
+
+    vec3 mVivid = mLandColor * mDetail;
+    float mLum = dot(mVivid, vec3(0.299, 0.587, 0.114));
+    mVivid = mix(vec3(mLum), mVivid, 1.34);
+    vec3 mSeabed = mix(mShallowSeabed, mDeepSeabed, smoothstep(0.2, 5.0, waterDepth));
+    mSeabed = mix(mSeabed, mRiverBedColor, depositionMask * 0.34 + wearMask * 0.18);
+    float mLand = clamp(runtimeLand * max(geomLand, 0.85), 0.0, 1.0);
+    vec3 mColor = mix(mSeabed, mVivid, mLand);
+    mColor = mix(mColor, mWetGreen * mix(0.80, 1.14, mGrainA), mRiverBed * 0.28);
+    mColor = mix(mColor, mLandColor * vec3(0.82, 0.88, 0.96), mPeak * 0.08);
+    mColor = clamp(mColor * mix(0.98, 1.16, mVegNoise), vec3(0.0), vec3(2.2));
+
+    surface.riverMask = 0.0;
+    surface.riverSpecular = 0.0;
+    surface.specularStrength = mix(0.006, 0.016, mCapRock * 0.45 + mWet * 0.20);
+    surface.specularStrength = mix(surface.specularStrength, 0.014, mRiverBed * 0.30);
+    surface.baseColor = clamp(mColor * mColorVariation, vec3(0.0), vec3(2.0));
+    return surface;
+
+#if 0
     vec4 biomeA = planet.biomeA;
     vec4 biomeB = planet.biomeB;
     float beachWeight = clamp(biomeA.r, 0.0, 1.0);
@@ -418,6 +525,93 @@ SurfaceData sampleSurfaceData(float height, vec3 worldPos, vec3 shadingNormal, v
     color = mix(color, terrainBeachColor * 0.72, shallowWaterWeight * 0.20);
     color = mix(color, alpineColor, treeLineBlend * 0.48);
 
+    float h01 = clamp(relativeHeight / 0.42, 0.0, 1.0);
+    float lowBand = 1.0 - smoothstep(0.05, 0.26, h01);
+    float highBand = smoothstep(0.38, 0.82, h01);
+    float alpineBand = smoothstep(0.62, 0.96, h01);
+    float peakBand = smoothstep(0.82, 1.0, h01);
+    float cliffBand = smoothstep(0.26, 0.72, geomSlope + wearMask * 0.18 + upliftMask * 0.06);
+    float valleyBand = smoothstep(0.10, 0.76, geomChannel + flowMask * 0.24);
+    float shoreBand = runtimeShore * runtimeLand;
+
+    float macroRegion = fbm3(radialUp * 3.8 + vec3(19.0, 4.0, 11.0));
+    float ecoPatch = fbm3(radialUp * 9.5 + vec3(2.7, 41.0, 6.0));
+    float vegetationNoise = fbm3(radialUp * 28.0 + vec3(7.0, 13.0, 29.0));
+    float mineralNoise = fbm3(radialUp * 64.0 + vec3(31.0, 4.0, 18.0));
+    float grainA = fbm3(radialUp * 210.0 + vec3(5.0, 17.0, 23.0));
+    float grainB = fbm3(radialUp * 620.0 + vec3(43.0, 3.0, 9.0));
+    float terrainCrackNoise = 1.0 - abs(fbm3(radialUp * 145.0 + vec3(12.0, 8.0, 41.0)) * 2.0 - 1.0);
+
+    float dry = clamp((1.0 - moisture) * 0.72 + temperature * 0.34 + macroRegion * 0.34, 0.0, 1.0);
+    float lush = clamp(moisture * 0.78 + (1.0 - temperature) * 0.10 + (1.0 - macroRegion) * 0.22 + ecoPatch * 0.18, 0.0, 1.0);
+    float cold = clamp((1.0 - temperature) * 0.90 + highBand * 0.22, 0.0, 1.0);
+    float plainMask = runtimeLand * (1.0 - cliffBand) * (1.0 - alpineBand * 0.65);
+    float forestMask = smoothstep(0.34, 0.62, lush) * smoothstep(0.12, 0.52, vegetationNoise) * plainMask;
+    float savannaMask = smoothstep(0.34, 0.62, dry) * smoothstep(0.18, 0.58, moisture + ecoPatch * 0.24) * plainMask;
+    float aridMask = smoothstep(0.46, 0.72, dry) * (1.0 - smoothstep(0.30, 0.62, moisture + vegetationNoise * 0.16)) * plainMask;
+    float tundraMask = smoothstep(0.48, 0.78, cold) * (1.0 - peakBand) * plainMask;
+    float wetMask = valleyBand * runtimeLand * smoothstep(0.34, 0.82, moisture);
+
+    vec3 lowGrass = vec3(0.20, 0.67, 0.16);
+    vec3 meadow = vec3(0.64, 0.78, 0.16);
+    vec3 deepForest = vec3(0.030, 0.23, 0.070);
+    vec3 warmForest = vec3(0.11, 0.43, 0.09);
+    vec3 savanna = vec3(0.76, 0.66, 0.20);
+    vec3 drySoil = vec3(0.68, 0.36, 0.15);
+    vec3 ochre = vec3(0.92, 0.60, 0.22);
+    vec3 wetGreen = vec3(0.08, 0.35, 0.25);
+    vec3 tundra = vec3(0.55, 0.63, 0.42);
+    vec3 brownSlope = vec3(0.50, 0.30, 0.16);
+    vec3 redSoil = vec3(0.62, 0.22, 0.10);
+    vec3 rockWarm = vec3(0.55, 0.43, 0.32);
+    vec3 rockCool = vec3(0.52, 0.56, 0.50);
+    vec3 rockDark = vec3(0.18, 0.17, 0.15);
+    vec3 paleStone = vec3(0.78, 0.76, 0.62);
+    vec3 snow = vec3(0.93, 0.96, 0.94);
+    vec3 beach = vec3(0.78, 0.66, 0.38);
+
+    vec3 ecoColor = mix(lowGrass, meadow, smoothstep(0.08, 0.36, h01));
+    ecoColor = mix(ecoColor, deepForest, forestMask * 0.94);
+    ecoColor = mix(ecoColor, warmForest, forestMask * (1.0 - cold) * 0.34);
+    ecoColor = mix(ecoColor, savanna, savannaMask * 0.86);
+    ecoColor = mix(ecoColor, mix(drySoil, ochre, macroRegion), aridMask * 0.96);
+    ecoColor = mix(ecoColor, tundra, tundraMask * 0.82);
+    ecoColor = mix(ecoColor, wetGreen, wetMask * 0.78);
+
+    float soilStripe = smoothstep(0.35, 0.78, terrainCrackNoise + wearMask * 0.30 + channelMask * 0.18);
+    float mineralStripe = smoothstep(0.40, 0.82, mineralNoise + cliffBand * 0.22 + upliftMask * 0.10);
+    float screeMask = clamp(cliffBand * 0.62 + alpineBand * 0.28 + wearMask * 0.38, 0.0, 1.0) * runtimeLand;
+    float capRockMask = smoothstep(0.42, 0.88, h01 + geomSlope * 0.32 + upliftMask * 0.12) * runtimeLand;
+    vec3 soilColor = mix(brownSlope, redSoil, dry * 0.62 + macroRegion * 0.22);
+    vec3 rockColorDetail = mix(rockWarm, rockCool, cold * 0.45 + mineralNoise * 0.35);
+    rockColorDetail = mix(rockColorDetail, rockDark, soilStripe * cliffBand * 0.35);
+    rockColorDetail = mix(rockColorDetail, paleStone, capRockMask * mineralStripe * 0.36);
+
+    vec3 terrainPalette = ecoColor;
+    terrainPalette = mix(terrainPalette, soilColor, clamp(screeMask * 0.34 + soilStripe * highBand * 0.22, 0.0, 0.62));
+    terrainPalette = mix(terrainPalette, rockColorDetail, clamp(screeMask * 0.60 + capRockMask * 0.34, 0.0, 0.86));
+    terrainPalette = mix(terrainPalette, snow, peakBand * smoothstep(0.52, 0.86, cold) * 0.56);
+    terrainPalette = mix(terrainPalette, beach, shoreBand * (1.0 - cliffBand) * 0.82);
+
+    vec3 detailTint = vec3(1.0);
+    detailTint *= mix(vec3(0.86), vec3(1.22), grainA);
+    detailTint *= mix(vec3(1.0), vec3(0.62, 0.84, 0.52), forestMask * smoothstep(0.50, 0.88, grainB) * 0.34);
+    detailTint *= mix(vec3(1.0), vec3(1.30, 1.08, 0.66), aridMask * smoothstep(0.42, 0.84, grainB) * 0.34);
+    detailTint *= mix(vec3(1.0), vec3(0.54, 0.52, 0.48), screeMask * smoothstep(0.38, 0.84, terrainCrackNoise) * 0.38);
+    detailTint *= mix(vec3(1.0), vec3(0.82, 0.94, 0.76), wetMask * 0.18);
+
+    float landAuthority = clamp(runtimeLand * max(geomLand, 0.85), 0.0, 1.0);
+    vec3 vividPalette = terrainPalette * detailTint;
+    float luminance = dot(vividPalette, vec3(0.299, 0.587, 0.114));
+    vividPalette = mix(vec3(luminance), vividPalette, 1.34);
+    color = mix(color, vividPalette, landAuthority);
+    color = mix(color, wetGreen * mix(0.80, 1.14, grainA), riverBank * 0.24 * riversEnabled);
+    color = mix(color, terrainPalette * vec3(0.82, 0.88, 0.96), peakBand * 0.08);
+    color = clamp(color * mix(0.98, 1.16, vegetationNoise), vec3(0.0), vec3(2.2));
+
+    surface.specularStrength = mix(0.006, 0.016, capRockMask * 0.45 + wetMask * 0.20);
+    surface.specularStrength = mix(surface.specularStrength, 0.035, surface.riverMask);
     surface.baseColor = clamp(color * colorVariation, vec3(0.0), vec3(2.0));
     return surface;
+#endif
 }
