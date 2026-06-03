@@ -18,14 +18,22 @@ uniform mat4 projection;
 uniform vec3 cameraPos;
 uniform vec4 clipPlane;
 
+uniform float seaLevelOffset;
+uniform float heightScale;
+uniform float runtimeMountainScale;
+
 void main()
 {
-    vec4 worldPos = model * vec4(aLocalPos, 1.0);
+    float baseHeightOffset = aHeight - seaLevelOffset;
+    float mountainOffset = max(baseHeightOffset, 0.0) * (runtimeMountainScale - 1.0);
+    vec3 displacedLocalPos = aLocalPos + aSphereDir * (mountainOffset * heightScale);
+
+    vec4 worldPos = model * vec4(displacedLocalPos, 1.0);
     teWorldPos = worldPos.xyz;
     teNormal = normalize(mat3(transpose(inverse(model))) * aNormal);
     teSphereDir = normalize(aSphereDir);
-    teHeight = aHeight;
-    teSurfaceHeight = aHeight;
+    teHeight = aHeight + mountainOffset;
+    teSurfaceHeight = teHeight;
     teSkirt = 0.0;
 
     vec4 relativeWorldPos = vec4(worldPos.xyz - cameraPos, 1.0);

@@ -1359,6 +1359,7 @@ void drawRenderPanel(ApplicationState& state)
         ImGui::Checkbox("Terrain Enabled", &settings.renderTerrain);
         ImGui::TextDisabled("Immediate shader controls; bake-only terrain, biome, erosion need Generate Planet.");
         ImGui::SliderFloat("Height Scale", &settings.terrainHeightScale, 0.0f, 120.0f * renderDistanceScale, "%.2f");
+        ImGui::SliderFloat("Mountain Scale", &settings.runtimeMountainScale, 0.0f, 4.0f, "%.2f");
         ImGui::SliderFloat("Sea Level", &settings.seaLevelOffset, -1.5f, 1.5f, "%.2f");
         ImGui::SliderFloat("Beach Width", &settings.terrainBeachWidth, 0.005f, 0.25f, "%.3f");
         ImGui::SliderFloat("Rock Slope Start", &settings.terrainRockSlopeStart, 0.0f, 0.8f, "%.2f");

@@ -11,6 +11,8 @@ uniform mat4 projection;
 uniform vec3 cameraPos;
 uniform float planetRadius;
 uniform float heightScale;
+uniform float seaLevelOffset;
+uniform float runtimeMountainScale;
 uniform float lineLift;
 uniform float proceduralDataTexelSize;
 uniform sampler2DArray proceduralHeightTexture;
@@ -20,8 +22,13 @@ uniform sampler2DArray proceduralHeightTexture;
 void main()
 {
     vec3 sphereDir = normalize(aSphereDir);
-    float height = sampleFloatArraySeamlessNarrow(proceduralHeightTexture, sphereDir);
-    vec3 localPos = sphereDir * (planetRadius + height * heightScale + lineLift);
+    float baseHeight = sampleFloatArraySeamlessNarrow(proceduralHeightTexture, sphereDir);
+    
+    float baseHeightOffset = baseHeight - seaLevelOffset;
+    float mountainOffset = max(baseHeightOffset, 0.0) * (runtimeMountainScale - 1.0);
+    float displacedHeight = baseHeight + mountainOffset;
+
+    vec3 localPos = sphereDir * (planetRadius + displacedHeight * heightScale + lineLift);
     vec4 worldPos = model * vec4(localPos, 1.0);
     vec4 relativeWorldPos = vec4(worldPos.xyz - cameraPos, 1.0);
 

@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include <array>
 #include <cstddef>
@@ -50,8 +50,9 @@ struct PlanetRenderSettings {
     float oceanTessellationNearDistance = 40.0f;
     float oceanTessellationFarDistance = 550.0f;
     // 绋嬪簭鍖栧湴褰㈠拰渚佃殌鍙傛暟銆?
-    float terrainHeightScale = 34.0f;
-    float terrainNoiseScale = 0.78f;
+    float terrainHeightScale = 22.0f;
+    float runtimeMountainScale = 1.0f;
+    float terrainNoiseScale = 0.58f;
     float mountainMaskStrength = 1.90f;
     float mountainMaskScale = 3.35f;
     float mountainRidgeSharpness = 3.80f;

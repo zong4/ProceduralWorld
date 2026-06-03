@@ -21,7 +21,7 @@ const std::array<PlanetProceduralData::FaceBasis, 6> PlanetProceduralData::kFace
 
 namespace
 {
-// 缂傛挸鐡ㄩ弬鍥︽閻楀牊婀伴崣宄版嫲 magic 閻劍娼甸幏鎺旂卜閺冄勭壐瀵?閹圭喎娼栭弬鍥︽閵?
+// 程序化缓存文件头常量，magic 和 version 必须与读写逻辑保持一致。
 constexpr char kProceduralCacheMagic[8] = { 'P', 'W', 'C', 'A', 'C', 'H', 'E', '9' };
 constexpr std::uint32_t kProceduralCacheVersion = 117;
 constexpr int kTerrainChunkMeshResolution = 24;
@@ -109,8 +109,8 @@ struct BiomeWeights {
     float shallowWater = 0.0f;
 };
 
-// 濞村嘲鍝洪柆顔挎杸鎼达讣绱伴悽銊ヮ樋鐏?value noise 娴兼媽顓搁弻鎰槱閺勵垰鎯侀崓蹇旀崳濠€?閸愬懏鎹ｆ稉鈧弽灏佲偓婊冨綀娣囨繃濮㈤垾婵勨偓?
-// 閸欐ぞ绻氶幎銈嗘崳瀹€鍛婃纯鐎硅妲楅悽鐔稿灇濞屾瑦鍝楅妴浣圭畭閸﹀府绱遍弳鎾苟濞村嘲鍝洪弴鏉戭啇閺勬挾鏁撻幋鎰崥瀹€鎼炩偓?
+// 基于 value-noise fBm 计算“海岸遮蔽度”，用于区分开阔海岸与内湾。
+// 遮蔽度越高，越倾向生成平缓、湿润的近海地貌分布。
 float coastalShelter(const glm::vec3& sphereDir)
 {
     const auto hash = [](const glm::vec3& p) {
@@ -160,7 +160,7 @@ float coastalShelter(const glm::vec3& sphereDir)
     return glm::smoothstep(0.42f, 0.78f, sheltered);
 }
 
-// 婢堆冩槀鎼达附鐨甸崐娆忓隘閸╃喎娅旀竟甯礉閻劋绨拋鈺傜煓濠曠姰鈧焦锛庨弸妞尖偓浣稿崥閸︽壆鐡戣ぐ銏″灇閻楀洤灏敍宀冣偓灞肩瑝閺勵垳鍑界痪顒€瀹抽弶鈥崇敨閵?
+// 大尺度气候分区噪声：用于打散纬度条带，让生物群落形成“区域块状”分布。
 float climateRegionNoise(const glm::vec3& sphereDir, float scale, const glm::vec3& offset)
 {
     const auto hash = [](const glm::vec3& p) {
@@ -203,8 +203,8 @@ float climateRegionNoise(const glm::vec3& sphereDir, float scale, const glm::vec
     return value / std::max(total, 0.0001f);
 }
 
-// 鐏忓棗婀磋ぐ顫偓浣规寜閺傚洢鈧焦鐨甸崐娆嶁偓浣告蒋鎼达箑鎷版笟浣冩畬娣団剝浼呴崥鍫熷灇娑?8 缁?biome 閺夊啴鍣搁妴?
-// 鏉╂瑩鍣锋潏鎾冲毉閻ㄥ嫭妲搁垾婊勮穿閸氬牊娼堥柌宥佲偓婵撶礉娑撳秵妲告禍鎺撴灱閸掑棛琚敍娑樻倵缂?shader 娴兼碍瀵滈弶鍐櫢濞ｇ柉澹婇妴?
+// 将地形高度、水文、温湿度、坡度等因素融合为 8 类 biome 权重。
+// 这些权重会被打包成两个 vec4 层，供 shader 进行地表材质混合。
 BiomeWeights computeBiome(float height,
                           float waterDepth,
                           float shore,
@@ -494,7 +494,7 @@ bool PlanetProceduralData::saveCache(const char* path) const
     }
 
     file.write(kProceduralCacheMagic, sizeof(kProceduralCacheMagic));
-    // 閺傚洣娆㈡径缈犵箽鐎涙绮虹拋鈥蹭繆閹垽绱濋梾蹇撴倵闁?face 閸愭瑥鍙嗛幍鈧張澶嬬垼闁?閸氭垿鍣虹仦鍌樷偓?
+    // 先写入全局元数据，再按 face 顺序写入每层标量/向量场。
     const std::int32_t resolution = resolution_;
     if (!writeBinary(file, kProceduralCacheVersion)
         || !writeBinary(file, resolution)
@@ -549,7 +549,7 @@ bool PlanetProceduralData::loadCache(const char* path, const PlanetRenderSetting
 
     std::uint32_t version = 0;
     std::int32_t resolution = 0;
-    // 缂傛挸鐡ㄦ稉宥呬粵鐠恒劎澧楅張顒€鍚嬬€圭櫢绱辩粻妤佺《閹存牕鐡у▓闈涘綁閺囧瓨妞?bump 閻楀牊婀伴獮璺哄繁閸掑爼鍣搁弬鎵晸閹存劑鈧?
+    // 先校验缓存版本和分辨率，避免加载不兼容或损坏的数据。
     if (!readBinary(file, version)
         || version != kProceduralCacheVersion
         || !readBinary(file, resolution)
@@ -617,7 +617,7 @@ bool PlanetProceduralData::loadCache(const char* path, const PlanetRenderSetting
 
 PlanetGlobalHeightField PlanetProceduralData::globalHeightField() const
 {
-    // 鐏忓棗鍞撮柈?FaceData 鏉烆剚鍨氶柅姘辨暏妤傛ê瀹抽崷铏圭波閺嬪嫸绱濇笟娑欐弓閺夈儱鐪柈?LOD/瀹搞儱鍙块柧鎯ь槻閻劊鈧?
+    // 将内部 FaceData 拍平成全局高度场结构，供调试/导出/LOD 分析复用。
     PlanetGlobalHeightField heightField;
     heightField.faceResolution = resolution_;
     heightField.minHeight = minHeight_;
@@ -1241,8 +1241,8 @@ void PlanetProceduralData::fixCubeFaceSeams()
     const int geometrySeamRings = 1;
     const int materialSeamRings = 1;
 
-    // 閺嶅洭鍣虹仦鍌涘复缂傛繀鎱ㄦ径宥忕窗閹?face 鏉堝湱鏅崪宀冩硶 face 闁鐪抽崣鏍ч挬閸у洢鈧?
-    // neighborCell 閺€顖涘瘮鐡掑﹦鏅?UV 閺勭姴鐨犻崚鎵祲闁?face閿涘苯娲滃銈堢箹闁插奔绗夐棁鈧憰浣瑰閸?12 閺壜ょ珶閸忓磭閮撮妴?
+    // 对标量场做立方体面缝合：把跨 face 的边界采样统一到相同值。
+    // neighborCell 会把越界 UV 映射到相邻面，覆盖 12 条棱及角点附近区域。
     const auto reconcileField = [&](std::vector<float> FaceData::* field, int seamRings) {
         std::array<std::vector<float>, 6> updated;
         for (std::size_t faceIndex = 0; faceIndex < faces_.size(); ++faceIndex) {
@@ -1277,7 +1277,7 @@ void PlanetProceduralData::fixCubeFaceSeams()
             faces_[faceIndex].*field = std::move(updated[faceIndex]);
         }
     };
-    // vec4 鐏炲倹甯寸紓婵呮叏婢跺稄绱濋柅鏄忕帆娑撳孩鐖ｉ柌蹇撶湴娑撯偓閼疯揪绱濋悽銊ょ艾 biome 閺夊啴鍣搁妴?
+    // 对 vec4 层执行同样的缝合（如 biome/domain 权重）。
     const auto reconcileVec4Field = [&](std::vector<glm::vec4> FaceData::* field, int seamRings) {
         std::array<std::vector<glm::vec4>, 6> updated;
         for (std::size_t faceIndex = 0; faceIndex < faces_.size(); ++faceIndex) {
@@ -2256,7 +2256,7 @@ PlanetProceduralData::PlanetSample PlanetProceduralData::samplePlanetBase(const 
                                                                           const glm::vec3& sphereDir,
                                                                           float height)
 {
-    // 閸╄櫣顢呴柌鍥ㄧ壉閸欘亙绶风挧鏍х秼閸撳秹鐝惔锕€鎷伴悶鍐桨閺傜懓鎮滈敍灞肩返婢舵俺鐤嗛悽鐔稿灇闂冭埖顔岄柌宥咁槻娴ｈ法鏁ら妴?
+    // 基于高度与海平面关系推导基础样本：水深、岸线掩码、温度和湿度。
     const glm::vec3 n = glm::normalize(sphereDir);
     PlanetSample sample;
     sample.height = height;
@@ -2273,7 +2273,7 @@ PlanetProceduralData::PlanetSample PlanetProceduralData::samplePlanetBase(const 
 
 float PlanetProceduralData::temperature(const PlanetRenderSettings& settings, const glm::vec3& sphereDir, float height)
 {
-    // 濞撯晛瀹?= 缁绢剙瀹虫稉璇差嚤 + 濞撮攱瀚堥梽宥嗕刊 + 鐏忔垿鍣?fBM 閹垫澘濮╅妴?
+    // 温度模型：纬度主项 + 海拔降温 + 低频噪声扰动。
     const float latitude01 = std::abs(sphereDir.y);
     const float latitudeTemperature = 1.0f - latitude01;
     const float heightCooling = std::max(height - settings.seaLevelOffset, 0.0f) * 0.35f;
@@ -2283,7 +2283,7 @@ float PlanetProceduralData::temperature(const PlanetRenderSettings& settings, co
 
 float PlanetProceduralData::moisture(const glm::vec3& sphereDir, float shoreMask)
 {
-    // 濠€鍨 = 婢堆冩槀鎼达箑娅旀竟?+ 濞村嘲鍝洪崝鐘崇畭 + 鏉炶浜曠痪顒€瀹虫穱顔筋劀閿涙稐闀滈摀鈧崥搴ょ箷娴兼俺顫﹀瀛樻瀮閸愬秵顐兼穱顔筋劀閵?
+    // 湿度模型：噪声底图 + 海岸增湿 + 轻度纬向修正。
     const float moistureNoise = fbm(sphereDir * 4.0f + glm::vec3(1.2f, 9.3f, 4.8f), 5, 2.0f, 0.5f) * 0.5f + 0.5f;
     const float shoreMoisture = shoreMask * 0.35f;
     const float latitudeMoisture = 1.0f - std::abs(sphereDir.y) * 0.25f;
