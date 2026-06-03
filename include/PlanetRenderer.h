@@ -19,7 +19,8 @@ enum class PlanetRenderMode : int {
     Shaded = 0,
     Unshaded = 1,
     HeightMap = 2,
-    Normals = 3
+    Normals = 3,
+    Material = 4
 };
 
 // 绾挎鍙犲姞妯″紡锛氬彲閫夋嫨鏄剧ず闄嗗湴 patch 鎴栨捣娲?patch 鐨勭粏鍒嗙粨鏋勩€?

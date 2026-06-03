@@ -467,6 +467,8 @@ const char* PlanetRenderer::currentModeLabel() const
         return settings_.wireMode == PlanetWireMode::None ? "HeightMap" : settings_.wireMode == PlanetWireMode::Ocean ? "Height+WaterMesh" : settings_.wireMode == PlanetWireMode::MountainMask ? "Height+MountainMask" : "Height+BakedLOD";
     case PlanetRenderMode::Normals:
         return settings_.wireMode == PlanetWireMode::None ? "Normals" : settings_.wireMode == PlanetWireMode::Ocean ? "Normals+WaterMesh" : settings_.wireMode == PlanetWireMode::MountainMask ? "Normals+MountainMask" : "Normals+BakedLOD";
+    case PlanetRenderMode::Material:
+        return settings_.wireMode == PlanetWireMode::None ? "Material" : settings_.wireMode == PlanetWireMode::Ocean ? "Material+WaterMesh" : settings_.wireMode == PlanetWireMode::MountainMask ? "Material+MountainMask" : "Material+BakedLOD";
     case PlanetRenderMode::Shaded:
     default:
         return settings_.wireMode == PlanetWireMode::None ? "Shaded" : settings_.wireMode == PlanetWireMode::Ocean ? "Shaded+WaterMesh" : settings_.wireMode == PlanetWireMode::MountainMask ? "Shaded+MountainMask" : "Shaded+BakedLOD";

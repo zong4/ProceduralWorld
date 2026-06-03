@@ -555,7 +555,7 @@ void readSettings(const SessionValues& values, const std::string& prefix, Planet
 
     int renderMode = static_cast<int>(settings.renderMode);
     if (readInt(values, sessionKey(prefix, "renderMode"), renderMode)) {
-        settings.renderMode = static_cast<PlanetRenderMode>(glm::clamp(renderMode, 0, 3));
+        settings.renderMode = static_cast<PlanetRenderMode>(glm::clamp(renderMode, 0, 4));
     }
 
     int wireMode = static_cast<int>(settings.wireMode);
@@ -1046,7 +1046,7 @@ void onKeyPressed(GLFWwindow* window, int key, int, int action, int modifiers)
     // 快捷键主要循debug/render mode，具体连续参数仍ImGui 控件调整
     if (key == GLFW_KEY_ESCAPE) glfwSetWindowShouldClose(window, true);
     if (key == GLFW_KEY_1) {
-        const int nextMode = (static_cast<int>(settings.renderMode) + 1) % 4;
+        const int nextMode = (static_cast<int>(settings.renderMode) + 1) % 5;
         settings.renderMode = static_cast<PlanetRenderMode>(nextMode);
     }
     if (key == GLFW_KEY_2) {
@@ -1259,6 +1259,7 @@ void drawRenderModeControls(PlanetRenderSettings& settings)
     if (settings.renderMode == PlanetRenderMode::Shaded) renderModeIndex = 1;
     if (settings.renderMode == PlanetRenderMode::HeightMap) renderModeIndex = 2;
     if (settings.renderMode == PlanetRenderMode::Normals) renderModeIndex = 3;
+    if (settings.renderMode == PlanetRenderMode::Material) renderModeIndex = 4;
     if (ImGui::RadioButton("Unshaded", renderModeIndex == 0)) settings.renderMode = PlanetRenderMode::Unshaded;
     ImGui::SameLine();
     if (ImGui::RadioButton("Shaded", renderModeIndex == 1)) settings.renderMode = PlanetRenderMode::Shaded;
@@ -1266,6 +1267,8 @@ void drawRenderModeControls(PlanetRenderSettings& settings)
     if (ImGui::RadioButton("Height", renderModeIndex == 2)) settings.renderMode = PlanetRenderMode::HeightMap;
     ImGui::SameLine();
     if (ImGui::RadioButton("Normals", renderModeIndex == 3)) settings.renderMode = PlanetRenderMode::Normals;
+    ImGui::SameLine();
+    if (ImGui::RadioButton("Material", renderModeIndex == 4)) settings.renderMode = PlanetRenderMode::Material;
 
     int wireModeIndex = static_cast<int>(settings.wireMode);
     if (ImGui::RadioButton("No Wire", wireModeIndex == 0)) settings.wireMode = PlanetWireMode::None;
