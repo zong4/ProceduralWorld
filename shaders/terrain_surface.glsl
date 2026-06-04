@@ -255,13 +255,14 @@ SurfaceData sampleSurfaceData(float height, vec3 worldPos, vec3 shadingNormal, v
     vec3 mOchre = vec3(1.00, 0.60, 0.16);
     vec3 mWetGreen = vec3(0.030, 0.52, 0.30);
     vec3 mTundraColor = vec3(0.70, 0.78, 0.32);
-    vec3 mBrownSlope = vec3(0.72, 0.34, 0.13);
-    vec3 mRedSoil = vec3(0.90, 0.25, 0.08);
-    vec3 mRockWarm = vec3(0.78, 0.55, 0.34);
-    vec3 mRockCool = vec3(0.70, 0.66, 0.50);
-    vec3 mRockDark = vec3(0.34, 0.24, 0.14);
-    vec3 mPaleStone = vec3(0.96, 0.84, 0.58);
-    vec3 mSnow = vec3(0.98, 0.98, 0.90);
+    vec3 mBrownSlope = vec3(0.58, 0.36, 0.20);
+    vec3 mRedSoil = vec3(0.70, 0.30, 0.14);
+    vec3 mRockWarm = vec3(0.48, 0.45, 0.39);
+    vec3 mRockCool = vec3(0.54, 0.58, 0.56);
+    vec3 mRockDark = vec3(0.22, 0.22, 0.20);
+    vec3 mPaleStone = vec3(0.70, 0.72, 0.66);
+    vec3 mSnow = vec3(1.08, 1.10, 1.14);
+    vec3 mSnowShadow = vec3(0.76, 0.86, 1.02);
     vec3 mBeach = vec3(1.00, 0.78, 0.38);
     vec3 mRiverBedColor = vec3(0.30, 0.17, 0.08);
     vec3 mShallowSeabed = vec3(0.28, 0.62, 0.50);
@@ -296,28 +297,30 @@ SurfaceData sampleSurfaceData(float height, vec3 worldPos, vec3 shadingNormal, v
     vec3 mSoil = mix(mBrownSlope, mRedSoil, mDry * 0.62 + mMacro * 0.22);
     vec3 mRock = mix(mRockWarm, mRockCool, mCold * 0.45 + mMineral * 0.35);
     mRock = mix(mRock, mRockDark, mSoilStripe * mCliff * 0.15);
-    mRock = mix(mRock, mPaleStone, mCapRock * mMineralStripe * 0.24);
+    mRock = mix(mRock, mPaleStone, mCapRock * mMineralStripe * 0.28);
+    vec3 mSnowColor = mix(mSnowShadow, mSnow, smoothstep(0.34, 0.82, mGrainB + mPeakBand * 0.24 + mCold * 0.12));
 
     vec3 mLandColor = mEco;
-    mLandColor = mix(mLandColor, mSoil, clamp(mErodedSoil * 0.66 + mScree * 0.14 + mSoilStripe * mMountainBand * 0.16, 0.0, 0.52));
-    mLandColor = mix(mLandColor, mRock, clamp(mRockExposure, 0.0, 0.76));
+    mLandColor = mix(mLandColor, mSoil, clamp(mErodedSoil * 0.58 + mScree * 0.10 + mSoilStripe * mMountainBand * 0.12, 0.0, 0.44));
+    mLandColor = mix(mLandColor, mRock, clamp(mRockExposure * 1.14, 0.0, 0.86));
     mLandColor = mix(mLandColor, mRiverBedColor, mRiverBed * 0.62);
-    mLandColor = mix(mLandColor, mSnow, mSnowMask * 0.78);
+    mLandColor = mix(mLandColor, mSnowColor, clamp(mSnowMask * 0.96, 0.0, 0.96));
     mLandColor = mix(mLandColor, mBeach, mShore * (1.0 - mCliff) * 0.82);
 
     vec3 mDetail = vec3(1.0);
     mDetail *= mix(vec3(0.97), vec3(1.05), mGrainA);
     mDetail *= mix(vec3(1.0), vec3(0.76, 1.06, 0.62), mForest * smoothstep(0.52, 0.88, mGrainB) * 0.08);
-    mDetail *= mix(vec3(1.0), vec3(1.16, 0.96, 0.62), mArid * smoothstep(0.42, 0.84, mGrainB) * 0.10);
-    mDetail *= mix(vec3(1.0), vec3(1.20, 0.74, 0.42), mErodedSoil * smoothstep(0.36, 0.86, mCrack) * 0.10);
-    mDetail *= mix(vec3(1.0), vec3(1.04, 0.88, 0.66), mRockExposure * smoothstep(0.42, 0.86, mCrack) * 0.08);
+    mDetail *= mix(vec3(1.0), vec3(1.10, 0.99, 0.76), mArid * smoothstep(0.42, 0.84, mGrainB) * 0.08);
+    mDetail *= mix(vec3(1.0), vec3(1.04, 0.84, 0.60), mErodedSoil * smoothstep(0.36, 0.86, mCrack) * 0.08);
+    mDetail *= mix(vec3(1.0), vec3(0.90, 0.96, 1.04), mRockExposure * smoothstep(0.42, 0.86, mCrack) * 0.14);
     mDetail *= mix(vec3(1.0), vec3(0.78, 1.08, 0.82), mWet * 0.07);
 
-    vec3 mStylizedPatch = mix(vec3(0.88, 1.05, 0.72), vec3(1.16, 0.96, 0.66), mColorPatch);
+    vec3 mStylizedPatch = mix(vec3(0.88, 1.05, 0.72), vec3(1.12, 0.99, 0.78), mColorPatch);
     vec3 mVivid = mLandColor * mix(vec3(1.0), mStylizedPatch, 0.42) * mDetail;
     float mLum = dot(mVivid, vec3(0.299, 0.587, 0.114));
     mVivid = mix(vec3(mLum), mVivid, 2.05);
-    mVivid *= vec3(1.10, 1.04, 0.82);
+    float mRockTintGuard = clamp(mRockExposure * 0.78 + mCapRock * 0.22 + mScree * 0.18 + mAlpineBand * 0.16, 0.0, 1.0);
+    mVivid *= mix(vec3(1.08, 1.04, 0.86), vec3(0.94, 0.99, 1.06), mRockTintGuard);
     vec3 mSeabed = mix(mShallowSeabed, mDeepSeabed, smoothstep(0.2, 5.0, waterDepth));
     mSeabed = mix(mSeabed, mRiverBedColor, depositionMask * 0.34 + wearMask * 0.18);
     float mLand = clamp(runtimeLand * max(geomLand, 0.85), 0.0, 1.0);
@@ -327,6 +330,14 @@ SurfaceData sampleSurfaceData(float height, vec3 worldPos, vec3 shadingNormal, v
     float mReliefShade = mix(0.92, 1.12, smoothstep(0.02, 0.70, mHeight));
     mReliefShade *= mix(1.06, 0.94, mCliff * (0.26 + wearMask * 0.12));
     mColor = clamp(mColor * mix(0.99, 1.05, mVegNoise) * mReliefShade, vec3(0.0), vec3(2.2));
+    float mRockGrade = clamp(mRockExposure * 0.70 + mScree * 0.24 + mCapRock * 0.22 + mAlpineBand * 0.18, 0.0, 1.0);
+    mRockGrade *= 1.0 - clamp(mSnowMask * 0.90, 0.0, 0.90);
+    float mRockLum = dot(mColor, vec3(0.299, 0.587, 0.114));
+    vec3 mCoolNeutralRock = mix(vec3(mRockLum) * vec3(0.92, 0.98, 1.04), mRock, 0.34);
+    mColor = mix(mColor, mCoolNeutralRock, mRockGrade * 0.42);
+    float mSnowCap = pow(clamp(mSnowMask, 0.0, 1.0), 0.76);
+    vec3 mSnowHighlight = mix(mSnowColor * 0.94, vec3(1.18, 1.20, 1.24), smoothstep(0.42, 0.88, mGrainA + mPeakBand * 0.20));
+    mColor = mix(mColor, mSnowHighlight, mSnowCap * 0.32);
 
     float mRockWeight = clamp(mRockExposure, 0.0, 1.0);
     float mSnowWeight = clamp(mSnowMask, 0.0, 1.0);

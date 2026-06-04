@@ -453,6 +453,9 @@ bool readVec3(const SessionValues& values, const std::string& key, glm::vec3& ou
     X(cloudSpeed) \
     X(cloudRotationSpeed) \
     X(cloudHeight) \
+    X(cloudThickness) \
+    X(cloudDensity) \
+    X(cloudShadowStrength) \
     X(cloudOpacity) \
     X(cameraNearPlane) \
     X(cameraFarPlane) \
@@ -487,7 +490,9 @@ bool readVec3(const SessionValues& values, const std::string& key, glm::vec3& ou
     X(oceanReflectionFrameStride) \
     X(oceanRefractionFrameStride) \
     X(oceanFftCascadeCount) \
-    X(oceanFftFrameStride)
+    X(oceanFftFrameStride) \
+    X(cloudStepCount) \
+    X(cloudLightStepCount)
 
 #define PLANET_SETTING_BOOL_FIELDS(X) \
     X(renderAtmosphere) \
@@ -1381,7 +1386,12 @@ void drawRenderPanel(ApplicationState& state)
         ImGui::SliderFloat("Cloud Scale", &settings.cloudScale, 1.0f, 12.0f, "%.2f");
         ImGui::SliderFloat("Cloud Speed", &settings.cloudSpeed, -0.08f, 0.08f, "%.3f");
         ImGui::SliderFloat("Cloud Spin", &settings.cloudRotationSpeed, -20.0f, 20.0f, "%.2f");
-        ImGui::SliderFloat("Cloud Height", &settings.cloudHeight, 1.0f, glm::max(settings.atmosphereHeight - 1.0f, 1.0f), "%.1f");
+        ImGui::SliderFloat("Cloud Height", &settings.cloudHeight, 1.0f, glm::max(settings.atmosphereHeight - 0.5f, 1.0f), "%.1f");
+        ImGui::SliderFloat("Cloud Thickness", &settings.cloudThickness, 0.5f, glm::max(settings.atmosphereHeight - 0.5f, 0.5f), "%.1f");
+        ImGui::SliderFloat("Cloud Density", &settings.cloudDensity, 0.15f, 3.0f, "%.2f");
+        ImGui::SliderFloat("Cloud Shadow", &settings.cloudShadowStrength, 0.0f, 1.5f, "%.2f");
+        ImGui::SliderInt("Cloud Steps", &settings.cloudStepCount, 4, 32);
+        ImGui::SliderInt("Cloud Light Steps", &settings.cloudLightStepCount, 1, 8);
         ImGui::SliderFloat("Cloud Opacity", &settings.cloudOpacity, 0.0f, 1.0f, "%.2f");
         ImGui::ColorEdit3("Cloud Color", &settings.cloudColor.x);
         drawFeatureBodyEnd();

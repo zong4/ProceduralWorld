@@ -87,7 +87,7 @@ struct PlanetRenderSettings {
     glm::vec3 skyColor = glm::vec3(0.0f);
     float fogDensity = 0.0f;
     bool renderAtmosphere = true;
-    float atmosphereHeight = 28.0f;
+    float atmosphereHeight = 14.0f;
     float atmosphereDensity = 1.0f;
     float atmosphereRayleighStrength = 1.25f;
     float atmosphereMieStrength = 0.32f;
@@ -96,13 +96,18 @@ struct PlanetRenderSettings {
     glm::vec3 atmosphereRayleighColor = glm::vec3(0.32f, 0.56f, 1.0f);
     glm::vec3 atmosphereMieColor = glm::vec3(1.0f, 0.72f, 0.42f);
     bool renderClouds = true;
-    float cloudCoverage = 0.46f;
-    float cloudSharpness = 1.35f;
-    float cloudScale = 4.2f;
+    float cloudCoverage = 0.36f;
+    float cloudSharpness = 0.92f;
+    float cloudScale = 1.85f;
     float cloudSpeed = 0.018f;
-    float cloudRotationSpeed = 1.5f;
-    float cloudHeight = 12.0f;
-    float cloudOpacity = 0.62f;
+    float cloudRotationSpeed = 0.0f;
+    float cloudHeight = 7.2f;
+    float cloudThickness = 6.2f;
+    float cloudDensity = 1.70f;
+    float cloudShadowStrength = 1.02f;
+    int cloudStepCount = 22;
+    int cloudLightStepCount = 4;
+    float cloudOpacity = 0.78f;
     glm::vec3 cloudColor = glm::vec3(0.96f, 0.98f, 1.0f);
     float cameraNearPlane = 1.0f;
     float cameraFarPlane = 5000.0f;
@@ -135,8 +140,8 @@ struct PlanetRenderSettings {
     bool renderOceanReflection = true;
     bool renderOceanRefraction = true;
     float oceanReflectionResolutionScale = 0.5f;
-    int oceanReflectionFrameStride = 2;
-    int oceanRefractionFrameStride = 2;
+    int oceanReflectionFrameStride = 1;
+    int oceanRefractionFrameStride = 1;
     bool oceanAutoDistanceLod = true;
     float oceanReflectionMaxAltitude = 1200.0f;
     float oceanRefractionMaxAltitude = 450.0f;
@@ -294,6 +299,7 @@ private:
         GLuint lineVertexArrayObject = 0;
         GLuint lineVertexBufferObject = 0;
         GLsizei indexCount = 0;
+        float maxTerrainRadius = 0.0f;
         std::vector<ChunkDrawRange> chunks;
 
         void release();
@@ -342,6 +348,29 @@ private:
         void draw(TerrainFeatureOverlayMode mode) const;
     };
 
+    struct AtmosphereLut {
+        GLuint framebufferObject = 0;
+        GLuint transmittanceTexture = 0;
+        GLuint irradianceTexture = 0;
+        GLuint scatteringTexture = 0;
+        GLuint deltaScatteringTextureA = 0;
+        GLuint deltaScatteringTextureB = 0;
+        int transmittanceWidth = 256;
+        int transmittanceHeight = 64;
+        int irradianceWidth = 64;
+        int irradianceHeight = 16;
+        int scatteringViewMuSize = 32;
+        int scatteringNuSize = 8;
+        int scatteringWidth = 256;
+        int scatteringHeight = 32;
+        int scatteringDepth = 32;
+        int scatteringOrderCount = 4;
+        std::uint64_t cachedSignature = 0;
+
+        void release();
+        void create();
+    };
+
     static constexpr int kNodeGridResolution = 10;
     static constexpr int kMinimumLodDepth = 1;
     static constexpr int kMaximumLodDepth = 7;
@@ -357,6 +386,7 @@ private:
     SphereMesh atmosphereMesh_;
     RenderTarget reflectionTarget_;
     RenderTarget refractionTarget_;
+    AtmosphereLut atmosphereLut_;
     FFTOcean fftOcean_;
     GLuint proceduralHeightTexture_ = 0;
     GLuint proceduralWaterDepthTexture_ = 0;
@@ -378,6 +408,14 @@ private:
     ShaderProgram oceanWireOverlayProgram_;
     ShaderProgram oceanCoarseGridProgram_;
     ShaderProgram atmosphereProgram_;
+    ShaderProgram atmosphereTransmittanceProgram_;
+    ShaderProgram atmosphereIrradianceProgram_;
+    ShaderProgram atmosphereScatteringProgram_;
+    ShaderProgram atmosphereAccumulateProgram_;
+    GLuint fullscreenVertexArrayObject_ = 0;
+    GLuint atmosphereSceneDepthTexture_ = 0;
+    int atmosphereSceneDepthWidth_ = 0;
+    int atmosphereSceneDepthHeight_ = 0;
     glm::mat4 modelMatrix_;
     glm::vec3 lightDirection_;
     float currentTimeSeconds_ = 0.0f;
@@ -463,6 +501,9 @@ private:
                               float clipPlaneY,
                               bool keepAboveClipPlane);
     void drawOceanPass(const FlyCamera& camera, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix);
+    std::uint64_t computeAtmosphereLutSignature() const;
+    void precomputeAtmosphereLuts();
+    void copyAtmosphereSceneDepth(int framebufferWidth, int framebufferHeight);
     void drawAtmospherePass(const FlyCamera& camera, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix);
     void drawReflectionRefractionPasses(const FlyCamera& camera,
                                         const glm::mat4& viewMatrix,

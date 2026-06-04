@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstring>
 #include <iostream>
 
 #include <glm/gtc/matrix_transform.hpp>
@@ -94,6 +95,96 @@ void PlanetRenderer::RenderTarget::create(int targetWidth, int targetHeight)
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
+void PlanetRenderer::AtmosphereLut::release()
+{
+    if (deltaScatteringTextureB != 0) {
+        glDeleteTextures(1, &deltaScatteringTextureB);
+        deltaScatteringTextureB = 0;
+    }
+    if (deltaScatteringTextureA != 0) {
+        glDeleteTextures(1, &deltaScatteringTextureA);
+        deltaScatteringTextureA = 0;
+    }
+    if (scatteringTexture != 0) {
+        glDeleteTextures(1, &scatteringTexture);
+        scatteringTexture = 0;
+    }
+    if (irradianceTexture != 0) {
+        glDeleteTextures(1, &irradianceTexture);
+        irradianceTexture = 0;
+    }
+    if (transmittanceTexture != 0) {
+        glDeleteTextures(1, &transmittanceTexture);
+        transmittanceTexture = 0;
+    }
+    if (framebufferObject != 0) {
+        glDeleteFramebuffers(1, &framebufferObject);
+        framebufferObject = 0;
+    }
+    cachedSignature = 0;
+}
+
+void PlanetRenderer::AtmosphereLut::create()
+{
+    scatteringWidth = scatteringViewMuSize * scatteringNuSize;
+    if (framebufferObject != 0
+        && transmittanceTexture != 0
+        && irradianceTexture != 0
+        && scatteringTexture != 0
+        && deltaScatteringTextureA != 0
+        && deltaScatteringTextureB != 0) {
+        return;
+    }
+
+    release();
+    glGenFramebuffers(1, &framebufferObject);
+
+    glGenTextures(1, &transmittanceTexture);
+    glBindTexture(GL_TEXTURE_2D, transmittanceTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, transmittanceWidth, transmittanceHeight, 0, GL_RGBA, GL_FLOAT, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    glGenTextures(1, &irradianceTexture);
+    glBindTexture(GL_TEXTURE_2D, irradianceTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, irradianceWidth, irradianceHeight, 0, GL_RGBA, GL_FLOAT, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    glGenTextures(1, &scatteringTexture);
+    glBindTexture(GL_TEXTURE_3D, scatteringTexture);
+    glTexImage3D(GL_TEXTURE_3D, 0, GL_RGBA16F, scatteringWidth, scatteringHeight, scatteringDepth, 0, GL_RGBA, GL_FLOAT, nullptr);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+
+    glGenTextures(1, &deltaScatteringTextureA);
+    glBindTexture(GL_TEXTURE_3D, deltaScatteringTextureA);
+    glTexImage3D(GL_TEXTURE_3D, 0, GL_RGBA16F, scatteringWidth, scatteringHeight, scatteringDepth, 0, GL_RGBA, GL_FLOAT, nullptr);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+
+    glGenTextures(1, &deltaScatteringTextureB);
+    glBindTexture(GL_TEXTURE_3D, deltaScatteringTextureB);
+    glTexImage3D(GL_TEXTURE_3D, 0, GL_RGBA16F, scatteringWidth, scatteringHeight, scatteringDepth, 0, GL_RGBA, GL_FLOAT, nullptr);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glBindTexture(GL_TEXTURE_3D, 0);
+}
+
 void PlanetRenderer::initialize()
 {
     PROFILE_SCOPE("PlanetRenderer Initialize");
@@ -124,11 +215,21 @@ void PlanetRenderer::initialize()
                                             "shaders/ocean.tese",
                                             "shaders/ocean_wire_coarse.frag");
 
-    atmosphereProgram_ = ShaderProgram("shaders/atmosphere.vert",
+    atmosphereProgram_ = ShaderProgram("shaders/fullscreen_triangle.vert",
                                        "shaders/atmosphere.frag");
+    atmosphereTransmittanceProgram_ = ShaderProgram("shaders/fullscreen_triangle.vert",
+                                                    "shaders/atmosphere_transmittance.frag");
+    atmosphereIrradianceProgram_ = ShaderProgram("shaders/fullscreen_triangle.vert",
+                                                 "shaders/atmosphere_irradiance.frag");
+    atmosphereScatteringProgram_ = ShaderProgram("shaders/fullscreen_triangle.vert",
+                                                 "shaders/atmosphere_scattering.frag");
+    atmosphereAccumulateProgram_ = ShaderProgram("shaders/fullscreen_triangle.vert",
+                                                 "shaders/atmosphere_accumulate.frag");
 
     terrainMesh_.buildGrid(kNodeGridResolution);
     atmosphereMesh_.buildSphere(96, 48);
+    atmosphereLut_.create();
+    glGenVertexArrays(1, &fullscreenVertexArrayObject_);
     fftOcean_.initialize();
     // 地形/海洋 patch 统一按 4 控制点 quad 输入 tessellation pipeline。
     glPatchParameteri(GL_PATCH_VERTICES, 4);
@@ -424,6 +525,9 @@ void PlanetRenderer::render(const FlyCamera& camera,
         oceanFftFrameCounter_ = 0;
     }
     frameStats.fftMs = elapsedMs(passStart, Clock::now());
+    if (settings_.renderAtmosphere) {
+        precomputeAtmosphereLuts();
+    }
 
     // 3) 离屏渲染海面反射/折射目标。
     passStart = Clock::now();
@@ -649,6 +753,7 @@ void PlanetRenderer::BakedTerrainMesh::release()
         lineVertexArrayObject = 0;
     }
     indexCount = 0;
+    maxTerrainRadius = 0.0f;
     chunks.clear();
 }
 
@@ -670,6 +775,7 @@ void PlanetRenderer::BakedTerrainMesh::upload(const PlanetProceduralData& proced
     std::vector<std::uint32_t> indices;
     std::vector<glm::vec3> lineVertices;
     chunks.reserve(proceduralData.terrainChunks().size());
+    maxTerrainRadius = planetRadius;
     std::size_t vertexCount = 0;
     std::size_t indexTotal = 0;
     for (const PlanetProceduralData::TerrainChunk& chunk : proceduralData.terrainChunks()) {
@@ -684,6 +790,7 @@ void PlanetRenderer::BakedTerrainMesh::upload(const PlanetProceduralData& proced
         glm::vec3 localCenter(0.0f);
         float minRadius = planetRadius + chunk.minHeight * heightScale;
         float maxRadius = planetRadius + chunk.maxHeight * heightScale;
+        maxTerrainRadius = glm::max(maxTerrainRadius, maxRadius);
         for (const PlanetProceduralData::TerrainChunkVertex& source : chunk.vertices) {
             GpuVertex vertex;
             vertex.localPos = source.sphereDir * (planetRadius + source.height * heightScale);
@@ -1454,6 +1561,16 @@ void PlanetRenderer::applyCommonUniforms(const ShaderProgram& program,
     program.setFloat("coarseLineWidth", settings_.coarseGridLineWidth);
     program.setVec3("skyColor", settings_.skyColor);
     program.setFloat("fogDensity", settings_.fogDensity);
+    const float atmosphereRadius = settings_.planetRadius + glm::max(settings_.atmosphereHeight, 0.0f);
+    program.setInt("renderAtmosphere", settings_.renderAtmosphere ? 1 : 0);
+    program.setFloat("atmosphereRadius", atmosphereRadius);
+    program.setFloat("atmosphereDensity", settings_.atmosphereDensity);
+    program.setFloat("atmosphereExposure", settings_.atmosphereExposure);
+    program.setFloat("scatteringViewMuSize", static_cast<float>(atmosphereLut_.scatteringViewMuSize));
+    program.setFloat("scatteringNuSize", static_cast<float>(atmosphereLut_.scatteringNuSize));
+    program.setFloat("scatteringHeight", static_cast<float>(atmosphereLut_.scatteringHeight));
+    program.setFloat("scatteringDepth", static_cast<float>(atmosphereLut_.scatteringDepth));
+    program.setVec3("mieColor", settings_.atmosphereMieColor);
     program.setFloat("cameraNearPlane", settings_.cameraNearPlane);
     program.setFloat("cameraFarPlane", settings_.cameraFarPlane);
     program.setFloat("oceanAlpha", settings_.oceanAlpha);
@@ -1552,6 +1669,10 @@ void PlanetRenderer::drawBakedTerrainPass(const FlyCamera& camera,
     glBindTexture(GL_TEXTURE_2D_ARRAY, proceduralBiomeWeightBTexture_);
     glActiveTexture(GL_TEXTURE8);
     glBindTexture(GL_TEXTURE_2D_ARRAY, proceduralDomainWeightTexture_);
+    glActiveTexture(GL_TEXTURE11);
+    glBindTexture(GL_TEXTURE_2D, atmosphereLut_.irradianceTexture);
+    glActiveTexture(GL_TEXTURE12);
+    glBindTexture(GL_TEXTURE_3D, atmosphereLut_.scatteringTexture);
 
     OceanPatch dummyPatch;
     dummyPatch.faceIndex = 0;
@@ -1566,6 +1687,8 @@ void PlanetRenderer::drawBakedTerrainPass(const FlyCamera& camera,
     terrainChunkProgram_.setInt("proceduralBiomeWeightATexture", 6);
     terrainChunkProgram_.setInt("proceduralBiomeWeightBTexture", 7);
     terrainChunkProgram_.setInt("proceduralDomainWeightTexture", 8);
+    terrainChunkProgram_.setInt("atmosphereIrradianceTexture", 11);
+    terrainChunkProgram_.setInt("atmosphereScatteringTexture", 12);
     terrainChunkProgram_.setInt("terrainDebugOverlayMode",
                                 settings_.wireMode == PlanetWireMode::MountainMask ? 1 : 0);
     terrainChunkProgram_.setVec4("clipPlane", useClipPlane ? glm::vec4(0.0f, keepAboveClipPlane ? 1.0f : -1.0f, 0.0f, -clipPlaneY)
@@ -1613,6 +1736,10 @@ void PlanetRenderer::drawOceanPass(const FlyCamera& camera,
     glBindTexture(GL_TEXTURE_2D_ARRAY, proceduralHeightTexture_);
     glActiveTexture(GL_TEXTURE10);
     glBindTexture(GL_TEXTURE_2D_ARRAY, proceduralWaterDepthTexture_);
+    glActiveTexture(GL_TEXTURE11);
+    glBindTexture(GL_TEXTURE_2D, atmosphereLut_.irradianceTexture);
+    glActiveTexture(GL_TEXTURE12);
+    glBindTexture(GL_TEXTURE_3D, atmosphereLut_.scatteringTexture);
 
     for (const OceanPatch& patch : visibleOceanPatches_) {
         applyCommonUniforms(oceanProgram_, camera, viewMatrix, projectionMatrix, patch);
@@ -1630,11 +1757,224 @@ void PlanetRenderer::drawOceanPass(const FlyCamera& camera,
         oceanProgram_.setInt("oceanDisplacementTexture", 8);
         oceanProgram_.setInt("proceduralHeightTexture", 9);
         oceanProgram_.setInt("proceduralWaterDepthTexture", 10);
+        oceanProgram_.setInt("atmosphereIrradianceTexture", 11);
+        oceanProgram_.setInt("atmosphereScatteringTexture", 12);
         terrainMesh_.draw();
     }
 
     glDepthMask(GL_TRUE);
     glDisable(GL_BLEND);
+}
+
+std::uint64_t PlanetRenderer::computeAtmosphereLutSignature() const
+{
+    std::uint64_t hash = 1469598103934665603ull;
+    const auto mix = [&](std::uint64_t value) {
+        hash ^= value;
+        hash *= 1099511628211ull;
+    };
+    const auto mixFloat = [&](float value) {
+        std::uint32_t bits = 0;
+        std::memcpy(&bits, &value, sizeof(bits));
+        mix(bits);
+    };
+    const auto mixVec3 = [&](const glm::vec3& value) {
+        mixFloat(value.x);
+        mixFloat(value.y);
+        mixFloat(value.z);
+    };
+
+    mixFloat(settings_.atmosphereHeight);
+    mixFloat(settings_.atmosphereDensity);
+    mixFloat(settings_.atmosphereRayleighStrength);
+    mixFloat(settings_.atmosphereMieStrength);
+    mixFloat(settings_.atmosphereMieAnisotropy);
+    mixFloat(settings_.atmosphereExposure);
+    mixVec3(settings_.atmosphereRayleighColor);
+    mixVec3(settings_.atmosphereMieColor);
+    mix(static_cast<std::uint64_t>(atmosphereLut_.transmittanceWidth));
+    mix(static_cast<std::uint64_t>(atmosphereLut_.transmittanceHeight));
+    mix(static_cast<std::uint64_t>(atmosphereLut_.irradianceWidth));
+    mix(static_cast<std::uint64_t>(atmosphereLut_.irradianceHeight));
+    mix(static_cast<std::uint64_t>(atmosphereLut_.scatteringViewMuSize));
+    mix(static_cast<std::uint64_t>(atmosphereLut_.scatteringNuSize));
+    mix(static_cast<std::uint64_t>(atmosphereLut_.scatteringHeight));
+    mix(static_cast<std::uint64_t>(atmosphereLut_.scatteringDepth));
+    mix(static_cast<std::uint64_t>(atmosphereLut_.scatteringOrderCount));
+    return hash == 0 ? 1 : hash;
+}
+
+void PlanetRenderer::precomputeAtmosphereLuts()
+{
+    PROFILE_SCOPE("Precompute Atmosphere LUTs");
+    atmosphereLut_.create();
+    if (atmosphereLut_.framebufferObject == 0
+        || atmosphereLut_.transmittanceTexture == 0
+        || atmosphereLut_.irradianceTexture == 0
+        || atmosphereLut_.scatteringTexture == 0
+        || atmosphereLut_.deltaScatteringTextureA == 0
+        || atmosphereLut_.deltaScatteringTextureB == 0
+        || fullscreenVertexArrayObject_ == 0) {
+        return;
+    }
+
+    const std::uint64_t signature = computeAtmosphereLutSignature();
+    if (atmosphereLut_.cachedSignature == signature) {
+        return;
+    }
+
+    GLint previousFramebuffer = 0;
+    GLint previousViewport[4] = {};
+    GLint previousActiveTexture = GL_TEXTURE0;
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &previousFramebuffer);
+    glGetIntegerv(GL_VIEWPORT, previousViewport);
+    glGetIntegerv(GL_ACTIVE_TEXTURE, &previousActiveTexture);
+    const GLboolean wasBlendEnabled = glIsEnabled(GL_BLEND);
+    const GLboolean wasDepthTestEnabled = glIsEnabled(GL_DEPTH_TEST);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, atmosphereLut_.framebufferObject);
+    glDisable(GL_BLEND);
+    glDisable(GL_DEPTH_TEST);
+    glBindVertexArray(fullscreenVertexArrayObject_);
+
+    atmosphereTransmittanceProgram_.use();
+    atmosphereTransmittanceProgram_.setVec3("rayleighColor", settings_.atmosphereRayleighColor);
+    atmosphereTransmittanceProgram_.setVec3("mieColor", settings_.atmosphereMieColor);
+    atmosphereTransmittanceProgram_.setFloat("atmosphereDensity", settings_.atmosphereDensity);
+    atmosphereTransmittanceProgram_.setFloat("rayleighStrength", settings_.atmosphereRayleighStrength);
+    atmosphereTransmittanceProgram_.setFloat("mieStrength", settings_.atmosphereMieStrength);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, atmosphereLut_.transmittanceTexture, 0);
+    glViewport(0, 0, atmosphereLut_.transmittanceWidth, atmosphereLut_.transmittanceHeight);
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+
+    atmosphereIrradianceProgram_.use();
+    atmosphereIrradianceProgram_.setVec3("rayleighColor", settings_.atmosphereRayleighColor);
+    atmosphereIrradianceProgram_.setVec3("mieColor", settings_.atmosphereMieColor);
+    atmosphereIrradianceProgram_.setFloat("atmosphereDensity", settings_.atmosphereDensity);
+    atmosphereIrradianceProgram_.setFloat("rayleighStrength", settings_.atmosphereRayleighStrength);
+    atmosphereIrradianceProgram_.setFloat("mieStrength", settings_.atmosphereMieStrength);
+    atmosphereIrradianceProgram_.setFloat("atmosphereExposure", settings_.atmosphereExposure);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, atmosphereLut_.transmittanceTexture);
+    atmosphereIrradianceProgram_.setInt("transmittanceTexture", 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, atmosphereLut_.irradianceTexture, 0);
+    glViewport(0, 0, atmosphereLut_.irradianceWidth, atmosphereLut_.irradianceHeight);
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+
+    glViewport(0, 0, atmosphereLut_.scatteringWidth, atmosphereLut_.scatteringHeight);
+    auto renderScatteringDelta = [&](GLuint targetTexture, GLuint previousTexture, int order) {
+        atmosphereScatteringProgram_.use();
+        atmosphereScatteringProgram_.setVec3("rayleighColor", settings_.atmosphereRayleighColor);
+        atmosphereScatteringProgram_.setVec3("mieColor", settings_.atmosphereMieColor);
+        atmosphereScatteringProgram_.setFloat("atmosphereDensity", settings_.atmosphereDensity);
+        atmosphereScatteringProgram_.setFloat("rayleighStrength", settings_.atmosphereRayleighStrength);
+        atmosphereScatteringProgram_.setFloat("mieStrength", settings_.atmosphereMieStrength);
+        atmosphereScatteringProgram_.setFloat("mieAnisotropy", settings_.atmosphereMieAnisotropy);
+        atmosphereScatteringProgram_.setFloat("atmosphereExposure", settings_.atmosphereExposure);
+        atmosphereScatteringProgram_.setFloat("layerCount", static_cast<float>(atmosphereLut_.scatteringDepth));
+        atmosphereScatteringProgram_.setFloat("viewMuSize", static_cast<float>(atmosphereLut_.scatteringViewMuSize));
+        atmosphereScatteringProgram_.setFloat("nuSize", static_cast<float>(atmosphereLut_.scatteringNuSize));
+        atmosphereScatteringProgram_.setInt("scatteringOrder", order);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, atmosphereLut_.transmittanceTexture);
+        atmosphereScatteringProgram_.setInt("transmittanceTexture", 0);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, atmosphereLut_.irradianceTexture);
+        atmosphereScatteringProgram_.setInt("irradianceTexture", 1);
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_3D, previousTexture);
+        atmosphereScatteringProgram_.setInt("previousScatteringTexture", 2);
+        glDisable(GL_BLEND);
+        for (int layer = 0; layer < atmosphereLut_.scatteringDepth; ++layer) {
+            atmosphereScatteringProgram_.setFloat("layerIndex", static_cast<float>(layer));
+            glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, targetTexture, 0, layer);
+            glDrawArrays(GL_TRIANGLES, 0, 3);
+        }
+    };
+
+    auto accumulateScatteringDelta = [&](GLuint sourceTexture, bool additive) {
+        atmosphereAccumulateProgram_.use();
+        atmosphereAccumulateProgram_.setFloat("layerCount", static_cast<float>(atmosphereLut_.scatteringDepth));
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_3D, sourceTexture);
+        atmosphereAccumulateProgram_.setInt("sourceScatteringTexture", 0);
+        if (additive) {
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_ONE, GL_ONE);
+        } else {
+            glDisable(GL_BLEND);
+        }
+        for (int layer = 0; layer < atmosphereLut_.scatteringDepth; ++layer) {
+            atmosphereAccumulateProgram_.setFloat("layerIndex", static_cast<float>(layer));
+            glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, atmosphereLut_.scatteringTexture, 0, layer);
+            glDrawArrays(GL_TRIANGLES, 0, 3);
+        }
+    };
+
+    GLuint previousDeltaTexture = atmosphereLut_.deltaScatteringTextureA;
+    GLuint currentDeltaTexture = atmosphereLut_.deltaScatteringTextureB;
+    renderScatteringDelta(previousDeltaTexture, currentDeltaTexture, 1);
+    accumulateScatteringDelta(previousDeltaTexture, false);
+    for (int order = 1; order <= atmosphereLut_.scatteringOrderCount; ++order) {
+        if (order == 1) {
+            continue;
+        }
+        renderScatteringDelta(currentDeltaTexture, previousDeltaTexture, order);
+        accumulateScatteringDelta(currentDeltaTexture, true);
+        std::swap(previousDeltaTexture, currentDeltaTexture);
+    }
+    glDisable(GL_BLEND);
+
+    glBindVertexArray(0);
+    glActiveTexture(static_cast<GLenum>(previousActiveTexture));
+    glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(previousFramebuffer));
+    glViewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3]);
+    if (wasDepthTestEnabled) {
+        glEnable(GL_DEPTH_TEST);
+    }
+    if (wasBlendEnabled) {
+        glEnable(GL_BLEND);
+    }
+    atmosphereLut_.cachedSignature = signature;
+}
+
+void PlanetRenderer::copyAtmosphereSceneDepth(int framebufferWidth, int framebufferHeight)
+{
+    if (framebufferWidth <= 0 || framebufferHeight <= 0) {
+        return;
+    }
+
+    if (atmosphereSceneDepthTexture_ == 0
+        || atmosphereSceneDepthWidth_ != framebufferWidth
+        || atmosphereSceneDepthHeight_ != framebufferHeight) {
+        if (atmosphereSceneDepthTexture_ != 0) {
+            glDeleteTextures(1, &atmosphereSceneDepthTexture_);
+            atmosphereSceneDepthTexture_ = 0;
+        }
+
+        atmosphereSceneDepthWidth_ = framebufferWidth;
+        atmosphereSceneDepthHeight_ = framebufferHeight;
+        glGenTextures(1, &atmosphereSceneDepthTexture_);
+        glBindTexture(GL_TEXTURE_2D, atmosphereSceneDepthTexture_);
+        glTexImage2D(GL_TEXTURE_2D,
+                     0,
+                     GL_DEPTH_COMPONENT24,
+                     atmosphereSceneDepthWidth_,
+                     atmosphereSceneDepthHeight_,
+                     0,
+                     GL_DEPTH_COMPONENT,
+                     GL_FLOAT,
+                     nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    } else {
+        glBindTexture(GL_TEXTURE_2D, atmosphereSceneDepthTexture_);
+    }
+
+    glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, framebufferWidth, framebufferHeight);
+    glBindTexture(GL_TEXTURE_2D, 0);
 }
 
 void PlanetRenderer::drawAtmospherePass(const FlyCamera& camera,
@@ -1645,40 +1985,56 @@ void PlanetRenderer::drawAtmospherePass(const FlyCamera& camera,
     if (!settings_.renderAtmosphere || settings_.atmosphereHeight <= 0.001f) {
         return;
     }
+    precomputeAtmosphereLuts();
 
     const GLboolean wasBlendEnabled = glIsEnabled(GL_BLEND);
     const GLboolean wasCullEnabled = glIsEnabled(GL_CULL_FACE);
+    const GLboolean wasDepthTestEnabled = glIsEnabled(GL_DEPTH_TEST);
     GLint previousCullFace = GL_BACK;
     GLint previousDepthFunc = GL_LESS;
+    GLint currentViewport[4] = {};
     glGetIntegerv(GL_CULL_FACE_MODE, &previousCullFace);
     glGetIntegerv(GL_DEPTH_FUNC, &previousDepthFunc);
+    glGetIntegerv(GL_VIEWPORT, currentViewport);
 
     glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glEnable(GL_CULL_FACE);
+    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+    glDisable(GL_CULL_FACE);
     // 绘制大气壳背面，形成包裹星球的半透明大气层。
-    glCullFace(GL_FRONT);
-    glDepthFunc(GL_ALWAYS);
+    glDisable(GL_DEPTH_TEST);
     glDepthMask(GL_FALSE);
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
-    const glm::mat4 cameraRelativeView = glm::mat4(glm::mat3(viewMatrix));
     const float atmosphereRadius = settings_.planetRadius + glm::max(settings_.atmosphereHeight, 0.0f);
+    const float projectionAspect = projectionMatrix[1][1] != 0.0f
+        ? projectionMatrix[1][1] / projectionMatrix[0][0]
+        : 1.0f;
+    copyAtmosphereSceneDepth(currentViewport[2], currentViewport[3]);
 
     atmosphereProgram_.use();
     atmosphereProgram_.setMat4("model", modelMatrix_);
-    atmosphereProgram_.setMat4("cameraRelativeView", cameraRelativeView);
-    atmosphereProgram_.setMat4("projection", projectionMatrix);
+    atmosphereProgram_.setMat4("inverseViewProjection", glm::inverse(projectionMatrix * viewMatrix));
     atmosphereProgram_.setVec3("cameraPos", camera.position);
+    atmosphereProgram_.setVec3("cameraForward", glm::normalize(camera.front));
+    atmosphereProgram_.setVec3("cameraRight", glm::normalize(camera.right));
+    atmosphereProgram_.setVec3("cameraUp", glm::normalize(camera.up));
+    atmosphereProgram_.setFloat("cameraTanHalfFov", glm::tan(glm::radians(camera.fieldOfView) * 0.5f));
+    atmosphereProgram_.setFloat("cameraAspectRatio", projectionAspect);
+    atmosphereProgram_.setVec2("framebufferSize", glm::vec2(static_cast<float>(currentViewport[2]),
+                                                            static_cast<float>(currentViewport[3])));
     atmosphereProgram_.setVec3("lightDir", lightDirection_);
     atmosphereProgram_.setFloat("planetRadius", settings_.planetRadius);
     atmosphereProgram_.setFloat("atmosphereRadius", atmosphereRadius);
+    const float atmosphereThickness = glm::max(atmosphereRadius - settings_.planetRadius, 0.001f);
+    atmosphereProgram_.setFloat("surfaceLimbRadius", glm::clamp(seaLevelRadius(),
+                                                                settings_.planetRadius,
+                                                                atmosphereRadius - atmosphereThickness * 0.20f));
     atmosphereProgram_.setFloat("atmosphereDensity", settings_.atmosphereDensity);
-    atmosphereProgram_.setFloat("rayleighStrength", settings_.atmosphereRayleighStrength);
-    atmosphereProgram_.setFloat("mieStrength", settings_.atmosphereMieStrength);
-    atmosphereProgram_.setFloat("mieAnisotropy", settings_.atmosphereMieAnisotropy);
     atmosphereProgram_.setFloat("atmosphereExposure", settings_.atmosphereExposure);
-    atmosphereProgram_.setVec3("rayleighColor", settings_.atmosphereRayleighColor);
+    atmosphereProgram_.setFloat("scatteringViewMuSize", static_cast<float>(atmosphereLut_.scatteringViewMuSize));
+    atmosphereProgram_.setFloat("scatteringNuSize", static_cast<float>(atmosphereLut_.scatteringNuSize));
+    atmosphereProgram_.setFloat("scatteringHeight", static_cast<float>(atmosphereLut_.scatteringHeight));
+    atmosphereProgram_.setFloat("scatteringDepth", static_cast<float>(atmosphereLut_.scatteringDepth));
     atmosphereProgram_.setVec3("mieColor", settings_.atmosphereMieColor);
     atmosphereProgram_.setInt("renderClouds", settings_.renderClouds ? 1 : 0);
     atmosphereProgram_.setFloat("cloudCoverage", settings_.cloudCoverage);
@@ -1687,17 +2043,38 @@ void PlanetRenderer::drawAtmospherePass(const FlyCamera& camera,
     atmosphereProgram_.setFloat("cloudSpeed", settings_.cloudSpeed);
     atmosphereProgram_.setFloat("cloudRotationSpeed", settings_.cloudRotationSpeed);
     atmosphereProgram_.setFloat("cloudHeight", settings_.cloudHeight);
+    atmosphereProgram_.setFloat("cloudThickness", settings_.cloudThickness);
+    atmosphereProgram_.setFloat("cloudDensity", settings_.cloudDensity);
+    atmosphereProgram_.setFloat("cloudShadowStrength", settings_.cloudShadowStrength);
+    atmosphereProgram_.setInt("cloudStepCount", settings_.cloudStepCount);
+    atmosphereProgram_.setInt("cloudLightStepCount", settings_.cloudLightStepCount);
     atmosphereProgram_.setFloat("cloudOpacity", settings_.cloudOpacity);
     atmosphereProgram_.setVec3("cloudColor", settings_.cloudColor);
     atmosphereProgram_.setFloat("timeSeconds", currentTimeSeconds_);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, atmosphereLut_.irradianceTexture);
+    atmosphereProgram_.setInt("atmosphereIrradianceTexture", 0);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_3D, atmosphereLut_.scatteringTexture);
+    atmosphereProgram_.setInt("atmosphereScatteringTexture", 1);
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, atmosphereSceneDepthTexture_);
+    atmosphereProgram_.setInt("sceneDepthTexture", 2);
 
-    atmosphereMesh_.draw();
+    glBindVertexArray(fullscreenVertexArrayObject_);
+    glDrawArrays(GL_TRIANGLES, 0, 3);
+    glBindVertexArray(0);
 
     glDepthMask(GL_TRUE);
     glDepthFunc(static_cast<GLenum>(previousDepthFunc));
+    if (wasDepthTestEnabled) {
+        glEnable(GL_DEPTH_TEST);
+    }
     glCullFace(static_cast<GLenum>(previousCullFace));
     if (!wasCullEnabled) {
         glDisable(GL_CULL_FACE);
+    } else {
+        glEnable(GL_CULL_FACE);
     }
     if (!wasBlendEnabled) {
         glDisable(GL_BLEND);
@@ -1762,8 +2139,8 @@ void PlanetRenderer::drawReflectionRefractionPasses(const FlyCamera& camera,
     const int targetHeight = std::max(static_cast<int>(std::round(static_cast<float>(framebufferHeight) * targetScale)), 1);
     const bool reflectionEnabled = reflectionUserEnabled && oceanReflectionWeight_ > 0.02f;
     const bool refractionEnabled = refractionUserEnabled && oceanRefractionWeight_ > 0.02f;
-    const int reflectionStride = std::max(settings_.oceanReflectionFrameStride, 1);
-    const int refractionStride = std::max(settings_.oceanRefractionFrameStride, 1);
+    const int reflectionStride = 1;
+    const int refractionStride = 1;
     const int reflectionWidth = targetWidth;
     const int reflectionHeight = targetHeight;
     const int refractionWidth = targetWidth;

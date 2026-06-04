@@ -48,12 +48,23 @@ uniform float oceanRefractionWeight;
 uniform float cameraNearPlane;
 uniform float cameraFarPlane;
 uniform float timeSeconds;
+uniform int renderAtmosphere;
+uniform float atmosphereRadius;
+uniform float atmosphereDensity;
+uniform float atmosphereExposure;
+uniform float scatteringViewMuSize;
+uniform float scatteringNuSize;
+uniform float scatteringHeight;
+uniform float scatteringDepth;
+uniform vec3 mieColor;
 uniform sampler2D reflectionTexture;
 uniform sampler2D refractionTexture;
 uniform sampler2D refractionDepthTexture;
 uniform sampler2D oceanNormalTexture;
 uniform sampler2D waterDetailNormalTextureA;
 uniform sampler2D waterDetailNormalTextureB;
+uniform sampler2D atmosphereIrradianceTexture;
+uniform sampler3D atmosphereScatteringTexture;
 uniform sampler2DArray proceduralWaterDepthTexture;
 uniform sampler2DArray proceduralHeightTexture;
 uniform float proceduralDataTexelSize;
@@ -138,6 +149,144 @@ vec3 samplePackedNormalTriplanar(sampler2D tex, vec3 sphereDir, float scale, vec
 float saturate(float value)
 {
     return clamp(value, 0.0, 1.0);
+}
+
+bool raySphere(vec3 origin, vec3 direction, float radius, out vec2 hit)
+{
+    float b = dot(origin, direction);
+    float c = dot(origin, origin) - radius * radius;
+    float h = b * b - c;
+    if (h < 0.0) {
+        return false;
+    }
+
+    h = sqrt(h);
+    hit = vec2(-b - h, -b + h);
+    return hit.y >= 0.0;
+}
+
+float scatteringTexelU(float viewIndex, float nuIndex)
+{
+    return (nuIndex * scatteringViewMuSize + viewIndex + 0.5)
+         / max(scatteringViewMuSize * scatteringNuSize, 1.0);
+}
+
+vec3 scatteringTexel(float viewIndex, float nuIndex, float heightIndex, float sunIndex)
+{
+    return texture(atmosphereScatteringTexture,
+                   vec3(scatteringTexelU(viewIndex, nuIndex),
+                        (heightIndex + 0.5) / max(scatteringHeight, 1.0),
+                        (sunIndex + 0.5) / max(scatteringDepth, 1.0))).rgb;
+}
+
+vec3 sampleAtmosphereScattering(float viewMu, float nu, float height01, float sunMu)
+{
+    float viewCoord = saturate(viewMu * 0.5 + 0.5) * (scatteringViewMuSize - 1.0);
+    float nuCoord = saturate(nu * 0.5 + 0.5) * (scatteringNuSize - 1.0);
+    float heightCoord = saturate(height01) * (scatteringHeight - 1.0);
+    float sunCoord = saturate(sunMu * 0.5 + 0.5) * (scatteringDepth - 1.0);
+
+    float view0 = floor(viewCoord);
+    float nu0 = floor(nuCoord);
+    float height0 = floor(heightCoord);
+    float sun0 = floor(sunCoord);
+    float view1 = min(view0 + 1.0, scatteringViewMuSize - 1.0);
+    float nu1 = min(nu0 + 1.0, scatteringNuSize - 1.0);
+    float height1 = min(height0 + 1.0, scatteringHeight - 1.0);
+    float sun1 = min(sun0 + 1.0, scatteringDepth - 1.0);
+
+    float viewMix = fract(viewCoord);
+    float nuMix = fract(nuCoord);
+    float heightMix = fract(heightCoord);
+    float sunMix = fract(sunCoord);
+
+    vec3 h000 = mix(scatteringTexel(view0, nu0, height0, sun0),
+                    scatteringTexel(view1, nu0, height0, sun0),
+                    viewMix);
+    vec3 h010 = mix(scatteringTexel(view0, nu1, height0, sun0),
+                    scatteringTexel(view1, nu1, height0, sun0),
+                    viewMix);
+    vec3 h100 = mix(scatteringTexel(view0, nu0, height1, sun0),
+                    scatteringTexel(view1, nu0, height1, sun0),
+                    viewMix);
+    vec3 h110 = mix(scatteringTexel(view0, nu1, height1, sun0),
+                    scatteringTexel(view1, nu1, height1, sun0),
+                    viewMix);
+    vec3 s0 = mix(mix(h000, h010, nuMix),
+                  mix(h100, h110, nuMix),
+                  heightMix);
+
+    vec3 h001 = mix(scatteringTexel(view0, nu0, height0, sun1),
+                    scatteringTexel(view1, nu0, height0, sun1),
+                    viewMix);
+    vec3 h011 = mix(scatteringTexel(view0, nu1, height0, sun1),
+                    scatteringTexel(view1, nu1, height0, sun1),
+                    viewMix);
+    vec3 h101 = mix(scatteringTexel(view0, nu0, height1, sun1),
+                    scatteringTexel(view1, nu0, height1, sun1),
+                    viewMix);
+    vec3 h111 = mix(scatteringTexel(view0, nu1, height1, sun1),
+                    scatteringTexel(view1, nu1, height1, sun1),
+                    viewMix);
+    vec3 s1 = mix(mix(h001, h011, nuMix),
+                  mix(h101, h111, nuMix),
+                  heightMix);
+
+    return mix(s0, s1, sunMix);
+}
+
+vec3 applyOceanAerialPerspective(vec3 surfaceColor, vec3 worldPos)
+{
+    if (renderAtmosphere == 0 || atmosphereRadius <= planetRadius + 0.001 || atmosphereDensity <= 0.001) {
+        return surfaceColor;
+    }
+
+    vec3 cameraToSurface = worldPos - cameraPos;
+    float surfaceDistance = length(cameraToSurface);
+    if (surfaceDistance <= 0.001) {
+        return surfaceColor;
+    }
+
+    vec3 rayDir = cameraToSurface / surfaceDistance;
+    vec2 atmosphereHit;
+    if (!raySphere(cameraPos, rayDir, atmosphereRadius, atmosphereHit)) {
+        return surfaceColor;
+    }
+
+    float rayStart = max(atmosphereHit.x, 0.0);
+    float rayEnd = min(surfaceDistance, atmosphereHit.y);
+    float rayLength = max(rayEnd - rayStart, 0.0);
+    if (rayLength <= 0.001) {
+        return surfaceColor;
+    }
+
+    float shellThickness = max(atmosphereRadius - planetRadius, 0.001);
+    vec3 midPos = cameraPos + rayDir * (rayStart + rayLength * 0.55);
+    vec3 midNormal = normalize(midPos);
+    vec3 sunDir = normalize(-lightDir);
+    float height01 = saturate((length(midPos) - planetRadius) / shellThickness);
+    float viewMu = dot(midNormal, rayDir);
+    float viewSunMu = dot(rayDir, sunDir);
+    float sunMu = dot(midNormal, sunDir);
+
+    float viewProjection = dot(cameraPos, rayDir);
+    float impactRadius = sqrt(max(dot(cameraPos, cameraPos) - viewProjection * viewProjection, 0.0));
+    float tangent01 = 1.0 - smoothstep(0.0, shellThickness * 2.8, abs(impactRadius - planetRadius));
+    float path01 = saturate(rayLength / (shellThickness * 8.5));
+    float densityHeight = exp(-height01 * 3.6);
+    float airAmount = saturate((path01 * 0.44 + tangent01 * 0.32) * densityHeight * atmosphereDensity);
+
+    vec3 scattering = sampleAtmosphereScattering(viewMu, viewSunMu, height01, sunMu);
+    vec3 irradiance = texture(atmosphereIrradianceTexture, vec2(sunMu * 0.5 + 0.5, height01)).rgb;
+    vec3 blueAir = vec3(0.20, 0.42, 0.88) * (0.05 + airAmount * 0.28);
+    vec3 sunAir = scattering * (0.24 + saturate(viewSunMu * 0.5 + 0.5) * 0.42)
+                + irradiance * 0.036
+                + mieColor * pow(saturate(viewSunMu), 8.0) * 0.014;
+    vec3 inScattering = (blueAir + sunAir) * airAmount * atmosphereExposure;
+
+    vec3 extinction = vec3(0.12, 0.22, 0.48) * airAmount;
+    vec3 transmittance = exp(-extinction);
+    return surfaceColor * transmittance + inScattering;
 }
 
 float distributionGGX(float nDotH, float roughness)
@@ -317,5 +466,6 @@ void main()
     color += sss;
     color += vec3(1.0, 0.98, 0.94) * specular;
 
+    color = applyOceanAerialPerspective(color, teWorldPos);
     FragColor = vec4(toneMapAndGamma(color), waterAlpha);
 }
