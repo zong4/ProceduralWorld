@@ -1569,6 +1569,8 @@ void PlanetRenderer::applyCommonUniforms(const ShaderProgram& program,
     program.setFloat("oceanDeepAlpha", settings_.oceanDeepAlpha);
     const bool oceanMaterialEnabled = settings_.renderOceanMaterial;
     const bool oceanWavesEnabled = settings_.renderOceanWaves;
+    program.setInt("renderOceanMaterial", oceanMaterialEnabled ? 1 : 0);
+    program.setInt("renderOceanWaves", oceanWavesEnabled ? 1 : 0);
     program.setFloat("oceanFresnelStrength", oceanMaterialEnabled ? settings_.oceanFresnelStrength : 0.0f);
     program.setFloat("oceanDistortionStrength", oceanMaterialEnabled ? settings_.oceanDistortionStrength : 0.0f);
     program.setFloat("oceanDepthRange", oceanMaterialEnabled ? settings_.oceanDepthRange : 40.0f);
@@ -2078,7 +2080,7 @@ void PlanetRenderer::drawReflectionRefractionPasses(const FlyCamera& camera,
     lastReflectionEnabled_ = false;
     lastRefractionEnabled_ = false;
 
-    if (!settings_.renderOcean || visibleOceanPatches_.empty()) {
+    if (!settings_.renderOcean || !settings_.renderOceanMaterial || visibleOceanPatches_.empty()) {
         oceanReflectionFrameCounter_ = 0;
         oceanRefractionFrameCounter_ = 0;
         oceanReflectionWeight_ = 0.0f;

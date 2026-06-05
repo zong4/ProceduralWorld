@@ -30,6 +30,7 @@ uniform float oceanWaveAmplitude;
 uniform float oceanChoppiness;
 uniform float oceanWaveTileScale;
 uniform float oceanHeightTexelSize;
+uniform int renderOceanWaves;
 uniform sampler2D oceanHeightTexture;
 uniform sampler2D oceanDisplacementTexture;
 uniform vec4 clipPlane;
@@ -100,11 +101,17 @@ void main()
     teTexCoord = uv;
 
     vec3 sphereDir = normalize(cubeFacePoint(uv));
-    float normalizedWaveHeight = sampleOceanFloatTriplanar(oceanHeightTexture, sphereDir, vec2(0.0));
+    float normalizedWaveHeight = 0.0;
+    float heightSlope = 0.0;
+    vec2 choppyDisplacement = vec2(0.0);
+    if (renderOceanWaves != 0 && (oceanWaveAmplitude > 0.0001 || oceanChoppiness > 0.0001)) {
+        normalizedWaveHeight = sampleOceanFloatTriplanar(oceanHeightTexture, sphereDir, vec2(0.0));
+        float heightRight = sampleOceanFloatTriplanar(oceanHeightTexture, sphereDir, vec2(oceanHeightTexelSize, 0.0));
+        float heightUp = sampleOceanFloatTriplanar(oceanHeightTexture, sphereDir, vec2(0.0, oceanHeightTexelSize));
+        heightSlope = length(vec2(heightRight - normalizedWaveHeight, heightUp - normalizedWaveHeight));
+        choppyDisplacement = sampleOceanVec2Triplanar(oceanDisplacementTexture, sphereDir) * oceanChoppiness;
+    }
     // 通过邻近采样估计浪峰强度，fragment 阶段用于 SSS/未光照调试。
-    float heightRight = sampleOceanFloatTriplanar(oceanHeightTexture, sphereDir, vec2(oceanHeightTexelSize, 0.0));
-    float heightUp = sampleOceanFloatTriplanar(oceanHeightTexture, sphereDir, vec2(0.0, oceanHeightTexelSize));
-    float heightSlope = length(vec2(heightRight - normalizedWaveHeight, heightUp - normalizedWaveHeight));
     float waveHeight = normalizedWaveHeight * oceanWaveAmplitude;
     teWaveHeight = waveHeight;
     float crestByHeight = smoothstep(0.60, 0.90, normalizedWaveHeight * 0.5 + 0.5);
@@ -112,7 +119,6 @@ void main()
     teWaveCrest = clamp(crestByHeight * (0.82 + crestBySlope * 0.36), 0.0, 1.0);
     vec3 localTangent = longitudeTangent(sphereDir);
     vec3 localBitangent = normalize(cross(sphereDir, localTangent));
-    vec2 choppyDisplacement = sampleOceanVec2Triplanar(oceanDisplacementTexture, sphereDir) * oceanChoppiness;
     // 水平位移沿球面切线/副切线方向应用，避免简单径向波浪过于平滑。
     vec3 localPos = sphereDir * (seaLevelRadius + waveHeight)
                   + localTangent * choppyDisplacement.x

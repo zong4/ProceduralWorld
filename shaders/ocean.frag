@@ -45,6 +45,8 @@ uniform float oceanSSSPower;
 uniform float oceanShoreBlendWidth;
 uniform float oceanReflectionWeight;
 uniform float oceanRefractionWeight;
+uniform int renderOceanMaterial;
+uniform int renderOceanWaves;
 uniform float cameraNearPlane;
 uniform float cameraFarPlane;
 uniform float timeSeconds;
@@ -344,14 +346,53 @@ void main()
     vec3 tangent = normalize(teTangent);
     vec3 bitangent = normalize(teBitangent);
     vec3 sphereDir = normalize(teSphereDir);
-    vec3 fftNormal = sampleRawNormalTriplanar(oceanNormalTexture, sphereDir, oceanWaveTileScale, vec2(0.0), 0.0);
-    fftNormal = normalize(vec3(
-        fftNormal.x * oceanWaveNormalStrength,
-        max(fftNormal.y, 0.001),
-        fftNormal.z * oceanWaveNormalStrength
-    ));
+    vec3 fftNormal = vec3(0.0, 1.0, 0.0);
+    if (renderOceanMaterial != 0 && renderOceanWaves != 0 && oceanWaveNormalStrength > 0.001) {
+        fftNormal = sampleRawNormalTriplanar(oceanNormalTexture, sphereDir, oceanWaveTileScale, vec2(0.0), 0.0);
+        fftNormal = normalize(vec3(
+            fftNormal.x * oceanWaveNormalStrength,
+            max(fftNormal.y, 0.001),
+            fftNormal.z * oceanWaveNormalStrength
+        ));
+    }
     vec3 V = normalize(cameraPos - teWorldPos);
     vec3 L = normalize(-lightDir);
+
+    if (renderOceanMaterial == 0) {
+        OceanPlanetSample fastPlanet = samplePlanet(sphereDir);
+        float fastHeightWaterDepth = max(fastPlanet.signedWaterDepth, 0.0);
+        if (fastPlanet.signedWaterDepth <= 0.0) {
+            discard;
+        }
+
+        float fastProceduralWaterDepth = fastPlanet.waterDepth;
+        float fastDepthPixelWidth = max(fwidth(fastHeightWaterDepth) * 2.0,
+                                        max(oceanShoreBlendWidth, heightScale * proceduralDataTexelSize * 0.75));
+        float fastNearWaterCoverage = smoothstep(0.0, fastDepthPixelWidth, fastHeightWaterDepth);
+        fastNearWaterCoverage = max(fastNearWaterCoverage,
+                                    fastPlanet.shoreMask * smoothstep(0.0, fastDepthPixelWidth, fastProceduralWaterDepth) * 0.22);
+        float fastDistanceToCamera = length(cameraPos - teWorldPos);
+        float fastFarOceanCoverage = smoothstep(planetRadius * 3.5, planetRadius * 8.0, fastDistanceToCamera);
+        float fastFarWaterCoverage = smoothstep(0.0, max(fastDepthPixelWidth, oceanShoreBlendWidth * 1.5), fastProceduralWaterDepth);
+        float fastWaterCoverage = mix(fastNearWaterCoverage, fastFarWaterCoverage, fastFarOceanCoverage);
+        if (fastWaterCoverage <= 0.01) {
+            discard;
+        }
+
+        float fastVisualDepth = fastProceduralWaterDepth * oceanDepthScale;
+        float fastDepthBlend = clamp(fastVisualDepth / max(oceanDepthRange, 0.001), 0.0, 1.0);
+        float fastShallowDepth = clamp(fastVisualDepth / max(oceanShallowDepthRange, 0.001), 0.0, 1.0);
+        float fastAlphaDepth = smoothstep(0.0, 1.0, fastShallowDepth);
+        float fastWaterAlpha = mix(oceanShallowAlpha, oceanDeepAlpha, fastAlphaDepth);
+        fastWaterAlpha = clamp(fastWaterAlpha * oceanAlpha * fastWaterCoverage, 0.0, 1.0);
+
+        float fastDiffuse = max(dot(radialNormal, L), 0.0);
+        vec3 fastTint = mix(oceanShallowColor, oceanDeepColor, smoothstep(0.02, 0.92, min(fastDepthBlend, fastShallowDepth)));
+        vec3 fastColor = fastTint * (0.66 + fastDiffuse * 0.30);
+        fastColor = applyOceanAerialPerspective(fastColor, teWorldPos);
+        FragColor = vec4(toneMapAndGamma(fastColor), fastWaterAlpha);
+        return;
+    }
 
     float distanceToCamera = length(cameraPos - teWorldPos);
     float detailFade = 1.0 - smoothstep(oceanDetailFadeDistance * 0.22, oceanDetailFadeDistance * 0.72, distanceToCamera);
@@ -360,8 +401,12 @@ void main()
     mat2 detailRotation = mat2(0.8, -0.6, 0.6, 0.8);
     vec2 detailFlow = vec2(0.22, 0.11) * timeSeconds;
     vec2 counterFlow = vec2(-0.17, 0.19) * timeSeconds;
-    vec3 detailNormalA = samplePackedNormalTriplanar(waterDetailNormalTextureA, sphereDir, oceanDetailNormalScale, detailFlow, detailLod);
-    vec3 detailNormalB = samplePackedNormalTriplanar(waterDetailNormalTextureB, sphereDir, oceanDetailNormalScale * 1.73, detailRotation * counterFlow, detailLod + 0.5);
+    vec3 detailNormalA = vec3(0.0, 1.0, 0.0);
+    vec3 detailNormalB = vec3(0.0, 1.0, 0.0);
+    if (renderOceanMaterial != 0 && oceanDetailNormalStrength > 0.001 && detailFade > 0.001) {
+        detailNormalA = samplePackedNormalTriplanar(waterDetailNormalTextureA, sphereDir, oceanDetailNormalScale, detailFlow, detailLod);
+        detailNormalB = samplePackedNormalTriplanar(waterDetailNormalTextureB, sphereDir, oceanDetailNormalScale * 1.73, detailRotation * counterFlow, detailLod + 0.5);
+    }
     // FFT normal 表示大浪，detail normal 表示近景小波纹；远处逐渐淡出细节 normal。
     vec3 detailTangentNormal = normalize(vec3(
         detailNormalA.x + detailNormalB.x * 0.45,
