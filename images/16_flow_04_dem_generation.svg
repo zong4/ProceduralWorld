@@ -15,13 +15,15 @@
   </defs>
   <rect class="bg" width="1280" height="880"/>
   <text class="title" x="58" y="62">DEM 程序化地形生成</text>
-  <text class="sub" x="60" y="94" text-anchor="start">当前实际运行路径是 generateDemPrototype()，用于生成高度、水文和地表属性。</text>
+  <text class="sub" x="60" y="94" text-anchor="start">当前实际运行路径是</text>
+<text class="sub" x="60" y="118" text-anchor="start">generateDemPrototype()，用于生成高度、水文和地表属性。</text>
   <circle class="numCircle" cx="88" cy="141" r="22"/>
 <text class="num" x="88" y="148" text-anchor="middle">01</text>
 <rect class="box blue" x="60" y="155" width="255" height="116" rx="12"/>
-<text class="label" x="82" y="191" text-anchor="start">PlanetProcedur</text>
-<text class="label" x="82" y="215" text-anchor="start">alData::genera</text>
-<text class="label" x="82" y="239" text-anchor="start">te()</text>
+<text class="label" x="82" y="191" text-anchor="start">PlanetProc</text>
+<text class="label" x="82" y="215" text-anchor="start">eduralData</text>
+<text class="label" x="82" y="239" text-anchor="start">::generate</text>
+<text class="label" x="82" y="263" text-anchor="start">()</text>
 
 <circle class="numCircle" cx="378" cy="141" r="22"/>
 <text class="num" x="378" y="148" text-anchor="middle">02</text>
@@ -47,8 +49,9 @@
 <circle class="numCircle" cx="958" cy="366" r="22"/>
 <text class="num" x="958" y="373" text-anchor="middle">05</text>
 <rect class="box blue" x="930" y="380" width="255" height="116" rx="12"/>
-<text class="label" x="952" y="416" text-anchor="start">遍历每个 texel 并计算</text>
-<text class="label" x="952" y="440" text-anchor="start">sphereDir</text>
+<text class="label" x="952" y="416" text-anchor="start">遍历每个 texel</text>
+<text class="label" x="952" y="440" text-anchor="start">并计算</text>
+<text class="label" x="952" y="464" text-anchor="start">sphereDir</text>
 
 <path class="arrow" d="M1185 271 L1185 338 L1185 338 L1185 438"/>
 <circle class="numCircle" cx="668" cy="366" r="22"/>
@@ -69,7 +72,8 @@
 <circle class="numCircle" cx="88" cy="366" r="22"/>
 <text class="num" x="88" y="373" text-anchor="middle">08</text>
 <rect class="box violet" x="60" y="380" width="255" height="116" rx="12"/>
-<text class="label" x="82" y="416" text-anchor="start">接缝融合、水文侵蚀、气候计算</text>
+<text class="label" x="82" y="416" text-anchor="start">接缝融合、水文侵蚀、</text>
+<text class="label" x="82" y="440" text-anchor="start">气候计算</text>
 
 <path class="arrow" d="M350 438 C332 438, 332 438, 315 438"/>
 <circle class="numCircle" cx="88" cy="591" r="22"/>

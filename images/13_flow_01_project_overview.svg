@@ -20,14 +20,14 @@
 <text class="num" x="88" y="148" text-anchor="middle">01</text>
 <rect class="box blue" x="60" y="155" width="255" height="116" rx="12"/>
 <text class="label" x="82" y="191" text-anchor="start">启动 main()</text>
-<text class="label" x="82" y="215" text-anchor="start">创建窗口和 OpenGL</text>
-<text class="label" x="82" y="239" text-anchor="start">上下文</text>
+<text class="label" x="82" y="215" text-anchor="start">创建窗口和</text>
+<text class="label" x="82" y="239" text-anchor="start">OpenGL 上下文</text>
 
 <circle class="numCircle" cx="378" cy="141" r="22"/>
 <text class="num" x="378" y="148" text-anchor="middle">02</text>
 <rect class="box green" x="350" y="155" width="255" height="116" rx="12"/>
-<text class="label" x="372" y="191" text-anchor="start">初始化 ImGui 与</text>
-<text class="label" x="372" y="215" text-anchor="start">PlanetRenderer</text>
+<text class="label" x="372" y="191" text-anchor="start">初始化 ImGui</text>
+<text class="label" x="372" y="215" text-anchor="start">与 PlanetRenderer</text>
 
 <path class="arrow" d="M315 213 C332 213, 332 213, 350 213"/>
 <circle class="numCircle" cx="668" cy="141" r="22"/>
@@ -47,8 +47,8 @@
 <circle class="numCircle" cx="958" cy="366" r="22"/>
 <text class="num" x="958" y="373" text-anchor="middle">05</text>
 <rect class="box blue" x="930" y="380" width="255" height="116" rx="12"/>
-<text class="label" x="952" y="416" text-anchor="start">无缓存时进入参数设置并生成</text>
-<text class="label" x="952" y="440" text-anchor="start">星球</text>
+<text class="label" x="952" y="416" text-anchor="start">无缓存时进入参数设置</text>
+<text class="label" x="952" y="440" text-anchor="start">并生成星球</text>
 
 <path class="arrow" d="M1185 271 L1185 338 L1185 338 L1185 438"/>
 <circle class="numCircle" cx="668" cy="366" r="22"/>
@@ -61,9 +61,10 @@
 <circle class="numCircle" cx="378" cy="366" r="22"/>
 <text class="num" x="378" y="373" text-anchor="middle">07</text>
 <rect class="box amber" x="350" y="380" width="255" height="116" rx="12"/>
-<text class="label" x="372" y="416" text-anchor="start">主线程上传 texture</text>
-<text class="label" x="372" y="440" text-anchor="start">array 与 baked</text>
-<text class="label" x="372" y="464" text-anchor="start">mesh</text>
+<text class="label" x="372" y="416" text-anchor="start">主线程上传</text>
+<text class="label" x="372" y="440" text-anchor="start">texture</text>
+<text class="label" x="372" y="464" text-anchor="start">array 与</text>
+<text class="label" x="372" y="488" text-anchor="start">baked mesh</text>
 
 <path class="arrow" d="M640 438 C622 438, 622 438, 605 438"/>
 <circle class="numCircle" cx="88" cy="366" r="22"/>

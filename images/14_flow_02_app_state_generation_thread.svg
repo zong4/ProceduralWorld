@@ -25,8 +25,9 @@
 <circle class="numCircle" cx="378" cy="141" r="22"/>
 <text class="num" x="378" y="148" text-anchor="middle">02</text>
 <rect class="box green" x="350" y="155" width="255" height="116" rx="12"/>
-<text class="label" x="372" y="191" text-anchor="start">点击 Generate</text>
-<text class="label" x="372" y="215" text-anchor="start">Planet</text>
+<text class="label" x="372" y="191" text-anchor="start">点击</text>
+<text class="label" x="372" y="215" text-anchor="start">Generate</text>
+<text class="label" x="372" y="239" text-anchor="start">Planet</text>
 
 <path class="arrow" d="M315 213 C332 213, 332 213, 350 213"/>
 <circle class="numCircle" cx="668" cy="141" r="22"/>
@@ -60,8 +61,8 @@
 <circle class="numCircle" cx="378" cy="366" r="22"/>
 <text class="num" x="378" y="373" text-anchor="middle">07</text>
 <rect class="box amber" x="350" y="380" width="255" height="116" rx="12"/>
-<text class="label" x="372" y="416" text-anchor="start">future ready</text>
-<text class="label" x="372" y="440" text-anchor="start">后调用</text>
+<text class="label" x="372" y="416" text-anchor="start">future</text>
+<text class="label" x="372" y="440" text-anchor="start">ready 后调用</text>
 <text class="label" x="372" y="464" text-anchor="start">finishPlanetGeneration()</text>
 
 <path class="arrow" d="M640 438 C622 438, 622 438, 605 438"/>

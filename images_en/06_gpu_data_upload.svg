@@ -14,7 +14,8 @@
   </defs>
   <rect class="bg" width="1280" height="720"/>
   <text class="title" x="58" y="62">CPU-to-GPU Upload</text>
-  <text class="sub" x="60" y="94" text-anchor="start">Generated arrays are packed into texture arrays and mesh buffers.</text>
+  <text class="sub" x="60" y="94" text-anchor="start">Generated arrays are packed into texture</text>
+<text class="sub" x="60" y="118" text-anchor="start">arrays and mesh buffers.</text>
   <text class="lane" x="70" y="154">CPU Data</text>
 <rect class="box green" x="70" y="188" width="350" height="86" rx="12"/>
 <text class="label" x="92" y="224" text-anchor="start">Six faces</text>

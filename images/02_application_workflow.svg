@@ -25,7 +25,8 @@
 <path class="arrow" d="M245 274 L245 306"/>
 <text class="lane" x="465" y="154">后台生成</text>
 <rect class="box amber" x="465" y="188" width="350" height="86" rx="12"/>
-<text class="label" x="487" y="224" text-anchor="start">std::async 生成数据</text>
+<text class="label" x="487" y="224" text-anchor="start">std::async</text>
+<text class="label" x="487" y="248" text-anchor="start">生成数据</text>
 
 <rect class="box violet" x="465" y="306" width="350" height="86" rx="12"/>
 <text class="label" x="487" y="342" text-anchor="start">进度回调刷新 UI</text>

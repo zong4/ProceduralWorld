@@ -14,7 +14,8 @@
   </defs>
   <rect class="bg" width="1280" height="720"/>
   <text class="title" x="58" y="62">Cube-Sphere Mapping</text>
-  <text class="sub" x="60" y="94" text-anchor="start">Six square faces become one continuous sphere.</text>
+  <text class="sub" x="60" y="94" text-anchor="start">Six square faces become one continuous</text>
+<text class="sub" x="60" y="118" text-anchor="start">sphere.</text>
   <text class="lane" x="70" y="154">Face Data</text>
 <rect class="box green" x="70" y="188" width="350" height="86" rx="12"/>
 <text class="label" x="92" y="224" text-anchor="start">2D texel grid</text>

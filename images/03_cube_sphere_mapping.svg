@@ -25,8 +25,8 @@
 <path class="arrow" d="M245 274 L245 306"/>
 <text class="lane" x="465" y="154">映射过程</text>
 <rect class="box amber" x="465" y="188" width="350" height="86" rx="12"/>
-<text class="label" x="487" y="224" text-anchor="start">face UV 到 cube</text>
-<text class="label" x="487" y="248" text-anchor="start">坐标</text>
+<text class="label" x="487" y="224" text-anchor="start">face UV 到</text>
+<text class="label" x="487" y="248" text-anchor="start">cube 坐标</text>
 
 <rect class="box violet" x="465" y="306" width="350" height="86" rx="12"/>
 <text class="label" x="487" y="342" text-anchor="start">归一化为球面方向</text>

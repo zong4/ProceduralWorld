@@ -20,15 +20,17 @@
 <text class="num" x="88" y="148" text-anchor="middle">01</text>
 <rect class="box blue" x="60" y="155" width="255" height="116" rx="12"/>
 <text class="label" x="82" y="191" text-anchor="start">initialize()</text>
-<text class="label" x="82" y="215" text-anchor="start">配置 cascades</text>
-<text class="label" x="82" y="239" text-anchor="start">和分辨率</text>
+<text class="label" x="82" y="215" text-anchor="start">配置</text>
+<text class="label" x="82" y="239" text-anchor="start">cascades</text>
+<text class="label" x="82" y="263" text-anchor="start">和分辨率</text>
 
 <circle class="numCircle" cx="378" cy="141" r="22"/>
 <text class="num" x="378" y="148" text-anchor="middle">02</text>
 <rect class="box green" x="350" y="155" width="255" height="116" rx="12"/>
 <text class="label" x="372" y="191" text-anchor="start">buildInitialSpectrum()</text>
-<text class="label" x="372" y="215" text-anchor="start">生成 Phillips</text>
-<text class="label" x="372" y="239" text-anchor="start">spectrum</text>
+<text class="label" x="372" y="215" text-anchor="start">生成</text>
+<text class="label" x="372" y="239" text-anchor="start">Phillips</text>
+<text class="label" x="372" y="263" text-anchor="start">spectrum</text>
 
 <path class="arrow" d="M315 213 C332 213, 332 213, 350 213"/>
 <circle class="numCircle" cx="668" cy="141" r="22"/>
@@ -55,10 +57,10 @@
 <circle class="numCircle" cx="668" cy="366" r="22"/>
 <text class="num" x="668" y="373" text-anchor="middle">06</text>
 <rect class="box green" x="640" y="380" width="255" height="116" rx="12"/>
-<text class="label" x="662" y="416" text-anchor="start">计算 height /</text>
-<text class="label" x="662" y="440" text-anchor="start">normal /</text>
-<text class="label" x="662" y="464" text-anchor="start">displacement /</text>
-<text class="label" x="662" y="488" text-anchor="start">folding</text>
+<text class="label" x="662" y="416" text-anchor="start">计算 height</text>
+<text class="label" x="662" y="440" text-anchor="start">/ normal /</text>
+<text class="label" x="662" y="464" text-anchor="start">displacement</text>
+<text class="label" x="662" y="488" text-anchor="start">/ folding</text>
 
 <path class="arrow" d="M930 438 C912 438, 912 438, 895 438"/>
 <circle class="numCircle" cx="378" cy="366" r="22"/>
@@ -71,8 +73,9 @@
 <circle class="numCircle" cx="88" cy="366" r="22"/>
 <text class="num" x="88" y="373" text-anchor="middle">08</text>
 <rect class="box violet" x="60" y="380" width="255" height="116" rx="12"/>
-<text class="label" x="82" y="416" text-anchor="start">ocean shader</text>
-<text class="label" x="82" y="440" text-anchor="start">采样形成动态波浪</text>
+<text class="label" x="82" y="416" text-anchor="start">ocean</text>
+<text class="label" x="82" y="440" text-anchor="start">shader</text>
+<text class="label" x="82" y="464" text-anchor="start">采样形成动态波浪</text>
 
 <path class="arrow" d="M350 438 C332 438, 332 438, 315 438"/>
 </svg>

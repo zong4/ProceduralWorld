@@ -19,21 +19,23 @@
   <circle class="numCircle" cx="88" cy="141" r="22"/>
 <text class="num" x="88" y="148" text-anchor="middle">01</text>
 <rect class="box blue" x="60" y="155" width="255" height="116" rx="12"/>
-<text class="label" x="82" y="191" text-anchor="start">把星球拆成 6 个 cube</text>
-<text class="label" x="82" y="215" text-anchor="start">face</text>
+<text class="label" x="82" y="191" text-anchor="start">把星球拆成 6 个</text>
+<text class="label" x="82" y="215" text-anchor="start">cube face</text>
 
 <circle class="numCircle" cx="378" cy="141" r="22"/>
 <text class="num" x="378" y="148" text-anchor="middle">02</text>
 <rect class="box green" x="350" y="155" width="255" height="116" rx="12"/>
-<text class="label" x="372" y="191" text-anchor="start">每个 face 使用二维</text>
-<text class="label" x="372" y="215" text-anchor="start">texel 网格</text>
+<text class="label" x="372" y="191" text-anchor="start">每个 face</text>
+<text class="label" x="372" y="215" text-anchor="start">使用二维 texel</text>
+<text class="label" x="372" y="239" text-anchor="start">网格</text>
 
 <path class="arrow" d="M315 213 C332 213, 332 213, 350 213"/>
 <circle class="numCircle" cx="668" cy="141" r="22"/>
 <text class="num" x="668" y="148" text-anchor="middle">03</text>
 <rect class="box amber" x="640" y="155" width="255" height="116" rx="12"/>
-<text class="label" x="662" y="191" text-anchor="start">face UV 转换为</text>
-<text class="label" x="662" y="215" text-anchor="start">cube 坐标</text>
+<text class="label" x="662" y="191" text-anchor="start">face UV</text>
+<text class="label" x="662" y="215" text-anchor="start">转换为 cube</text>
+<text class="label" x="662" y="239" text-anchor="start">坐标</text>
 
 <path class="arrow" d="M605 213 C622 213, 622 213, 640 213"/>
 <circle class="numCircle" cx="958" cy="141" r="22"/>
@@ -46,7 +48,8 @@
 <circle class="numCircle" cx="958" cy="366" r="22"/>
 <text class="num" x="958" y="373" text-anchor="middle">05</text>
 <rect class="box blue" x="930" y="380" width="255" height="116" rx="12"/>
-<text class="label" x="952" y="416" text-anchor="start">用方向向量采样噪声和气候函数</text>
+<text class="label" x="952" y="416" text-anchor="start">用方向向量采样噪声和</text>
+<text class="label" x="952" y="440" text-anchor="start">气候函数</text>
 
 <path class="arrow" d="M1185 271 L1185 338 L1185 338 L1185 438"/>
 <circle class="numCircle" cx="668" cy="366" r="22"/>

@@ -19,8 +19,9 @@
   <circle class="numCircle" cx="88" cy="141" r="22"/>
 <text class="num" x="88" y="148" text-anchor="middle">01</text>
 <rect class="box blue" x="60" y="155" width="255" height="116" rx="12"/>
-<text class="label" x="82" y="191" text-anchor="start">UI 控制 clouds</text>
-<text class="label" x="82" y="215" text-anchor="start">开关和参数</text>
+<text class="label" x="82" y="191" text-anchor="start">UI 控制</text>
+<text class="label" x="82" y="215" text-anchor="start">clouds</text>
+<text class="label" x="82" y="239" text-anchor="start">开关和参数</text>
 
 <circle class="numCircle" cx="378" cy="141" r="22"/>
 <text class="num" x="378" y="148" text-anchor="middle">02</text>
@@ -32,15 +33,15 @@
 <circle class="numCircle" cx="668" cy="141" r="22"/>
 <text class="num" x="668" y="148" text-anchor="middle">03</text>
 <rect class="box amber" x="640" y="155" width="255" height="116" rx="12"/>
-<text class="label" x="662" y="191" text-anchor="start">在</text>
-<text class="label" x="662" y="215" text-anchor="start">atmosphere.frag</text>
-<text class="label" x="662" y="239" text-anchor="start">中构造云层区域</text>
+<text class="label" x="662" y="191" text-anchor="start">在 atmosphere.frag</text>
+<text class="label" x="662" y="215" text-anchor="start">中构造云层区域</text>
 
 <path class="arrow" d="M605 213 C622 213, 622 213, 640 213"/>
 <circle class="numCircle" cx="958" cy="141" r="22"/>
 <text class="num" x="958" y="148" text-anchor="middle">04</text>
 <rect class="box violet" x="930" y="155" width="255" height="116" rx="12"/>
-<text class="label" x="952" y="191" text-anchor="start">沿视线进行 raymarch</text>
+<text class="label" x="952" y="191" text-anchor="start">沿视线进行</text>
+<text class="label" x="952" y="215" text-anchor="start">raymarch</text>
 
 <path class="arrow" d="M895 213 C912 213, 912 213, 930 213"/>
 <circle class="numCircle" cx="958" cy="366" r="22"/>
@@ -52,8 +53,9 @@
 <circle class="numCircle" cx="668" cy="366" r="22"/>
 <text class="num" x="668" y="373" text-anchor="middle">06</text>
 <rect class="box green" x="640" y="380" width="255" height="116" rx="12"/>
-<text class="label" x="662" y="416" text-anchor="start">light march</text>
-<text class="label" x="662" y="440" text-anchor="start">估算光照和阴影</text>
+<text class="label" x="662" y="416" text-anchor="start">light</text>
+<text class="label" x="662" y="440" text-anchor="start">march</text>
+<text class="label" x="662" y="464" text-anchor="start">估算光照和阴影</text>
 
 <path class="arrow" d="M930 438 C912 438, 912 438, 895 438"/>
 <circle class="numCircle" cx="378" cy="366" r="22"/>

@@ -21,7 +21,8 @@
 <text class="label" x="92" y="248" text-anchor="start">LUT</text>
 
 <rect class="box amber" x="70" y="306" width="350" height="86" rx="12"/>
-<text class="label" x="92" y="342" text-anchor="start">scattering LUT</text>
+<text class="label" x="92" y="342" text-anchor="start">scattering</text>
+<text class="label" x="92" y="366" text-anchor="start">LUT</text>
 
 <path class="arrow" d="M245 274 L245 306"/>
 <text class="lane" x="465" y="154">体积云</text>

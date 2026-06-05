@@ -15,8 +15,9 @@
   </defs>
   <rect class="bg" width="1280" height="720"/>
   <text class="title" x="58" y="62">Hydrology, Erosion and River Masks</text>
-  <text class="sub" x="60" y="94" text-anchor="start">Downhill flow, stream power and thermal diffusion create</text>
-<text class="sub" x="60" y="118" text-anchor="start">channels and erosion traces.</text>
+  <text class="sub" x="60" y="94" text-anchor="start">Downhill flow, stream power and thermal</text>
+<text class="sub" x="60" y="118" text-anchor="start">diffusion create channels and erosion</text>
+<text class="sub" x="60" y="142" text-anchor="start">traces.</text>
   <circle class="numCircle" cx="88" cy="141" r="22"/>
 <text class="num" x="88" y="148" text-anchor="middle">01</text>
 <rect class="box blue" x="60" y="155" width="255" height="126" rx="12"/>

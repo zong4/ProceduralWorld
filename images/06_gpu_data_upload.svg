@@ -20,8 +20,8 @@
 <text class="label" x="92" y="224" text-anchor="start">六个 face</text>
 
 <rect class="box amber" x="70" y="306" width="350" height="86" rx="12"/>
-<text class="label" x="92" y="342" text-anchor="start">height / mask /</text>
-<text class="label" x="92" y="366" text-anchor="start">weight</text>
+<text class="label" x="92" y="342" text-anchor="start">height / mask</text>
+<text class="label" x="92" y="366" text-anchor="start">/ weight</text>
 
 <path class="arrow" d="M245 274 L245 306"/>
 <text class="lane" x="465" y="154">GPU 打包</text>
@@ -29,7 +29,8 @@
 <text class="label" x="487" y="224" text-anchor="start">texture array</text>
 
 <rect class="box violet" x="465" y="306" width="350" height="86" rx="12"/>
-<text class="label" x="487" y="342" text-anchor="start">VBO / IBO / VAO</text>
+<text class="label" x="487" y="342" text-anchor="start">VBO / IBO /</text>
+<text class="label" x="487" y="366" text-anchor="start">VAO</text>
 
 <path class="arrow" d="M640 274 L640 306"/>
 <path class="arrow" d="M420 318 C442 318, 442 318, 465 318"/>

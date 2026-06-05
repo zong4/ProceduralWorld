@@ -52,6 +52,19 @@ function Wrap-Text {
             $result[$lastIndex] = "$moved$last"
         }
     }
+    for ($i = 0; $i -lt $result.Count; $i++) {
+        if ($result[$i].Length -eq 1 -and $result.Count -gt 1) {
+            if ($i -lt ($result.Count - 1)) {
+                $result[$i + 1] = "$($result[$i]) $($result[$i + 1])"
+                $result.RemoveAt($i)
+                $i--
+            } elseif ($i -gt 0) {
+                $result[$i - 1] = "$($result[$i - 1])$($result[$i])"
+                $result.RemoveAt($i)
+                $i--
+            }
+        }
+    }
     return @($result.ToArray())
 }
 
@@ -132,7 +145,7 @@ function New-FlowSvg {
         $num = "{0:D2}" -f ($i + 1)
         $body.Add("<circle class=`"numCircle`" cx=`"$($x + 28)`" cy=`"$($y - 14)`" r=`"22`"/>")
         $body.Add("<text class=`"num`" x=`"$($x + 28)`" y=`"$($y - 7)`" text-anchor=`"middle`">$num</text>")
-        $maxTitle = if ($Lang -eq "cn") { 14 } else { 20 }
+        $maxTitle = if ($Lang -eq "cn") { 10 } else { 20 }
         $body.Add((New-Box $x $y $boxW $boxH $steps[$i] "" $palettes[$i % $palettes.Count] $maxTitle 20))
         if ($null -ne $prevX) {
             $prevRow = [int][Math]::Floor(($i - 1) / 4)
@@ -154,7 +167,7 @@ function New-FlowSvg {
     }
     $title = Escape-Xml $Module.Title
     $subtitleDesc = Escape-Xml $Module.Subtitle
-    $subtitleBlock = New-TextBlock $Module.Subtitle 60 94 "sub" 58 24
+    $subtitleBlock = New-TextBlock $Module.Subtitle 60 94 "sub" $(if ($Lang -eq "cn") { 34 } else { 40 }) 24
     $bodyText = $body -join "`n"
     return @"
 <?xml version="1.0" encoding="UTF-8"?>
@@ -194,7 +207,7 @@ function New-ConceptSvg {
         $body.Add("<text class=`"lane`" x=`"$x`" y=`"154`">$lane</text>")
         for ($j = 1; $j -lt $col.Count; $j++) {
             $y = 188 + ($j - 1) * 118
-            $maxTitle = if ($Lang -eq "cn") { 16 } else { 24 }
+            $maxTitle = if ($Lang -eq "cn") { 13 } else { 24 }
             $body.Add((New-Box $x $y $colW 86 $col[$j] "" $colors[($idx + $j) % $colors.Count] $maxTitle 26))
             if ($j -gt 1) {
                 $body.Add("<path class=`"arrow`" d=`"M$($x + [int]($colW / 2)) $($y - 32) L$($x + [int]($colW / 2)) $y`"/>")
@@ -207,7 +220,7 @@ function New-ConceptSvg {
     }
     $title = Escape-Xml $Diagram.Title
     $subtitleDesc = Escape-Xml $Diagram.Subtitle
-    $subtitleBlock = New-TextBlock $Diagram.Subtitle 60 94 "sub" $(if ($Lang -eq "cn") { 42 } else { 68 }) 24
+    $subtitleBlock = New-TextBlock $Diagram.Subtitle 60 94 "sub" $(if ($Lang -eq "cn") { 34 } else { 40 }) 24
     $bodyText = $body -join "`n"
     return @"
 <?xml version="1.0" encoding="UTF-8"?>
