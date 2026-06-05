@@ -23,3 +23,5 @@ These are English speaking scripts split by functional module. Open the matching
 | 17 | Height Diagnostics Tool | 17_height_diagnostics.md |
 | 18 | Per-Frame Render Sequence | 18_frame_render_sequence.md |
 | 19 | Presentation Summary and Boundaries | 19_presentation_summary.md |
+| 20 | Terrain, Ocean, Atmosphere and Clouds Speech Script | 20_graphics_technical_script.md |
+| 21 | UI Parameter Guide | 21_ui_parameters.md |

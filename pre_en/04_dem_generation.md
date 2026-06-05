@@ -4,7 +4,7 @@
 - ../images_en/03_dem_terrain.svg
 
 ## Goal
-The current runtime path enters generateDemPrototype() to produce height, hydrology and surface attributes.
+The current runtime path enters generateDemPrototype() to produce height, hydrology and surface attributes for the **Digital Elevation Model (DEM)**.
 
 ## Key Code Locations
 - src/PlanetProceduralData.cpp
@@ -27,7 +27,7 @@ The current runtime path enters generateDemPrototype() to produce height, hydrol
 - data: information used by the program
 - pass: one draw step
 - cache: saved data that can be used again
-- DEM: a height map of the planet
+- DEM: **Digital Elevation Model**, a height map of the planet
 - FFT: a math tool that helps make waves
 - LOD: use more detail near the camera and less detail far away
 - FBO: an off-screen image used before the final image
@@ -35,9 +35,9 @@ The current runtime path enters generateDemPrototype() to produce height, hydrol
 - raymarch: sample many small points along a ray
 
 ## Read-Aloud Script
-> Hello, on this slide I will talk about **DEM Terrain Generation**.
+> Hello, on this slide I will talk about **Digital Elevation Model, or DEM, Terrain Generation**.
 
-> The goal is simple: The current runtime path enters generateDemPrototype() to produce height, hydrology and surface attributes.
+> The goal is simple: the current runtime path enters **generateDemPrototype()** to produce height, hydrology and surface attributes for the **Digital Elevation Model**, or **DEM**.
 
 > If that sounds a little hard, I can say it in easier words: this slide shows what this part does, why it is needed, and what it gives to the next part.
 
@@ -72,7 +72,7 @@ The current runtime path enters generateDemPrototype() to produce height, hydrol
 ## Optional Detail
 > This slide should make the real code path clear. PlanetProceduralData::generate() enters generateDemPrototype() and returns, so this is the active generation path.
 
-> DEM means digital elevation model. The code allocates several arrays for each of the six cube faces, including height, water depth, erosion, temperature, moisture, channels and material weights.
+> **DEM** means **Digital Elevation Model**. The code allocates several arrays for each of the six cube faces, including height, water depth, erosion, temperature, moisture, channels and material weights.
 
 > Each texel samples layered noise through its spherical direction. Low-frequency noise forms continents, while mid and high frequencies shape mountains and ridges.
 
