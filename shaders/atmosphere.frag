@@ -29,7 +29,6 @@ uniform float cloudCoverage;
 uniform float cloudSharpness;
 uniform float cloudScale;
 uniform float cloudSpeed;
-uniform float cloudRotationSpeed;
 uniform float cloudHeight;
 uniform float cloudThickness;
 uniform float cloudDensity;
@@ -219,18 +218,6 @@ vec2 worleyF1F2(vec3 p)
         }
     }
     return sqrt(vec2(f1, f2));
-}
-
-vec3 rotateAroundAxis(vec3 value, vec3 axis, float angleRadians)
-{
-    float s = sin(angleRadians);
-    float c = cos(angleRadians);
-    return value * c + cross(axis, value) * s + axis * dot(axis, value) * (1.0 - c);
-}
-
-vec3 cloudLocalDirection(vec3 worldDirection)
-{
-    return normalize(transpose(mat3(model)) * worldDirection);
 }
 
 vec3 cloudLocalPosition(vec3 worldPos)

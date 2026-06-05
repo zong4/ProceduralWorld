@@ -1,6 +1,10 @@
 # VS Code
 .vscode/
 
+# Local UI/session state
+imgui.ini
+config/last_session.ini
+
 # XMake
 .xmake/
 build/

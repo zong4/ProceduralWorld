@@ -53,15 +53,12 @@ constexpr int kGenerationFaceResolutionMin = 64;
 constexpr int kGenerationFaceResolutionDefault = 256;
 constexpr int kGenerationFaceResolutionMax = 512;
 
-// 应用级工作流
-// ProceduralSetup 负责调生成参数；Generating 后台烘焙数据；Render 实时渲染
 enum class WorkflowStage {
     ProceduralSetup,
     Generating,
     Render
 };
 
-// 主程序的所有可变状态集中在这里，避GLFW/ImGui 回调之间传递大量全局变量
 struct ApplicationState {
     FlyCamera camera{glm::vec3(0.0f, 90.0f, 420.0f)};
     PlanetRenderer renderer;
@@ -146,13 +143,12 @@ void selectFeaturePanel(ApplicationState& state, bool& panelOpen)
     panelOpen = openTarget;
 }
 
-// 复制会影响“重新生成星球”或生成后地表显示的参数
-// 海水反射、大气、相机、LOD 等纯运行时参数保留当renderSettings
 void copyProceduralSettings(PlanetRenderSettings& destination, const PlanetRenderSettings& source)
 {
     destination.planetRadius = source.planetRadius;
     destination.seaLevelOffset = source.seaLevelOffset;
     destination.terrainHeightScale = source.terrainHeightScale;
+    destination.runtimeMountainScale = source.runtimeMountainScale;
     destination.terrainNoiseScale = source.terrainNoiseScale;
     destination.mountainMaskStrength = source.mountainMaskStrength;
     destination.mountainMaskScale = source.mountainMaskScale;
@@ -168,6 +164,27 @@ void copyProceduralSettings(PlanetRenderSettings& destination, const PlanetRende
     destination.terrainRockColor = source.terrainRockColor;
     destination.terrainBeachColor = source.terrainBeachColor;
     destination.terrainSnowColor = source.terrainSnowColor;
+    destination.terrainPaletteLowGrass = source.terrainPaletteLowGrass;
+    destination.terrainPaletteMeadow = source.terrainPaletteMeadow;
+    destination.terrainPaletteForestDark = source.terrainPaletteForestDark;
+    destination.terrainPaletteForestWarm = source.terrainPaletteForestWarm;
+    destination.terrainPaletteSavanna = source.terrainPaletteSavanna;
+    destination.terrainPaletteDrySoil = source.terrainPaletteDrySoil;
+    destination.terrainPaletteOchre = source.terrainPaletteOchre;
+    destination.terrainPaletteWetGreen = source.terrainPaletteWetGreen;
+    destination.terrainPaletteTundra = source.terrainPaletteTundra;
+    destination.terrainPaletteBrownSlope = source.terrainPaletteBrownSlope;
+    destination.terrainPaletteRedSoil = source.terrainPaletteRedSoil;
+    destination.terrainPaletteRockWarm = source.terrainPaletteRockWarm;
+    destination.terrainPaletteRockCool = source.terrainPaletteRockCool;
+    destination.terrainPaletteRockDark = source.terrainPaletteRockDark;
+    destination.terrainPalettePaleStone = source.terrainPalettePaleStone;
+    destination.terrainPaletteSnow = source.terrainPaletteSnow;
+    destination.terrainPaletteSnowShadow = source.terrainPaletteSnowShadow;
+    destination.terrainPaletteBeach = source.terrainPaletteBeach;
+    destination.terrainPaletteRiverBed = source.terrainPaletteRiverBed;
+    destination.terrainPaletteShallowSeabed = source.terrainPaletteShallowSeabed;
+    destination.terrainPaletteDeepSeabed = source.terrainPaletteDeepSeabed;
     destination.terrainBeachWidth = source.terrainBeachWidth;
     destination.terrainRockSlopeStart = source.terrainRockSlopeStart;
     destination.terrainRockSlopeEnd = source.terrainRockSlopeEnd;
@@ -183,12 +200,87 @@ void copyProceduralSettings(PlanetRenderSettings& destination, const PlanetRende
     destination.riverColor = source.riverColor;
 }
 
+void applyStageOneProceduralPreset(PlanetRenderSettings& settings)
+{
+    settings.planetRadius = 200.0f;
+    settings.seaLevelOffset = 0.0f;
+    settings.terrainHeightScale = 22.0f;
+    settings.runtimeMountainScale = 1.0f;
+    settings.terrainNoiseScale = 0.58f;
+    settings.mountainMaskStrength = 1.90f;
+    settings.mountainMaskScale = 3.35f;
+    settings.mountainRidgeSharpness = 3.80f;
+    settings.erosionIterations = 128;
+    settings.erosionStrength = 0.075f;
+    settings.erosionTalus = 0.028f;
+    settings.erosionSediment = 0.58f;
+    settings.erosionThermalStrength = 0.018f;
+    settings.terrainLowlandColor = glm::vec3(0.20f, 0.46f, 0.30f);
+    settings.terrainForestColor = glm::vec3(0.08f, 0.28f, 0.18f);
+    settings.terrainDesertColor = glm::vec3(0.64f, 0.55f, 0.34f);
+    settings.terrainRockColor = glm::vec3(0.44f, 0.47f, 0.48f);
+    settings.terrainBeachColor = glm::vec3(0.79f, 0.68f, 0.43f);
+    settings.terrainSnowColor = glm::vec3(0.94f, 0.97f, 0.98f);
+    settings.terrainPaletteLowGrass = glm::vec3(0.20f, 0.86f, 0.18f);
+    settings.terrainPaletteMeadow = glm::vec3(0.56f, 0.90f, 0.16f);
+    settings.terrainPaletteForestDark = glm::vec3(0.020f, 0.38f, 0.070f);
+    settings.terrainPaletteForestWarm = glm::vec3(0.12f, 0.64f, 0.10f);
+    settings.terrainPaletteSavanna = glm::vec3(0.92f, 0.72f, 0.12f);
+    settings.terrainPaletteDrySoil = glm::vec3(0.94f, 0.42f, 0.12f);
+    settings.terrainPaletteOchre = glm::vec3(1.00f, 0.60f, 0.16f);
+    settings.terrainPaletteWetGreen = glm::vec3(0.030f, 0.52f, 0.30f);
+    settings.terrainPaletteTundra = glm::vec3(0.70f, 0.78f, 0.32f);
+    settings.terrainPaletteBrownSlope = glm::vec3(0.58f, 0.36f, 0.20f);
+    settings.terrainPaletteRedSoil = glm::vec3(0.70f, 0.30f, 0.14f);
+    settings.terrainPaletteRockWarm = glm::vec3(0.48f, 0.45f, 0.39f);
+    settings.terrainPaletteRockCool = glm::vec3(0.54f, 0.58f, 0.56f);
+    settings.terrainPaletteRockDark = glm::vec3(0.22f, 0.22f, 0.20f);
+    settings.terrainPalettePaleStone = glm::vec3(0.70f, 0.72f, 0.66f);
+    settings.terrainPaletteSnow = glm::vec3(1.08f, 1.10f, 1.14f);
+    settings.terrainPaletteSnowShadow = glm::vec3(0.76f, 0.86f, 1.02f);
+    settings.terrainPaletteBeach = glm::vec3(1.00f, 0.78f, 0.38f);
+    settings.terrainPaletteRiverBed = glm::vec3(0.30f, 0.17f, 0.08f);
+    settings.terrainPaletteShallowSeabed = glm::vec3(0.28f, 0.62f, 0.50f);
+    settings.terrainPaletteDeepSeabed = glm::vec3(0.08f, 0.22f, 0.32f);
+    settings.terrainBeachWidth = 0.045f;
+    settings.terrainRockSlopeStart = 0.24f;
+    settings.terrainRockSlopeEnd = 0.62f;
+    settings.terrainSnowStart = 0.72f;
+    settings.terrainSnowEnd = 0.95f;
+    settings.terrainMaterialNoiseScale = 0.030f;
+    settings.terrainMaterialNoiseStrength = 0.0f;
+    settings.renderRivers = true;
+    settings.riverVisibility = 1.45f;
+    settings.riverWidth = 0.58f;
+    settings.riverShine = 1.05f;
+    settings.riverRefractionStrength = 0.48f;
+    settings.riverColor = glm::vec3(0.02f, 0.36f, 0.42f);
+}
+
+void applyRuggedRiversPreset(PlanetRenderSettings& settings)
+{
+    const float distanceScale = glm::max(settings.planetRadius / kReferencePlanetRadius, 0.25f);
+    settings.terrainHeightScale = 34.0f * distanceScale;
+    settings.terrainNoiseScale = 0.78f;
+    settings.mountainMaskStrength = 1.90f;
+    settings.mountainMaskScale = 3.35f;
+    settings.mountainRidgeSharpness = 3.80f;
+    settings.erosionIterations = 128;
+    settings.erosionStrength = 0.075f;
+    settings.erosionSediment = 0.72f;
+    settings.erosionThermalStrength = 0.018f;
+    settings.terrainMaterialNoiseStrength = 0.0f;
+    settings.riverVisibility = 1.70f;
+    settings.riverWidth = 0.72f;
+    settings.riverShine = 1.05f;
+    settings.riverRefractionStrength = 0.55f;
+}
+
 float minCameraOrbitDistance(const PlanetRenderSettings& settings)
 {
     return settings.planetRadius + glm::max(settings.terrainHeightScale, 1.0f) + 4.0f;
 }
 
-// 相机轨道半径随星球半径缩放，保证小星大星球都能被观察
 float maxCameraOrbitDistance(const PlanetRenderSettings& settings)
 {
     return glm::max(settings.planetRadius * 8.0f, minCameraOrbitDistance(settings) + 10.0f);
@@ -220,7 +312,6 @@ void updateOrbitMetadata(ApplicationState& state)
     state.cameraOrbitYawDegrees = wrapDegrees(glm::degrees(std::atan2(direction.x, direction.z)));
 }
 
-// 将相机朝向锁定到星球中心，同时尽量保留用户期望的上方向
 void orientCameraToPlanet(ApplicationState& state, const glm::vec3& preferredUp)
 {
     glm::vec3 radialDirection = glm::normalize(state.camera.position);
@@ -237,7 +328,6 @@ void orientCameraToPlanet(ApplicationState& state, const glm::vec3& preferredUp)
     state.camera.up = glm::normalize(glm::cross(state.camera.right, state.camera.front));
 }
 
-// 统一维护轨道相机约束：FOV 固定、距离裁剪、朝向星球中心
 void updateOrbitCamera(ApplicationState& state, const PlanetRenderSettings& settings)
 {
     state.camera.fieldOfView = kLockedCameraFov;
@@ -255,7 +345,6 @@ void updateOrbitCamera(ApplicationState& state, const PlanetRenderSettings& sett
     updateOrbitMetadata(state);
 }
 
-// 从已有相机位置恢复轨道相机元数据，常用于加载 session 或生成完成后重定位
 void setOrbitFromCameraPosition(ApplicationState& state, const PlanetRenderSettings& settings)
 {
     state.cameraOrbitDistance = glm::clamp(
@@ -274,7 +363,6 @@ void setOrbitFromCameraPosition(ApplicationState& state, const PlanetRenderSetti
 
 using SessionValues = std::unordered_map<std::string, std::string>;
 
-// session 文件使用简key=value 格式，下面这helper 负责读写和类型转换
 std::string trimString(const std::string& value)
 {
     const std::size_t first = value.find_first_not_of(" \t\r\n");
@@ -410,7 +498,6 @@ bool readVec3(const SessionValues& values, const std::string& key, glm::vec3& ou
     return false;
 }
 
-// 用宏列出所有需要保加载的设置字段，避免 writeSettings/readSettings 漏字段
 #define PLANET_SETTING_FLOAT_FIELDS(X) \
     X(planetRadius) \
     X(seaLevelOffset) \
@@ -451,7 +538,6 @@ bool readVec3(const SessionValues& values, const std::string& key, glm::vec3& ou
     X(cloudSharpness) \
     X(cloudScale) \
     X(cloudSpeed) \
-    X(cloudRotationSpeed) \
     X(cloudHeight) \
     X(cloudThickness) \
     X(cloudDensity) \
@@ -514,6 +600,27 @@ bool readVec3(const SessionValues& values, const std::string& key, glm::vec3& ou
     X(terrainRockColor) \
     X(terrainBeachColor) \
     X(terrainSnowColor) \
+    X(terrainPaletteLowGrass) \
+    X(terrainPaletteMeadow) \
+    X(terrainPaletteForestDark) \
+    X(terrainPaletteForestWarm) \
+    X(terrainPaletteSavanna) \
+    X(terrainPaletteDrySoil) \
+    X(terrainPaletteOchre) \
+    X(terrainPaletteWetGreen) \
+    X(terrainPaletteTundra) \
+    X(terrainPaletteBrownSlope) \
+    X(terrainPaletteRedSoil) \
+    X(terrainPaletteRockWarm) \
+    X(terrainPaletteRockCool) \
+    X(terrainPaletteRockDark) \
+    X(terrainPalettePaleStone) \
+    X(terrainPaletteSnow) \
+    X(terrainPaletteSnowShadow) \
+    X(terrainPaletteBeach) \
+    X(terrainPaletteRiverBed) \
+    X(terrainPaletteShallowSeabed) \
+    X(terrainPaletteDeepSeabed) \
     X(riverColor) \
     X(skyColor) \
     X(atmosphereRayleighColor) \
@@ -542,7 +649,6 @@ void writeSettings(std::ostream& out, const std::string& prefix, const PlanetRen
     writeInt(out, sessionKey(prefix, "wireMode"), static_cast<int>(settings.wireMode));
 }
 
-// 读取 session 后会对部分字段做 clamp，防止旧配置或手改文件产生非法范围
 void readSettings(const SessionValues& values, const std::string& prefix, PlanetRenderSettings& settings)
 {
 #define READ_FLOAT_FIELD(name) readFloat(values, sessionKey(prefix, #name), settings.name);
@@ -580,7 +686,6 @@ void readSettings(const SessionValues& values, const std::string& prefix, Planet
     settings.oceanRefractionFrameStride = glm::max(settings.oceanRefractionFrameStride, 1);
 }
 
-// 保存 UI/session 参数；如果当前已有生成数据，同时保存一份二进制缓存
 bool saveSession(ApplicationState& state, const char* path = kSessionFilePath)
 {
     if (state.workflowStage == WorkflowStage::Render) {
@@ -638,8 +743,6 @@ bool saveSession(ApplicationState& state, const char* path = kSessionFilePath)
     return true;
 }
 
-// 读取 session，并尝试恢复上次生成的星球缓存
-// 缓存加载成功后会立即上传renderer，用户可以直接进Render 阶段
 bool loadSession(ApplicationState& state, const char* path = kSessionFilePath, bool reportMissing = true)
 {
     SessionValues values;
@@ -788,12 +891,157 @@ void drawFeatureBodyEnd()
     ImGui::Unindent(8.0f);
 }
 
+bool sliderInputFloat(const char* label,
+                      float& value,
+                      float minValue,
+                      float maxValue,
+                      const char* format = "%.2f",
+                      float inputStep = 0.0f)
+{
+    ImGui::PushID(label);
+    ImGui::TextUnformatted(label);
+    const float inputWidth = 86.0f;
+    const float spacing = ImGui::GetStyle().ItemSpacing.x;
+    const float sliderWidth = glm::max(ImGui::GetContentRegionAvail().x - inputWidth - spacing, 80.0f);
+
+    bool changed = false;
+    ImGui::SetNextItemWidth(sliderWidth);
+    changed |= ImGui::SliderFloat("##slider", &value, minValue, maxValue, format);
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(inputWidth);
+    changed |= ImGui::InputFloat("##input", &value, inputStep, inputStep * 10.0f, format);
+    if (changed) {
+        value = glm::clamp(value, minValue, maxValue);
+    }
+    ImGui::PopID();
+    return changed;
+}
+
+bool sliderInputInt(const char* label, int& value, int minValue, int maxValue)
+{
+    ImGui::PushID(label);
+    ImGui::TextUnformatted(label);
+    const float inputWidth = 86.0f;
+    const float spacing = ImGui::GetStyle().ItemSpacing.x;
+    const float sliderWidth = glm::max(ImGui::GetContentRegionAvail().x - inputWidth - spacing, 80.0f);
+
+    bool changed = false;
+    ImGui::SetNextItemWidth(sliderWidth);
+    changed |= ImGui::SliderInt("##slider", &value, minValue, maxValue);
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(inputWidth);
+    changed |= ImGui::InputInt("##input", &value, 1, 16);
+    if (changed) {
+        value = glm::clamp(value, minValue, maxValue);
+    }
+    ImGui::PopID();
+    return changed;
+}
+
+ImVec4 colorSwatchValue(const glm::vec3& color)
+{
+    return ImVec4(
+        glm::clamp(color.r, 0.0f, 1.0f),
+        glm::clamp(color.g, 0.0f, 1.0f),
+        glm::clamp(color.b, 0.0f, 1.0f),
+        1.0f
+    );
+}
+
+void drawReadOnlyColorSwatch(const char* label, const glm::vec3& color)
+{
+    ImGui::PushID(label);
+    ImGui::ColorButton("##swatch", colorSwatchValue(color), ImGuiColorEditFlags_NoTooltip, ImVec2(28.0f, 18.0f));
+    ImGui::SameLine();
+    ImGui::TextUnformatted(label);
+    ImGui::PopID();
+}
+
+void drawPaletteColorControl(const char* label, glm::vec3& color)
+{
+    ImGui::PushID(label);
+    ImGui::ColorButton("##swatch", colorSwatchValue(color), ImGuiColorEditFlags_NoTooltip, ImVec2(28.0f, 18.0f));
+    if (ImGui::IsItemClicked()) {
+        ImGui::OpenPopup("picker");
+    }
+    ImGui::SameLine();
+    ImGui::TextUnformatted(label);
+    if (ImGui::BeginPopup("picker")) {
+        ImGui::TextUnformatted(label);
+        ImGui::Separator();
+        ImGui::ColorPicker3("##picker", &color.x, ImGuiColorEditFlags_Float | ImGuiColorEditFlags_DisplayRGB);
+        ImGui::SetNextItemWidth(220.0f);
+        ImGui::InputFloat3("RGB", &color.x, "%.3f");
+        color = glm::clamp(color, glm::vec3(0.0f), glm::vec3(2.0f));
+        ImGui::EndPopup();
+    }
+    ImGui::PopID();
+}
+
+void drawEditableColorGrid(const std::initializer_list<std::pair<const char*, glm::vec3*>>& colors)
+{
+    const float columnWidth = glm::max(ImGui::GetContentRegionAvail().x * 0.5f, 150.0f);
+    int index = 0;
+    for (const auto& entry : colors) {
+        if ((index % 2) == 1) {
+            ImGui::SameLine(columnWidth);
+        }
+        drawPaletteColorControl(entry.first, *entry.second);
+        ++index;
+    }
+}
+
+void drawTerrainSurfaceColorControls(PlanetRenderSettings& settings)
+{
+    ImGui::Text("Terrain Style Palette");
+    ImGui::TextDisabled("Render-time shader colors. Click a swatch to edit; no Generate Planet needed.");
+
+    if (ImGui::TreeNodeEx("Editable Palette", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::SeparatorText("Vegetation");
+        drawEditableColorGrid({
+            {"Low Grass", &settings.terrainPaletteLowGrass},
+            {"Meadow", &settings.terrainPaletteMeadow},
+            {"Forest Dark", &settings.terrainPaletteForestDark},
+            {"Forest Warm", &settings.terrainPaletteForestWarm},
+            {"Wet Green", &settings.terrainPaletteWetGreen},
+            {"Tundra", &settings.terrainPaletteTundra}
+        });
+
+        ImGui::SeparatorText("Dry Ground");
+        drawEditableColorGrid({
+            {"Savanna", &settings.terrainPaletteSavanna},
+            {"Dry Soil", &settings.terrainPaletteDrySoil},
+            {"Ochre", &settings.terrainPaletteOchre},
+            {"Brown Slope", &settings.terrainPaletteBrownSlope},
+            {"Red Soil", &settings.terrainPaletteRedSoil},
+            {"Beach", &settings.terrainPaletteBeach}
+        });
+
+        ImGui::SeparatorText("Mountain");
+        drawEditableColorGrid({
+            {"Rock Warm", &settings.terrainPaletteRockWarm},
+            {"Rock Cool", &settings.terrainPaletteRockCool},
+            {"Rock Dark", &settings.terrainPaletteRockDark},
+            {"Pale Stone", &settings.terrainPalettePaleStone},
+            {"Snow", &settings.terrainPaletteSnow},
+            {"Snow Shadow", &settings.terrainPaletteSnowShadow}
+        });
+
+        ImGui::SeparatorText("Wet Ground");
+        drawEditableColorGrid({
+            {"River Bed", &settings.terrainPaletteRiverBed},
+            {"Shallow Seabed", &settings.terrainPaletteShallowSeabed},
+            {"Deep Seabed", &settings.terrainPaletteDeepSeabed}
+        });
+        ImGui::TreePop();
+    }
+}
+
 float planetDistanceScale(float planetRadius)
 {
     return glm::max(planetRadius / kReferencePlanetRadius, 0.25f);
 }
 
-// 生成模块名只用于 UI 进度显示，顺序必须与 GenerationModule 枚举一致
 const char* generationModuleLabel(int moduleIndex)
 {
     static const char* kLabels[kGenerationModuleCount] = {
@@ -815,7 +1063,6 @@ const char* generationModuleLabel(int moduleIndex)
 
 void startPlanetGeneration(ApplicationState& state)
 {
-    // 如果已有后台生成任务还没完成，忽略重复点击
     if (state.generationFuture.valid()
         && state.generationFuture.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
         return;
@@ -840,7 +1087,6 @@ void startPlanetGeneration(ApplicationState& state)
     state.pendingGenerationSettings = generatedSettings;
     const int faceResolution = state.generationFaceResolution;
     const int clampedResolution = glm::clamp(faceResolution, kGenerationFaceResolutionMin, kGenerationFaceResolutionMax);
-    // 主线程先估算各模块总步数，UI 可以在后台任务第一次回调前显示合理进度
     const int erosionIterations = glm::clamp(generatedSettings.erosionIterations, 0, 256);
     const float erosionStrength = glm::max(generatedSettings.erosionStrength, 0.0f);
     const float thermalStrength = glm::max(generatedSettings.erosionThermalStrength, 0.0f);
@@ -873,7 +1119,6 @@ void startPlanetGeneration(ApplicationState& state)
     auto* moduleTotalSteps = &state.generationModuleTotalSteps;
     std::mutex* statusMutex = &state.generationStatusMutex;
     std::string* statusText = &state.generationStatusText;
-    // 后台线程只负CPU 数据生成，不OpenGL 资源；GPU 上传留给主线程完成
     state.generationFuture = std::async(
         std::launch::async,
         [generatedSettings,
@@ -892,7 +1137,6 @@ void startPlanetGeneration(ApplicationState& state)
                 [completedSteps, totalSteps, activeModule, moduleCompletedSteps, moduleTotalSteps, statusMutex, statusText](
                     const PlanetProceduralData::GenerationProgress& progress
                 ) {
-                    // 进度字段atomic 写入，状态文本用 mutex 保护
                     const int moduleIndex = glm::clamp(static_cast<int>(progress.module), 0, kGenerationModuleCount - 1);
                     completedSteps->store(progress.completedSteps, std::memory_order_relaxed);
                     totalSteps->store(std::max(progress.totalSteps, 1), std::memory_order_relaxed);
@@ -925,7 +1169,6 @@ void finishPlanetGeneration(ApplicationState& state, std::unique_ptr<PlanetProce
     const PlanetRenderSettings generatedSettings = state.pendingGenerationSettings;
     state.generatedPlanet = std::move(*generatedPlanet);
     state.renderer.settings() = generatedSettings;
-    // OpenGL 纹理上传必须发生在拥context 的主线程
     state.renderer.setProceduralData(state.generatedPlanet);
     state.renderSettings = generatedSettings;
     state.hasGeneratedPlanet = true;
@@ -936,7 +1179,6 @@ void finishPlanetGeneration(ApplicationState& state, std::unique_ptr<PlanetProce
     saveSession(state);
 }
 
-// 从渲染阶段回到生成参数界面时，把当前 renderer 设置同步UI
 void returnToProceduralSetup(ApplicationState& state)
 {
     if (state.hasGeneratedPlanet) {
@@ -961,7 +1203,6 @@ void onMouseScrolled(GLFWwindow* window, double, double yOffset)
     }
 
     const PlanetRenderSettings& settings = state->renderer.settings();
-    // 滚轮不是FOV，而是沿轨道半径推拉远，保持星球观察视角稳定
     const float scrollStep = glm::max(state->cameraOrbitDistance * 0.09f, settings.planetRadius * 0.035f);
     state->cameraOrbitDistance -= static_cast<float>(yOffset) * scrollStep;
     updateOrbitCamera(*state, settings);
@@ -1048,7 +1289,6 @@ void onKeyPressed(GLFWwindow* window, int key, int, int action, int modifiers)
 
     PlanetRenderSettings& settings = state->renderer.settings();
 
-    // 快捷键主要循debug/render mode，具体连续参数仍ImGui 控件调整
     if (key == GLFW_KEY_ESCAPE) glfwSetWindowShouldClose(window, true);
     if (key == GLFW_KEY_1) {
         const int nextMode = (static_cast<int>(settings.renderMode) + 1) % 5;
@@ -1141,7 +1381,6 @@ void drawProceduralPanel(ApplicationState& state)
     ImGui::Separator();
 
     if (state.workflowStage == WorkflowStage::Generating) {
-        // 生成期间只显示进度，不允许同时修改输入参数
         const int completedSteps = state.generationCompletedSteps.load(std::memory_order_relaxed);
         const int totalSteps = std::max(state.generationTotalSteps.load(std::memory_order_relaxed), 1);
         const float progress = glm::clamp(
@@ -1179,77 +1418,115 @@ void drawProceduralPanel(ApplicationState& state)
     }
 
     const float proceduralDistanceScale = planetDistanceScale(settings.planetRadius);
-    ImGui::Text("Feature Panels");
-    drawFeatureToggleRow(state, "Terrain Bake", state.showProceduralTerrainFeature, "Erosion Bake", state.showProceduralErosionFeature);
-    if (ImGui::Button("Preset: Rugged Rivers", ImVec2(-1.0f, 28.0f))) {
-        settings.terrainHeightScale = 34.0f * proceduralDistanceScale;
-        settings.terrainNoiseScale = 0.78f;
-        settings.mountainMaskStrength = 1.90f;
-        settings.mountainMaskScale = 3.35f;
-        settings.mountainRidgeSharpness = 3.80f;
-        settings.erosionIterations = 128;
-        settings.erosionStrength = 0.075f;
-        settings.erosionSediment = 0.72f;
-        settings.erosionThermalStrength = 0.018f;
-        settings.terrainMaterialNoiseStrength = 0.0f;
-        settings.riverVisibility = 1.70f;
-        settings.riverWidth = 0.72f;
-        settings.riverShine = 1.05f;
-        settings.riverRefractionStrength = 0.55f;
+
+    ImGui::Text("Presets");
+    const float presetSpacing = ImGui::GetStyle().ItemSpacing.x;
+    const float presetButtonWidth = (ImGui::GetContentRegionAvail().x - presetSpacing) * 0.5f;
+    if (ImGui::Button("Stage 1 Current", ImVec2(presetButtonWidth, 28.0f))) {
+        applyStageOneProceduralPreset(settings);
     }
+    ImGui::SameLine();
+    if (ImGui::Button("Rugged Rivers", ImVec2(-1.0f, 28.0f))) {
+        applyRuggedRiversPreset(settings);
+    }
+    ImGui::TextDisabled("Most controls require Generate Planet to rebake the offline heightfield.");
     ImGui::Separator();
-    // 下面是会影响 CPU 烘焙的参数：地形高度、山脉、侵蚀、材质权重等
-    if (state.showProceduralTerrainFeature) {
+
+    if (ImGui::CollapsingHeader("Project", ImGuiTreeNodeFlags_DefaultOpen)) {
         drawFeatureBodyBegin();
-        ImGui::Text("Terrain Bake");
-        ImGui::SliderFloat("Planet Radius", &settings.planetRadius, 50.0f, 5000.0f, "%.1f");
-        ImGui::SliderFloat("Sea Level", &settings.seaLevelOffset, -1.5f, 1.5f, "%.2f");
-        ImGui::SliderFloat("Height Scale", &settings.terrainHeightScale, 0.0f, 80.0f * proceduralDistanceScale, "%.2f");
-        ImGui::SliderFloat("Noise Scale", &settings.terrainNoiseScale, 0.2f, 10.0f, "%.2f");
-        ImGui::SliderFloat("Mountain Mask", &settings.mountainMaskStrength, 0.0f, 2.4f, "%.2f");
-        ImGui::SliderFloat("Mountain Scale", &settings.mountainMaskScale, 0.5f, 8.0f, "%.2f");
-        ImGui::SliderFloat("Ridge Sharpness", &settings.mountainRidgeSharpness, 1.0f, 6.0f, "%.2f");
-        ImGui::SliderInt("Face Resolution", &state.generationFaceResolution, kGenerationFaceResolutionMin, kGenerationFaceResolutionMax);
-        drawFeatureBodyEnd();
-    }
-    if (state.showProceduralErosionFeature) {
-        drawFeatureBodyBegin();
-        ImGui::Text("Erosion Bake");
-        ImGui::SliderInt("Iterations", &settings.erosionIterations, 0, 160);
-        ImGui::SliderFloat("Strength", &settings.erosionStrength, 0.0f, 0.14f, "%.3f");
-        ImGui::SliderFloat("Talus", &settings.erosionTalus, 0.005f, 0.12f, "%.3f");
-        ImGui::SliderFloat("Sediment", &settings.erosionSediment, 0.0f, 1.0f, "%.2f");
-        ImGui::SliderFloat("Thermal", &settings.erosionThermalStrength, 0.0f, 0.08f, "%.3f");
+        sliderInputInt("Face Resolution", state.generationFaceResolution, kGenerationFaceResolutionMin, kGenerationFaceResolutionMax);
+        ImGui::TextDisabled("Bake size: %d x %d x 6 faces", state.generationFaceResolution, state.generationFaceResolution);
         drawFeatureBodyEnd();
     }
 
-    if (state.showProceduralMaterialFeature) {
+    if (ImGui::CollapsingHeader("Planet Setup", ImGuiTreeNodeFlags_DefaultOpen)) {
         drawFeatureBodyBegin();
-        ImGui::Text("Terrain Materials");
-        ImGui::ColorEdit3("Lowland Color", &settings.terrainLowlandColor.x);
-        ImGui::ColorEdit3("Forest Color", &settings.terrainForestColor.x);
-        ImGui::ColorEdit3("Desert Color", &settings.terrainDesertColor.x);
-        ImGui::ColorEdit3("Rock Color", &settings.terrainRockColor.x);
-        ImGui::ColorEdit3("Beach Color", &settings.terrainBeachColor.x);
-        ImGui::ColorEdit3("Snow Color", &settings.terrainSnowColor.x);
-        ImGui::SliderFloat("Beach Width", &settings.terrainBeachWidth, 0.005f, 0.20f, "%.3f");
-        ImGui::SliderFloat("Rock Slope Start", &settings.terrainRockSlopeStart, 0.0f, 0.8f, "%.2f");
-        ImGui::SliderFloat("Rock Slope End", &settings.terrainRockSlopeEnd, settings.terrainRockSlopeStart + 0.01f, 1.0f, "%.2f");
-        ImGui::SliderFloat("Snow Start", &settings.terrainSnowStart, 0.2f, 1.0f, "%.2f");
-        ImGui::SliderFloat("Snow End", &settings.terrainSnowEnd, settings.terrainSnowStart + 0.01f, 1.2f, "%.2f");
-        ImGui::SliderFloat("Material Noise", &settings.terrainMaterialNoiseStrength, 0.0f, 0.4f, "%.2f");
+        sliderInputFloat("Planet Radius", settings.planetRadius, 50.0f, 5000.0f, "%.1f", 1.0f);
+        sliderInputFloat("Sea Level", settings.seaLevelOffset, -1.5f, 1.5f, "%.3f", 0.01f);
         drawFeatureBodyEnd();
     }
 
-    ImGui::Spacing();
-    if (state.generatedPlanet.isGenerated()) {
-        ImGui::Text("Last bake: %d x %d x 6", state.generatedPlanet.resolution(), state.generatedPlanet.resolution());
-        ImGui::Text("Height: %.3f to %.3f", state.generatedPlanet.minHeight(), state.generatedPlanet.maxHeight());
-        ImGui::Text("Water: %.1f%% | Shore: %.1f%%",
-                    state.generatedPlanet.waterCoverage() * 100.0f,
-                    state.generatedPlanet.shoreCoverage() * 100.0f);
-        ImGui::Separator();
+    if (ImGui::CollapsingHeader("Continents & Relief", ImGuiTreeNodeFlags_DefaultOpen)) {
+        drawFeatureBodyBegin();
+        sliderInputFloat("Height Scale", settings.terrainHeightScale, 0.0f, 120.0f * proceduralDistanceScale, "%.2f", 0.1f);
+        sliderInputFloat("Base Noise Scale", settings.terrainNoiseScale, 0.05f, 10.0f, "%.3f", 0.01f);
+        sliderInputFloat("Runtime Mountain Preview", settings.runtimeMountainScale, 0.0f, 4.0f, "%.2f", 0.01f);
+        ImGui::TextDisabled("Runtime preview affects render displacement; Generate Planet rebakes offline terrain fields.");
+        drawFeatureBodyEnd();
     }
+
+    if (ImGui::CollapsingHeader("Mountains", ImGuiTreeNodeFlags_DefaultOpen)) {
+        drawFeatureBodyBegin();
+        sliderInputFloat("Mountain Mask", settings.mountainMaskStrength, 0.0f, 3.0f, "%.2f", 0.01f);
+        sliderInputFloat("Mountain Scale", settings.mountainMaskScale, 0.25f, 12.0f, "%.2f", 0.01f);
+        sliderInputFloat("Ridge Sharpness", settings.mountainRidgeSharpness, 0.5f, 8.0f, "%.2f", 0.01f);
+        drawFeatureBodyEnd();
+    }
+
+    if (ImGui::CollapsingHeader("Erosion & Sediment", ImGuiTreeNodeFlags_DefaultOpen)) {
+        drawFeatureBodyBegin();
+        sliderInputInt("Iterations", settings.erosionIterations, 0, 256);
+        sliderInputFloat("Hydraulic Strength", settings.erosionStrength, 0.0f, 0.18f, "%.3f", 0.001f);
+        sliderInputFloat("Talus", settings.erosionTalus, 0.001f, 0.14f, "%.3f", 0.001f);
+        sliderInputFloat("Sediment", settings.erosionSediment, 0.0f, 1.0f, "%.2f", 0.01f);
+        sliderInputFloat("Thermal Strength", settings.erosionThermalStrength, 0.0f, 0.10f, "%.3f", 0.001f);
+        drawFeatureBodyEnd();
+    }
+
+    if (ImGui::CollapsingHeader("Climate & Biomes")) {
+        drawFeatureBodyBegin();
+        ImGui::TextDisabled("Temperature, moisture, and biome weights are currently generated from latitude, coast distance, height, and noise.");
+        ImGui::TextDisabled("Detailed climate controls can be promoted here once those fields are parameterized.");
+        drawFeatureBodyEnd();
+    }
+
+    if (ImGui::CollapsingHeader("Surface Thresholds", ImGuiTreeNodeFlags_DefaultOpen)) {
+        drawFeatureBodyBegin();
+        ImGui::TextDisabled("These thresholds guide render classification and can be previewed immediately.");
+        ImGui::TextDisabled("Surface colors live in Render > Terrain Runtime.");
+        sliderInputFloat("Beach Width", settings.terrainBeachWidth, 0.005f, 0.25f, "%.3f", 0.001f);
+        sliderInputFloat("Rock Slope Start", settings.terrainRockSlopeStart, 0.0f, 0.90f, "%.2f", 0.01f);
+        settings.terrainRockSlopeEnd = glm::max(settings.terrainRockSlopeEnd, settings.terrainRockSlopeStart + 0.01f);
+        sliderInputFloat("Rock Slope End", settings.terrainRockSlopeEnd, settings.terrainRockSlopeStart + 0.01f, 1.0f, "%.2f", 0.01f);
+        sliderInputFloat("Snow Start", settings.terrainSnowStart, 0.0f, 1.0f, "%.2f", 0.01f);
+        settings.terrainSnowEnd = glm::max(settings.terrainSnowEnd, settings.terrainSnowStart + 0.01f);
+        sliderInputFloat("Snow End", settings.terrainSnowEnd, settings.terrainSnowStart + 0.01f, 1.2f, "%.2f", 0.01f);
+        sliderInputFloat("Material Noise Scale", settings.terrainMaterialNoiseScale, 0.001f, 0.20f, "%.3f", 0.001f);
+        sliderInputFloat("Material Noise Strength", settings.terrainMaterialNoiseStrength, 0.0f, 0.60f, "%.2f", 0.01f);
+        drawFeatureBodyEnd();
+    }
+
+    if (ImGui::CollapsingHeader("Hydrology / Channel Debug")) {
+        drawFeatureBodyBegin();
+        ImGui::Checkbox("Wet Channel Overlay", &settings.renderRivers);
+        ImGui::ColorEdit3("Wet Channel Color", &settings.riverColor.x);
+        sliderInputFloat("Channel Visibility", settings.riverVisibility, 0.0f, 2.5f, "%.2f", 0.01f);
+        sliderInputFloat("Channel Width", settings.riverWidth, 0.05f, 1.50f, "%.2f", 0.01f);
+        sliderInputFloat("Channel Shine", settings.riverShine, 0.0f, 2.0f, "%.2f", 0.01f);
+        sliderInputFloat("Channel Refraction", settings.riverRefractionStrength, 0.0f, 1.0f, "%.2f", 0.01f);
+        ImGui::TextDisabled("This is a wet erosion/channel mask, not final river geometry.");
+        drawFeatureBodyEnd();
+    }
+
+    if (ImGui::CollapsingHeader("Last Bake Summary", ImGuiTreeNodeFlags_DefaultOpen)) {
+        drawFeatureBodyBegin();
+        if (state.generatedPlanet.isGenerated()) {
+            ImGui::Text("Resolution: %d x %d x 6", state.generatedPlanet.resolution(), state.generatedPlanet.resolution());
+            ImGui::Text("Height: %.3f to %.3f", state.generatedPlanet.minHeight(), state.generatedPlanet.maxHeight());
+            ImGui::Text("Water: %.1f%% | Shore: %.1f%% | Max depth %.2f",
+                        state.generatedPlanet.waterCoverage() * 100.0f,
+                        state.generatedPlanet.shoreCoverage() * 100.0f,
+                        state.generatedPlanet.maxWaterDepth());
+            ImGui::Text("Chunks: %zu | Feature segments: %zu",
+                        state.generatedPlanet.terrainChunks().size(),
+                        state.generatedPlanet.terrainFeatureSegments().size());
+        } else {
+            ImGui::TextDisabled("No generated planet in this session yet.");
+        }
+        drawFeatureBodyEnd();
+    }
+
+    ImGui::Separator();
 
     if (ImGui::Button("Generate Planet", ImVec2(-1.0f, 32.0f))) {
         startPlanetGeneration(state);
@@ -1311,191 +1588,192 @@ void drawRenderPanel(ApplicationState& state)
                     state.generatedPlanet.maxWaterDepth());
     }
 
-    ImGui::Separator();
-    ImGui::Text("Render Features");
-    drawFeatureToggleRow(state, "Visibility", state.showVisibilityFeature, "Terrain Runtime", state.showTerrainRuntimeFeature);
-    drawFeatureToggleRow(state, "Rivers", state.showRiverFeature, "Atmosphere", state.showAtmosphereFeature);
-    drawFeatureToggleRow(state, "Ocean Color", state.showOceanColorFeature, "Ocean Waves", state.showOceanWaveFeature);
-    drawFeatureToggleRow(state, "Ocean Material", state.showOceanMaterialFeature, "Planar Targets", state.showOceanReflectionFeature);
-    if (!settings.renderOcean) {
-        ImGui::TextDisabled("Ocean-dependent effects are hidden while Ocean is off.");
-    }
+    ImGui::SeparatorText("Render Pipeline");
 
-    ImGui::Separator();
-    ImGui::Text("Utility Panels");
-    drawFeatureToggle(state, "Render Debug", state.showRenderModeFeature);
-    drawFeatureToggleRow(state, "Lighting", state.showLightingFeature, "Advanced Render", state.showAdvancedRenderFeature);
-    drawFeatureToggle(state, "Camera", state.showCameraFeature);
-    ImGui::Separator();
-
-    if (state.showRenderModeFeature) {
+    if (ImGui::CollapsingHeader("Frame & Visibility", ImGuiTreeNodeFlags_DefaultOpen)) {
         drawFeatureBodyBegin();
         drawRenderModeControls(settings);
-        drawFeatureBodyEnd();
-    }
-
-    if (state.showVisibilityFeature) {
-        drawFeatureBodyBegin();
-        ImGui::Text("Visibility");
+        ImGui::Separator();
         ImGui::Checkbox("Terrain", &settings.renderTerrain);
         ImGui::Checkbox("Ocean", &settings.renderOcean);
+        ImGui::Checkbox("Atmosphere", &settings.renderAtmosphere);
+        ImGui::Checkbox("Clouds", &settings.renderClouds);
+        ImGui::Checkbox("Wet Channel Overlay", &settings.renderRivers);
+        ImGui::ColorEdit3("Sky Clear Color", &settings.skyColor.x);
         drawFeatureBodyEnd();
     }
 
-    if (state.showTerrainRuntimeFeature) {
+    if (ImGui::CollapsingHeader("Terrain Surface", ImGuiTreeNodeFlags_DefaultOpen)) {
         drawFeatureBodyBegin();
-        ImGui::Text("Terrain Runtime");
         ImGui::Checkbox("Terrain Enabled", &settings.renderTerrain);
-        ImGui::TextDisabled("Immediate shader controls; bake-only terrain, biome, erosion need Generate Planet.");
-        ImGui::SliderFloat("Height Scale", &settings.terrainHeightScale, 0.0f, 120.0f * renderDistanceScale, "%.2f");
-        ImGui::SliderFloat("Mountain Scale", &settings.runtimeMountainScale, 0.0f, 4.0f, "%.2f");
-        ImGui::SliderFloat("Sea Level", &settings.seaLevelOffset, -1.5f, 1.5f, "%.2f");
-        ImGui::SliderFloat("Beach Width", &settings.terrainBeachWidth, 0.005f, 0.25f, "%.3f");
-        ImGui::SliderFloat("Rock Slope Start", &settings.terrainRockSlopeStart, 0.0f, 0.8f, "%.2f");
-        ImGui::SliderFloat("Rock Slope End", &settings.terrainRockSlopeEnd, settings.terrainRockSlopeStart + 0.01f, 1.0f, "%.2f");
-        ImGui::SliderFloat("Snow Start", &settings.terrainSnowStart, 0.2f, 1.0f, "%.2f");
-        ImGui::SliderFloat("Snow End", &settings.terrainSnowEnd, settings.terrainSnowStart + 0.01f, 1.2f, "%.2f");
-        ImGui::SliderFloat("Material Noise", &settings.terrainMaterialNoiseStrength, 0.0f, 0.4f, "%.2f");
+        ImGui::TextDisabled("Runtime shader controls. Geometry rebakes still happen on the procedural page.");
+        sliderInputFloat("Height Scale", settings.terrainHeightScale, 0.0f, 120.0f * renderDistanceScale, "%.2f", 0.1f);
+        sliderInputFloat("Mountain Preview Scale", settings.runtimeMountainScale, 0.0f, 4.0f, "%.2f", 0.01f);
+        sliderInputFloat("Sea Level", settings.seaLevelOffset, -1.5f, 1.5f, "%.3f", 0.01f);
+        ImGui::SeparatorText("Material Classification");
+        sliderInputFloat("Beach Width", settings.terrainBeachWidth, 0.005f, 0.25f, "%.3f", 0.001f);
+        sliderInputFloat("Rock Slope Start", settings.terrainRockSlopeStart, 0.0f, 0.8f, "%.2f", 0.01f);
+        settings.terrainRockSlopeEnd = glm::max(settings.terrainRockSlopeEnd, settings.terrainRockSlopeStart + 0.01f);
+        sliderInputFloat("Rock Slope End", settings.terrainRockSlopeEnd, settings.terrainRockSlopeStart + 0.01f, 1.0f, "%.2f", 0.01f);
+        sliderInputFloat("Snow Start", settings.terrainSnowStart, 0.2f, 1.0f, "%.2f", 0.01f);
+        settings.terrainSnowEnd = glm::max(settings.terrainSnowEnd, settings.terrainSnowStart + 0.01f);
+        sliderInputFloat("Snow End", settings.terrainSnowEnd, settings.terrainSnowStart + 0.01f, 1.2f, "%.2f", 0.01f);
+        sliderInputFloat("Material Noise Scale", settings.terrainMaterialNoiseScale, 0.001f, 0.20f, "%.3f", 0.001f);
+        sliderInputFloat("Material Noise Strength", settings.terrainMaterialNoiseStrength, 0.0f, 0.60f, "%.2f", 0.01f);
+        ImGui::Separator();
+        drawTerrainSurfaceColorControls(settings);
         drawFeatureBodyEnd();
     }
 
-    if (state.showLightingFeature) {
+    if (ImGui::CollapsingHeader("Hydrology Debug")) {
         drawFeatureBodyBegin();
-        ImGui::Text("Lighting");
-        ImGui::ColorEdit3("Sky Color", &settings.skyColor.x);
-        ImGui::SliderFloat("Fog Density", &settings.fogDensity, 0.0f, 0.00003f, "%.6f");
+        ImGui::TextDisabled("Current channel controls shade erosion/wet masks, not final river geometry.");
+        ImGui::Checkbox("Wet Channel Overlay", &settings.renderRivers);
+        ImGui::ColorEdit3("Channel Color", &settings.riverColor.x);
+        sliderInputFloat("Channel Visibility", settings.riverVisibility, 0.0f, 2.5f, "%.2f", 0.01f);
+        sliderInputFloat("Channel Width", settings.riverWidth, 0.05f, 1.50f, "%.2f", 0.01f);
+        sliderInputFloat("Channel Shine", settings.riverShine, 0.0f, 2.0f, "%.2f", 0.01f);
+        sliderInputFloat("Channel Refraction", settings.riverRefractionStrength, 0.0f, 1.0f, "%.2f", 0.01f);
         drawFeatureBodyEnd();
     }
 
-    if (state.showAtmosphereFeature) {
+    if (ImGui::CollapsingHeader("Ocean", ImGuiTreeNodeFlags_DefaultOpen)) {
         drawFeatureBodyBegin();
-        ImGui::Text("Atmosphere");
+        ImGui::Checkbox("Ocean Enabled", &settings.renderOcean);
+        if (!settings.renderOcean) {
+            ImGui::TextDisabled("Ocean material, waves, and planar targets are skipped while Ocean is off.");
+        }
+
+        if (ImGui::TreeNodeEx("Color & Transparency", ImGuiTreeNodeFlags_DefaultOpen)) {
+            sliderInputFloat("Opacity Limit", settings.oceanAlpha, 0.05f, 1.0f, "%.2f", 0.01f);
+            sliderInputFloat("Shallow Opacity", settings.oceanShallowAlpha, 0.0f, 1.0f, "%.2f", 0.01f);
+            sliderInputFloat("Deep Opacity", settings.oceanDeepAlpha, 0.0f, 1.0f, "%.2f", 0.01f);
+            sliderInputFloat("Tint Strength", settings.oceanTintStrength, 0.0f, 1.0f, "%.2f", 0.01f);
+            ImGui::ColorEdit3("Shallow Color", &settings.oceanShallowColor.x);
+            ImGui::ColorEdit3("Deep Color", &settings.oceanDeepColor.x);
+            ImGui::ColorEdit3("SSS Color", &settings.oceanSSSColor.x);
+            ImGui::TreePop();
+        }
+
+        if (ImGui::TreeNodeEx("Material", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::Checkbox("Material Enabled", &settings.renderOceanMaterial);
+            sliderInputFloat("Fresnel", settings.oceanFresnelStrength, 0.1f, 3.0f, "%.2f", 0.01f);
+            sliderInputFloat("Refraction Distortion", settings.oceanDistortionStrength, 0.0f, 0.08f, "%.3f", 0.001f);
+            sliderInputFloat("Depth Blend", settings.oceanDepthRange, 0.5f, 40.0f, "%.2f", 0.1f);
+            sliderInputFloat("Shallow Depth", settings.oceanShallowDepthRange, 0.02f, 4.0f, "%.2f", 0.01f);
+            sliderInputFloat("Depth Scale", settings.oceanDepthScale, 0.5f, 20.0f, "%.2f", 0.1f);
+            sliderInputFloat("Specular Strength", settings.oceanSpecularStrength, 0.0f, 1.5f, "%.2f", 0.01f);
+            sliderInputFloat("Specular Sharpness", settings.oceanSpecularSharpness, 0.5f, 4.0f, "%.2f", 0.01f);
+            sliderInputFloat("Water Roughness", settings.oceanRoughness, 0.02f, 0.35f, "%.3f", 0.001f);
+            sliderInputFloat("SSS Strength", settings.oceanSSSStrength, 0.0f, 0.8f, "%.2f", 0.01f);
+            sliderInputFloat("SSS Power", settings.oceanSSSPower, 1.0f, 8.0f, "%.1f", 0.1f);
+            sliderInputFloat("Shore Blend", settings.oceanShoreBlendWidth, 0.01f, 0.5f, "%.3f", 0.001f);
+            ImGui::TreePop();
+        }
+
+        if (ImGui::TreeNodeEx("Waves / FFT", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::Checkbox("Waves Enabled", &settings.renderOceanWaves);
+            sliderInputFloat("Wave Height", settings.oceanWaveAmplitude, 0.0f, 0.80f, "%.3f", 0.001f);
+            sliderInputFloat("Choppiness", settings.oceanChoppiness, 0.0f, 0.80f, "%.3f", 0.001f);
+            sliderInputFloat("Wave Tile Scale", settings.oceanWaveTileScale, 4.0f, 28.0f, "%.1f", 0.1f);
+            sliderInputFloat("FFT Normal", settings.oceanWaveNormalStrength, 0.0f, 1.0f, "%.2f", 0.01f);
+            sliderInputInt("FFT Cascades", settings.oceanFftCascadeCount, 1, 3);
+            sliderInputInt("FFT Frame Stride", settings.oceanFftFrameStride, 1, 8);
+            sliderInputFloat("Detail Normal", settings.oceanDetailNormalStrength, 0.0f, 0.8f, "%.2f", 0.01f);
+            sliderInputFloat("Detail Scale", settings.oceanDetailNormalScale, 4.0f, 96.0f, "%.1f", 0.1f);
+            sliderInputFloat("Detail Fade", settings.oceanDetailFadeDistance, 40.0f, 1200.0f * renderDistanceScale, "%.1f", 1.0f);
+            ImGui::TreePop();
+        }
+
+        if (ImGui::TreeNodeEx("Reflection / Refraction Targets")) {
+            ImGui::TextDisabled("Planar render targets used by ocean reflection/refraction.");
+            ImGui::Checkbox("Planar Targets Enabled", &settings.renderOceanReflectionRefraction);
+            ImGui::Checkbox("Reflection", &settings.renderOceanReflection);
+            ImGui::Checkbox("Refraction", &settings.renderOceanRefraction);
+            sliderInputFloat("Target Scale", settings.oceanReflectionResolutionScale, 0.25f, 1.0f, "%.2f", 0.01f);
+            sliderInputInt("Reflection Stride", settings.oceanReflectionFrameStride, 1, 8);
+            sliderInputInt("Refraction Stride", settings.oceanRefractionFrameStride, 1, 8);
+            ImGui::Checkbox("Auto Distance LOD", &settings.oceanAutoDistanceLod);
+            sliderInputFloat("Reflection Max Alt", settings.oceanReflectionMaxAltitude, 40.0f, 2000.0f * renderDistanceScale, "%.1f", 1.0f);
+            sliderInputFloat("Refraction Max Alt", settings.oceanRefractionMaxAltitude, 10.0f, 800.0f * renderDistanceScale, "%.1f", 1.0f);
+            ImGui::TreePop();
+        }
+        drawFeatureBodyEnd();
+    }
+
+    if (ImGui::CollapsingHeader("Atmosphere", ImGuiTreeNodeFlags_DefaultOpen)) {
+        drawFeatureBodyBegin();
         ImGui::Checkbox("Atmosphere Enabled", &settings.renderAtmosphere);
-        ImGui::SliderFloat("Atmosphere Height", &settings.atmosphereHeight, 1.0f, 120.0f * renderDistanceScale, "%.1f");
-        ImGui::SliderFloat("Atmosphere Density", &settings.atmosphereDensity, 0.0f, 3.0f, "%.2f");
-        ImGui::SliderFloat("Rayleigh", &settings.atmosphereRayleighStrength, 0.0f, 4.0f, "%.2f");
-        ImGui::SliderFloat("Mie", &settings.atmosphereMieStrength, 0.0f, 2.0f, "%.2f");
-        ImGui::SliderFloat("Mie G", &settings.atmosphereMieAnisotropy, 0.0f, 0.95f, "%.2f");
-        ImGui::SliderFloat("Atmosphere Exposure", &settings.atmosphereExposure, 0.1f, 4.0f, "%.2f");
+        ImGui::TextDisabled("LUT-backed aerial perspective. Scattering changes rebuild LUTs.");
+        sliderInputFloat("Atmosphere Height", settings.atmosphereHeight, 1.0f, 120.0f * renderDistanceScale, "%.1f", 0.5f);
+        sliderInputFloat("Density", settings.atmosphereDensity, 0.0f, 3.0f, "%.2f", 0.01f);
+        sliderInputFloat("Rayleigh", settings.atmosphereRayleighStrength, 0.0f, 4.0f, "%.2f", 0.01f);
+        sliderInputFloat("Mie", settings.atmosphereMieStrength, 0.0f, 2.0f, "%.2f", 0.01f);
+        sliderInputFloat("Mie G", settings.atmosphereMieAnisotropy, 0.0f, 0.95f, "%.2f", 0.01f);
+        sliderInputFloat("Exposure", settings.atmosphereExposure, 0.1f, 4.0f, "%.2f", 0.01f);
         ImGui::ColorEdit3("Rayleigh Color", &settings.atmosphereRayleighColor.x);
         ImGui::ColorEdit3("Mie Color", &settings.atmosphereMieColor.x);
-        ImGui::Separator();
+        sliderInputFloat("Fog Density", settings.fogDensity, 0.0f, 0.00003f, "%.6f", 0.000001f);
+        drawFeatureBodyEnd();
+    }
+
+    if (ImGui::CollapsingHeader("Clouds", ImGuiTreeNodeFlags_DefaultOpen)) {
+        drawFeatureBodyBegin();
         ImGui::Checkbox("Clouds Enabled", &settings.renderClouds);
-        ImGui::SliderFloat("Cloud Coverage", &settings.cloudCoverage, 0.0f, 1.0f, "%.2f");
-        ImGui::SliderFloat("Cloud Sharpness", &settings.cloudSharpness, 0.4f, 3.0f, "%.2f");
-        ImGui::SliderFloat("Cloud Scale", &settings.cloudScale, 1.0f, 12.0f, "%.2f");
-        ImGui::SliderFloat("Cloud Speed", &settings.cloudSpeed, -0.08f, 0.08f, "%.3f");
-        ImGui::SliderFloat("Cloud Spin", &settings.cloudRotationSpeed, -20.0f, 20.0f, "%.2f");
-        ImGui::SliderFloat("Cloud Height", &settings.cloudHeight, 1.0f, glm::max(settings.atmosphereHeight - 0.5f, 1.0f), "%.1f");
-        ImGui::SliderFloat("Cloud Thickness", &settings.cloudThickness, 0.5f, glm::max(settings.atmosphereHeight - 0.5f, 0.5f), "%.1f");
-        ImGui::SliderFloat("Cloud Density", &settings.cloudDensity, 0.15f, 3.0f, "%.2f");
-        ImGui::SliderFloat("Cloud Shadow", &settings.cloudShadowStrength, 0.0f, 1.5f, "%.2f");
-        ImGui::SliderInt("Cloud Steps", &settings.cloudStepCount, 4, 32);
-        ImGui::SliderInt("Cloud Light Steps", &settings.cloudLightStepCount, 1, 8);
-        ImGui::SliderFloat("Cloud Opacity", &settings.cloudOpacity, 0.0f, 1.0f, "%.2f");
+        ImGui::TextDisabled("Clouds are rendered in the atmosphere pass but controlled separately.");
+        ImGui::SeparatorText("Shape");
+        sliderInputFloat("Coverage", settings.cloudCoverage, 0.0f, 1.0f, "%.2f", 0.01f);
+        sliderInputFloat("Sharpness", settings.cloudSharpness, 0.4f, 3.0f, "%.2f", 0.01f);
+        sliderInputFloat("Scale", settings.cloudScale, 0.8f, 12.0f, "%.2f", 0.01f);
+        sliderInputFloat("Speed", settings.cloudSpeed, -0.08f, 0.08f, "%.3f", 0.001f);
+        ImGui::SeparatorText("Volume");
+        sliderInputFloat("Height", settings.cloudHeight, 1.0f, glm::max(settings.atmosphereHeight - 0.5f, 1.0f), "%.1f", 0.5f);
+        sliderInputFloat("Thickness", settings.cloudThickness, 0.5f, glm::max(settings.atmosphereHeight - 0.5f, 0.5f), "%.1f", 0.5f);
+        sliderInputFloat("Density", settings.cloudDensity, 0.15f, 3.0f, "%.2f", 0.01f);
+        sliderInputFloat("Shadow", settings.cloudShadowStrength, 0.0f, 1.5f, "%.2f", 0.01f);
+        sliderInputFloat("Opacity", settings.cloudOpacity, 0.0f, 1.0f, "%.2f", 0.01f);
         ImGui::ColorEdit3("Cloud Color", &settings.cloudColor.x);
+        ImGui::SeparatorText("Quality");
+        ImGui::TextDisabled("Approx sample cost: %d view x %d light",
+                            glm::clamp(settings.cloudStepCount, 4, 32),
+                            glm::clamp(settings.cloudLightStepCount, 1, 8));
+        sliderInputInt("View Steps", settings.cloudStepCount, 4, 32);
+        sliderInputInt("Light Steps", settings.cloudLightStepCount, 1, 8);
         drawFeatureBodyEnd();
     }
 
-    if (state.showRiverFeature) {
+    if (ImGui::CollapsingHeader("Debug & Overlays")) {
         drawFeatureBodyBegin();
-        ImGui::Text("Rivers");
-        ImGui::Checkbox("Terrain Enabled", &settings.renderTerrain);
-        ImGui::Checkbox("Rivers Enabled", &settings.renderRivers);
-        ImGui::ColorEdit3("River Color", &settings.riverColor.x);
-        ImGui::SliderFloat("Visibility", &settings.riverVisibility, 0.0f, 2.0f, "%.2f");
-        ImGui::SliderFloat("Width", &settings.riverWidth, 0.08f, 1.20f, "%.2f");
-        ImGui::SliderFloat("Shine", &settings.riverShine, 0.0f, 1.5f, "%.2f");
-        ImGui::SliderFloat("Refraction", &settings.riverRefractionStrength, 0.0f, 1.0f, "%.2f");
+        drawRenderModeControls(settings);
+        ImGui::SeparatorText("Feature Overlay");
+        int overlayIndex = static_cast<int>(settings.featureOverlayMode);
+        if (ImGui::RadioButton("None##overlay", overlayIndex == 0)) settings.featureOverlayMode = TerrainFeatureOverlayMode::None;
+        ImGui::SameLine();
+        if (ImGui::RadioButton("All##overlay", overlayIndex == 1)) settings.featureOverlayMode = TerrainFeatureOverlayMode::All;
+        if (ImGui::RadioButton("Rivers##overlay", overlayIndex == 2)) settings.featureOverlayMode = TerrainFeatureOverlayMode::Rivers;
+        ImGui::SameLine();
+        if (ImGui::RadioButton("Coast##overlay", overlayIndex == 3)) settings.featureOverlayMode = TerrainFeatureOverlayMode::Coast;
+        if (ImGui::RadioButton("Ridges##overlay", overlayIndex == 4)) settings.featureOverlayMode = TerrainFeatureOverlayMode::Ridges;
+        ImGui::SameLine();
+        if (ImGui::RadioButton("Erosion##overlay", overlayIndex == 5)) settings.featureOverlayMode = TerrainFeatureOverlayMode::Erosion;
+        sliderInputFloat("Coarse Grid Line", settings.coarseGridLineWidth, 0.2f, 5.0f, "%.2f", 0.01f);
         drawFeatureBodyEnd();
     }
 
-    if (state.showOceanColorFeature) {
+    if (ImGui::CollapsingHeader("Quality & Camera")) {
         drawFeatureBodyBegin();
-        ImGui::Text("Ocean Color");
-        ImGui::Checkbox("Ocean Enabled", &settings.renderOcean);
-        ImGui::SliderFloat("Opacity Limit", &settings.oceanAlpha, 0.05f, 1.0f, "%.2f");
-        ImGui::ColorEdit3("Shallow Color", &settings.oceanShallowColor.x);
-        ImGui::ColorEdit3("Deep Color", &settings.oceanDeepColor.x);
-        ImGui::ColorEdit3("SSS Color", &settings.oceanSSSColor.x);
-        drawFeatureBodyEnd();
-    }
-
-    if (state.showOceanWaveFeature) {
-        drawFeatureBodyBegin();
-        ImGui::Text("Ocean Waves");
-        ImGui::Checkbox("Ocean Enabled", &settings.renderOcean);
-        ImGui::Checkbox("Ocean Waves Enabled", &settings.renderOceanWaves);
-        ImGui::SliderFloat("Wave Height", &settings.oceanWaveAmplitude, 0.0f, 0.80f, "%.3f");
-        ImGui::SliderFloat("Choppiness", &settings.oceanChoppiness, 0.0f, 0.80f, "%.3f");
-        ImGui::SliderFloat("Wave Tile Scale", &settings.oceanWaveTileScale, 4.0f, 28.0f, "%.1f");
-        ImGui::SliderFloat("FFT Normal", &settings.oceanWaveNormalStrength, 0.0f, 1.0f, "%.2f");
-        ImGui::SliderInt("FFT Cascades", &settings.oceanFftCascadeCount, 1, 3);
-        ImGui::SliderInt("FFT Frame Stride", &settings.oceanFftFrameStride, 1, 8);
-        drawFeatureBodyEnd();
-    }
-
-    if (state.showOceanMaterialFeature) {
-        drawFeatureBodyBegin();
-        ImGui::Text("Ocean Material");
-        ImGui::Checkbox("Ocean Enabled", &settings.renderOcean);
-        ImGui::Checkbox("Ocean Material Enabled", &settings.renderOceanMaterial);
-        ImGui::SliderFloat("Fresnel", &settings.oceanFresnelStrength, 0.1f, 3.0f, "%.2f");
-        ImGui::SliderFloat("Refraction Distortion", &settings.oceanDistortionStrength, 0.0f, 0.08f, "%.3f");
-        ImGui::SliderFloat("Depth Blend", &settings.oceanDepthRange, 0.5f, 40.0f, "%.2f");
-        ImGui::SliderFloat("Shallow Depth", &settings.oceanShallowDepthRange, 0.02f, 4.0f, "%.2f");
-        ImGui::SliderFloat("Depth Scale", &settings.oceanDepthScale, 0.5f, 20.0f, "%.2f");
-        ImGui::SliderFloat("Shallow Opacity", &settings.oceanShallowAlpha, 0.0f, 1.0f, "%.2f");
-        ImGui::SliderFloat("Deep Opacity", &settings.oceanDeepAlpha, 0.0f, 1.0f, "%.2f");
-        ImGui::SliderFloat("Tint Strength", &settings.oceanTintStrength, 0.0f, 1.0f, "%.2f");
-        ImGui::SliderFloat("Detail Normal", &settings.oceanDetailNormalStrength, 0.0f, 0.8f, "%.2f");
-        ImGui::SliderFloat("Detail Scale", &settings.oceanDetailNormalScale, 4.0f, 96.0f, "%.1f");
-        ImGui::SliderFloat("Detail Fade", &settings.oceanDetailFadeDistance, 40.0f, 1200.0f * renderDistanceScale, "%.1f");
-        ImGui::SliderFloat("Specular Strength", &settings.oceanSpecularStrength, 0.0f, 1.5f, "%.2f");
-        ImGui::SliderFloat("Specular Sharpness", &settings.oceanSpecularSharpness, 0.5f, 4.0f, "%.2f");
-        ImGui::SliderFloat("Water Roughness", &settings.oceanRoughness, 0.02f, 0.35f, "%.3f");
-        ImGui::SliderFloat("SSS Strength", &settings.oceanSSSStrength, 0.0f, 0.8f, "%.2f");
-        ImGui::SliderFloat("SSS Power", &settings.oceanSSSPower, 1.0f, 8.0f, "%.1f");
-        ImGui::SliderFloat("Shore Blend", &settings.oceanShoreBlendWidth, 0.01f, 0.5f, "%.3f");
-        drawFeatureBodyEnd();
-    }
-
-    if (state.showOceanReflectionFeature) {
-        drawFeatureBodyBegin();
-        ImGui::Text("Ocean Reflection");
-        ImGui::Checkbox("Ocean Enabled", &settings.renderOcean);
-        ImGui::Checkbox("Planar Targets Enabled", &settings.renderOceanReflectionRefraction);
-        // 反射/折射 target 支持降采样和隔帧更新，减少水面效果的额外 draw cost
-        ImGui::Checkbox("Reflection", &settings.renderOceanReflection);
-        ImGui::Checkbox("Refraction", &settings.renderOceanRefraction);
-        ImGui::SliderFloat("Target Scale", &settings.oceanReflectionResolutionScale, 0.25f, 1.0f, "%.2f");
-        ImGui::SliderInt("Reflection Stride", &settings.oceanReflectionFrameStride, 1, 8);
-        ImGui::SliderInt("Refraction Stride", &settings.oceanRefractionFrameStride, 1, 8);
-        ImGui::Checkbox("Auto Distance LOD", &settings.oceanAutoDistanceLod);
-        ImGui::SliderFloat("Reflection Max Alt", &settings.oceanReflectionMaxAltitude, 40.0f, 2000.0f * renderDistanceScale, "%.1f");
-        ImGui::SliderFloat("Refraction Max Alt", &settings.oceanRefractionMaxAltitude, 10.0f, 800.0f * renderDistanceScale, "%.1f");
-        drawFeatureBodyEnd();
-    }
-
-    if (state.showAdvancedRenderFeature) {
-        drawFeatureBodyBegin();
-        ImGui::Text("Advanced Render");
         ImGui::TextDisabled("Distance scale: %.2fx from radius %.0f", renderDistanceScale, kReferencePlanetRadius);
-        ImGui::SliderFloat("Ocean Tess Max", &settings.oceanTessellationMax, 1.0f, 4.0f, "%.1f");
-        ImGui::SliderFloat("Ocean Tess Min", &settings.oceanTessellationMin, 1.0f, settings.oceanTessellationMax, "%.1f");
-        ImGui::SliderFloat("Ocean Tess Near", &settings.oceanTessellationNearDistance, 10.0f, 400.0f * renderDistanceScale, "%.1f");
-        ImGui::SliderFloat("Ocean Tess Far", &settings.oceanTessellationFarDistance, settings.oceanTessellationNearDistance + 10.0f, 1400.0f * renderDistanceScale, "%.1f");
-        ImGui::SliderFloat("Near Plane", &settings.cameraNearPlane, 0.20f, 5.0f, "%.2f");
-        ImGui::SliderFloat("Far Plane", &settings.cameraFarPlane, 1000.0f, 12000.0f * renderDistanceScale, "%.0f");
-        drawFeatureBodyEnd();
-    }
-
-    if (state.showCameraFeature) {
-        drawFeatureBodyBegin();
-        ImGui::Text("Camera");
-        ImGui::SliderFloat("Orbit Distance", &state.cameraOrbitDistance, minCameraOrbitDistance(settings), maxCameraOrbitDistance(settings), "%.1f");
+        ImGui::SeparatorText("Ocean Tessellation");
+        sliderInputFloat("Ocean Tess Max", settings.oceanTessellationMax, 1.0f, 4.0f, "%.1f", 0.1f);
+        sliderInputFloat("Ocean Tess Min", settings.oceanTessellationMin, 1.0f, settings.oceanTessellationMax, "%.1f", 0.1f);
+        sliderInputFloat("Ocean Tess Near", settings.oceanTessellationNearDistance, 10.0f, 400.0f * renderDistanceScale, "%.1f", 1.0f);
+        sliderInputFloat("Ocean Tess Far", settings.oceanTessellationFarDistance, settings.oceanTessellationNearDistance + 10.0f, 1400.0f * renderDistanceScale, "%.1f", 1.0f);
+        ImGui::SeparatorText("Camera");
+        sliderInputFloat("Near Plane", settings.cameraNearPlane, 0.20f, 5.0f, "%.2f", 0.01f);
+        sliderInputFloat("Far Plane", settings.cameraFarPlane, 1000.0f, 12000.0f * renderDistanceScale, "%.0f", 10.0f);
+        sliderInputFloat("Orbit Distance", state.cameraOrbitDistance, minCameraOrbitDistance(settings), maxCameraOrbitDistance(settings), "%.1f", 1.0f);
         ImGui::Text("Yaw %.1f | Pitch %.1f", state.cameraOrbitYawDegrees, state.cameraOrbitPitchDegrees);
-        ImGui::SliderFloat("Mouse Sensitivity", &state.camera.mouseSensitivity, 0.02f, 0.5f, "%.2f");
+        sliderInputFloat("Mouse Sensitivity", state.camera.mouseSensitivity, 0.02f, 0.5f, "%.2f", 0.01f);
         ImGui::Text("Position: %.1f %.1f %.1f", state.camera.position.x, state.camera.position.y, state.camera.position.z);
         ImGui::Text("Altitude: %.1f", glm::max(glm::length(state.camera.position) - settings.planetRadius, 0.0f));
         ImGui::Text("FOV: %.1f", state.camera.fieldOfView);
@@ -1534,8 +1812,8 @@ void drawPerformancePanel(ApplicationState& state)
         const float fps = 1.0f / glm::max(state.deltaSeconds, 0.0001f);
         const PlanetRenderer::PerformanceStats& perf = state.renderer.performanceStats();
         const PlanetRenderer::CullingStats& cullingStats = state.renderer.cullingStats();
+        const PlanetRenderSettings& settings = state.renderer.settings();
 
-        // 这些时间CPU 提交侧统计，不包glFinish GPU 阻塞等待
         ImGui::PushStyleColor(ImGuiCol_Text, gold);
         ImGui::Text("CPU Submit Timings");
         ImGui::PopStyleColor();
@@ -1544,13 +1822,18 @@ void drawPerformancePanel(ApplicationState& state)
 
         ImGui::Text("FPS: %.1f", fps);
         ImGui::Text("Camera distance: %.1f", glm::length(state.camera.position));
-        ImGui::Text("Camera altitude: %.1f", glm::max(glm::length(state.camera.position) - state.renderer.settings().planetRadius, 0.0f));
+        ImGui::Text("Camera altitude: %.1f", glm::max(glm::length(state.camera.position) - settings.planetRadius, 0.0f));
         ImGui::Text("Total: %.2f ms", perf.totalMs);
         ImGui::Text("Culling: %.2f ms", perf.cullingMs);
         ImGui::Text("FFT: %.2f ms %s", perf.fftMs, perf.fftUpdated ? "updated" : "reused");
         ImGui::Text("Reflection/Refraction: %.2f ms", perf.reflectionRefractionMs);
         ImGui::Text("Terrain: %.2f ms | Ocean: %.2f ms", perf.terrainMs, perf.oceanMs);
         ImGui::Text("Atmosphere: %.2f ms | Wire: %.2f ms", perf.atmosphereMs, perf.wireMs);
+        ImGui::Text("Clouds: %s | steps %d x %d | opacity %.2f",
+                    settings.renderClouds ? "on" : "off",
+                    glm::clamp(settings.cloudStepCount, 4, 32),
+                    glm::clamp(settings.cloudLightStepCount, 1, 8),
+                    settings.cloudOpacity);
 
         ImGui::Separator();
         ImGui::Text("Terrain path: Baked chunks");
@@ -1589,7 +1872,6 @@ void drawDebugPanel(ApplicationState& state)
         ? "Render Controls"
         : "Procedural Generation";
 
-    // 调试面板使用单独配色，不影响 ImGui 全局主题
     const ImVec4 deepNavy(0.018f, 0.035f, 0.070f, 0.96f);
     const ImVec4 panelBlue(0.045f, 0.105f, 0.180f, 0.98f);
     const ImVec4 activeBlue(0.070f, 0.210f, 0.360f, 1.0f);
@@ -1663,7 +1945,6 @@ void configureImGuiFonts()
         }
     }
 
-    // 找不到中文字体时退回默认字体；UI 文本仍以英文为主
     io.Fonts->AddFontDefault();
 }
 } // namespace
@@ -1691,7 +1972,6 @@ int main(int argc, char** argv)
         }
     }
 
-    // 1. 创建窗口OpenGL context
     if (!glfwInit()) {
         std::cerr << "Failed to initialize GLFW\n";
         if (profileEnabled) {
@@ -1721,7 +2001,6 @@ int main(int argc, char** argv)
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1);
 
-    // 2. 注册输入回调。ApplicationState 挂到 GLFW user pointer 供回调访问
     ApplicationState appState;
     glfwSetWindowUserPointer(window, &appState);
     glfwSetFramebufferSizeCallback(window, onFramebufferSizeChanged);
@@ -1747,7 +2026,6 @@ int main(int argc, char** argv)
     std::cout << "OpenGL vendor: " << glGetString(GL_VENDOR) << "\n";
     std::cout << "OpenGL renderer: " << glGetString(GL_RENDERER) << "\n";
 
-    // 3. 初始ImGui 和渲染器资源
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGui::StyleColorsDark();
@@ -1758,7 +2036,6 @@ int main(int argc, char** argv)
     appState.renderer.initialize();
     appState.renderSettings = appState.renderer.settings();
     appState.proceduralSettings = appState.renderer.settings();
-    // 4. 尝试恢复本地 session/cache；成功时可直接进入渲染阶段
     loadSession(appState, kSessionFilePath, false);
     appState.renderer.setPlanetRotation(appState.planetYawDegrees, appState.planetPitchDegrees);
 
@@ -1773,13 +2050,11 @@ int main(int argc, char** argv)
     while (!glfwWindowShouldClose(window))
     {
         PROFILE_SCOPE("MainLoop Frame");
-        // 帧时间用于相机、自动旋转、反射权重平滑和 FFT 更新节流
         const float currentTime = static_cast<float>(glfwGetTime());
         appState.deltaSeconds = currentTime - appState.previousFrameTime;
         appState.previousFrameTime = currentTime;
 
         if (appState.workflowStage == WorkflowStage::Generating) {
-            // 后台生成完成后，在主线程取出结果并上GPU 资源
             appState.generationTimer += appState.deltaSeconds;
             if (appState.generationFuture.valid()
                 && appState.generationFuture.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
@@ -1798,7 +2073,6 @@ int main(int argc, char** argv)
             handleKeyboardMovement(window, appState);
         }
         if (appState.workflowStage == WorkflowStage::Render) {
-            // Render 阶段保持星球静止，方便观察河流、LOD 和材debug；需要旋转时用左键拖拽
             appState.renderer.setPlanetRotation(appState.planetYawDegrees, appState.planetPitchDegrees);
             updateOrbitCamera(appState, appState.renderer.settings());
         }
@@ -1813,7 +2087,6 @@ int main(int argc, char** argv)
             ? appState.renderer.settings()
             : appState.renderSettings;
 
-        // 投影矩阵使用当前设置里的 near/far，支持大半径星球的远裁剪面
         const glm::mat4 projectionMatrix = glm::perspective(
             glm::radians(appState.camera.fieldOfView),
             static_cast<float>(framebufferWidth) / static_cast<float>(framebufferHeight),
@@ -1838,7 +2111,6 @@ int main(int argc, char** argv)
             ImGui::NewFrame();
         }
 
-        // UI 先生draw data，星球渲染后再提ImGui，保证面板覆盖在画面上方
         {
             PROFILE_SCOPE("ImGui Build Panels");
             drawDebugPanel(appState);

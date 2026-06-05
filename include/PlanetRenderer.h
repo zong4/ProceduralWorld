@@ -14,7 +14,7 @@
 
 class PlanetProceduralData;
 
-// 鍦板舰璋冭瘯/灞曠ず妯″紡銆?
+// Terrain debug and visualization modes.
 enum class PlanetRenderMode : int {
     Shaded = 0,
     Unshaded = 1,
@@ -23,7 +23,7 @@ enum class PlanetRenderMode : int {
     Material = 4
 };
 
-// 绾挎鍙犲姞妯″紡锛氬彲閫夋嫨鏄剧ず闄嗗湴 patch 鎴栨捣娲?patch 鐨勭粏鍒嗙粨鏋勩€?
+// Optional wire/debug overlays for terrain and ocean geometry.
 enum class PlanetWireMode : int {
     None = 0,
     Ocean = 1,
@@ -31,6 +31,7 @@ enum class PlanetWireMode : int {
     MountainMask = 3
 };
 
+// CPU-generated feature overlays drawn over the terrain.
 enum class TerrainFeatureOverlayMode : int {
     None = 0,
     All = 1,
@@ -40,17 +41,15 @@ enum class TerrainFeatureOverlayMode : int {
     Erosion = 5
 };
 
-// 鎵€鏈夊彲璋冩覆鏌?鐢熸垚鍙傛暟銆?
-// 杩欎竴涓粨鏋勫悓鏃舵湇鍔?UI銆丆PU 鐢熸垚銆丟PU uniform 涓婁紶鍜?session 淇濆瓨銆?
+// Shared render and procedural settings.
+// UI, CPU generation, GPU uniforms, and session persistence all use this struct.
 struct PlanetRenderSettings {
-    // 鏄熺悆鍑犱綍灏哄害涓?tessellation LOD銆?
     float planetRadius = 200.0f;
     float seaLevelOffset = 0.0f;
     float oceanTessellationMax = 1.0f;
     float oceanTessellationMin = 1.0f;
     float oceanTessellationNearDistance = 40.0f;
     float oceanTessellationFarDistance = 550.0f;
-    // 绋嬪簭鍖栧湴褰㈠拰渚佃殌鍙傛暟銆?
     float terrainHeightScale = 22.0f;
     float runtimeMountainScale = 1.0f;
     float terrainNoiseScale = 0.58f;
@@ -62,13 +61,33 @@ struct PlanetRenderSettings {
     float erosionTalus = 0.028f;
     float erosionSediment = 0.58f;
     float erosionThermalStrength = 0.018f;
-    // 鍦拌〃鏉愯川棰滆壊涓?biome/slope 闃堝€笺€?
     glm::vec3 terrainLowlandColor = glm::vec3(0.20f, 0.46f, 0.30f);
     glm::vec3 terrainForestColor = glm::vec3(0.08f, 0.28f, 0.18f);
     glm::vec3 terrainDesertColor = glm::vec3(0.64f, 0.55f, 0.34f);
     glm::vec3 terrainRockColor = glm::vec3(0.44f, 0.47f, 0.48f);
     glm::vec3 terrainBeachColor = glm::vec3(0.79f, 0.68f, 0.43f);
     glm::vec3 terrainSnowColor = glm::vec3(0.94f, 0.97f, 0.98f);
+    glm::vec3 terrainPaletteLowGrass = glm::vec3(0.20f, 0.86f, 0.18f);
+    glm::vec3 terrainPaletteMeadow = glm::vec3(0.56f, 0.90f, 0.16f);
+    glm::vec3 terrainPaletteForestDark = glm::vec3(0.020f, 0.38f, 0.070f);
+    glm::vec3 terrainPaletteForestWarm = glm::vec3(0.12f, 0.64f, 0.10f);
+    glm::vec3 terrainPaletteSavanna = glm::vec3(0.92f, 0.72f, 0.12f);
+    glm::vec3 terrainPaletteDrySoil = glm::vec3(0.94f, 0.42f, 0.12f);
+    glm::vec3 terrainPaletteOchre = glm::vec3(1.00f, 0.60f, 0.16f);
+    glm::vec3 terrainPaletteWetGreen = glm::vec3(0.030f, 0.52f, 0.30f);
+    glm::vec3 terrainPaletteTundra = glm::vec3(0.70f, 0.78f, 0.32f);
+    glm::vec3 terrainPaletteBrownSlope = glm::vec3(0.58f, 0.36f, 0.20f);
+    glm::vec3 terrainPaletteRedSoil = glm::vec3(0.70f, 0.30f, 0.14f);
+    glm::vec3 terrainPaletteRockWarm = glm::vec3(0.48f, 0.45f, 0.39f);
+    glm::vec3 terrainPaletteRockCool = glm::vec3(0.54f, 0.58f, 0.56f);
+    glm::vec3 terrainPaletteRockDark = glm::vec3(0.22f, 0.22f, 0.20f);
+    glm::vec3 terrainPalettePaleStone = glm::vec3(0.70f, 0.72f, 0.66f);
+    glm::vec3 terrainPaletteSnow = glm::vec3(1.08f, 1.10f, 1.14f);
+    glm::vec3 terrainPaletteSnowShadow = glm::vec3(0.76f, 0.86f, 1.02f);
+    glm::vec3 terrainPaletteBeach = glm::vec3(1.00f, 0.78f, 0.38f);
+    glm::vec3 terrainPaletteRiverBed = glm::vec3(0.30f, 0.17f, 0.08f);
+    glm::vec3 terrainPaletteShallowSeabed = glm::vec3(0.28f, 0.62f, 0.50f);
+    glm::vec3 terrainPaletteDeepSeabed = glm::vec3(0.08f, 0.22f, 0.32f);
     float terrainBeachWidth = 0.045f;
     float terrainRockSlopeStart = 0.24f;
     float terrainRockSlopeEnd = 0.62f;
@@ -83,7 +102,6 @@ struct PlanetRenderSettings {
     float riverRefractionStrength = 0.48f;
     glm::vec3 riverColor = glm::vec3(0.02f, 0.36f, 0.42f);
     float coarseGridLineWidth = 1.6f;
-    // 澶╃┖銆佸ぇ姘斿拰鐩告満瑁佸壀闈€?
     glm::vec3 skyColor = glm::vec3(0.0f);
     float fogDensity = 0.0f;
     bool renderAtmosphere = true;
@@ -100,7 +118,6 @@ struct PlanetRenderSettings {
     float cloudSharpness = 0.92f;
     float cloudScale = 1.85f;
     float cloudSpeed = 0.018f;
-    float cloudRotationSpeed = 0.0f;
     float cloudHeight = 7.2f;
     float cloudThickness = 6.2f;
     float cloudDensity = 1.70f;
@@ -111,7 +128,6 @@ struct PlanetRenderSettings {
     glm::vec3 cloudColor = glm::vec3(0.96f, 0.98f, 1.0f);
     float cameraNearPlane = 1.0f;
     float cameraFarPlane = 5000.0f;
-    // 娴锋按閫忔槑搴︺€侀鑹层€佸弽灏勬姌灏勩€佹尝娴拰鏉愯川鍙傛暟銆?
     float oceanAlpha = 0.96f;
     float oceanShallowAlpha = 0.48f;
     float oceanDeepAlpha = 0.98f;
@@ -157,14 +173,11 @@ struct PlanetRenderSettings {
     bool renderOcean = true;
 };
 
-// 娓叉煋鍣ㄨ礋璐ｏ細
-// 1) 绠＄悊 shader銆乵esh銆丗BO 鍜?GPU texture锛?
-// 2) 姣忓抚 CPU 鍥涘弶鏍?LOD/瑁佸壀锛?
-// 3) 鎸?terrain/ocean/atmosphere/wire 椤哄簭鎻愪氦 draw call銆?
+// Owns planet rendering resources, CPU LOD/culling, and frame draw submission.
 class PlanetRenderer
 {
 public:
-    // CPU LOD 闃舵鐨勭粺璁′俊鎭紝鐢ㄤ簬 performance 闈㈡澘銆?
+    // CPU LOD/culling counters shown in the performance panel.
     struct CullingStats {
         std::size_t visitedNodes = 0;
         std::size_t frustumCulledNodes = 0;
@@ -173,7 +186,7 @@ public:
         std::size_t emittedPatches = 0;
     };
 
-    // 姣忓抚鍚勬覆鏌撻樁娈佃€楁椂鍜屽姩鎬佽川閲忓弬鏁般€?
+    // CPU-side frame timing and draw workload summary.
     struct PerformanceStats {
         float totalMs = 0.0f;
         float cullingMs = 0.0f;
@@ -221,21 +234,21 @@ public:
     const PerformanceStats& performanceStats() const;
 
 private:
-    // cube face 灞€閮ㄥ潗鏍囩郴锛屼笌 PlanetProceduralData 涓殑瀹氫箟淇濇寔涓€鑷淬€?
+    // Cube-face basis. Keep in sync with PlanetProceduralData.
     struct FaceBasis {
         glm::vec3 normal;
         glm::vec3 axisU;
         glm::vec3 axisV;
     };
 
-    // CPU 鍥涘弶鏍戣妭鐐癸紝浣跨敤 cube face UV 鑼冨洿鎻忚堪 patch銆?
+    // CPU quadtree node in cube-face UV space.
     struct QuadtreeNode {
         glm::vec2 uvMin{0.0f, 0.0f};
         float uvSize = 1.0f;
         int depth = 0;
     };
 
-    // 涓€涓?patch 鍐呮按/闄?娴峰哺瑕嗙洊鎯呭喌锛屾潵鑷?CPU prefix sum 蹇€熸煡璇€?
+    // Water/land/shore coverage for a patch, queried from CPU prefix sums.
     struct PatchWaterCoverage {
         bool hasData = false;
         bool hasWater = false;
@@ -243,7 +256,7 @@ private:
         float maxShoreMask = 0.0f;
     };
 
-    // 姣忓抚瀹為檯鎻愪氦缁?shader 鐨?patch銆?
+    // Per-frame ocean patch submitted to shaders.
     struct OceanPatch {
         int faceIndex = 0;
         glm::vec2 uvMin{0.0f, 0.0f};
@@ -252,19 +265,19 @@ private:
         PatchWaterCoverage waterCoverage;
     };
 
-    // 浠?view-projection 鐭╅樀鎻愬彇鍑虹殑 6 涓鍓钩闈€?
+    // Six clipping planes extracted from a view-projection matrix.
     struct Frustum {
         std::array<glm::vec4, 6> planes{};
     };
 
-    // LOD/瑁佸壀浣跨敤鐨勭悆闈㈣繎浼煎寘鍥翠綋銆?
+    // Approximate spherical bounds used by LOD and culling.
     struct NodeBounds {
         glm::vec3 worldDirection{0.0f, 1.0f, 0.0f};
         float radius = 0.001f;
         float lodScale = 1.0f;
     };
 
-    // 鎵€鏈夊湴褰㈠拰娴锋磱 patch 鍏变韩鍚屼竴涓鍒欑綉鏍?VAO锛岀敱 tessellation shader 鏀惧ぇ銆?
+    // Shared terrain/ocean patch grid; tessellation shaders expand it.
     struct TerrainMesh {
         GLuint vertexArrayObject = 0;
         GLuint vertexBufferObject = 0;
@@ -309,7 +322,7 @@ private:
         void drawChunkBounds(const std::vector<VisibleBakedChunk>& visibleChunks) const;
     };
 
-    // 澶ф皵灞備娇鐢ㄦ櫘閫氱悆浣撶綉鏍硷紝涓嶈蛋 tessellation銆?
+    // Simple sphere mesh used by legacy/debug shell rendering.
     struct SphereMesh {
         GLuint vertexArrayObject = 0;
         GLuint vertexBufferObject = 0;
@@ -320,7 +333,7 @@ private:
         void draw() const;
     };
 
-    // 鍙嶅皠/鎶樺皠绂诲睆娓叉煋鐩爣銆?
+    // Offscreen reflection/refraction render target.
     struct RenderTarget {
         GLuint framebufferObject = 0;
         GLuint colorTexture = 0;
@@ -448,7 +461,7 @@ private:
     static Frustum extractFrustum(const glm::mat4& viewProjectionMatrix);
     static glm::vec4 normalizePlane(const glm::vec4& plane);
     glm::vec3 worldDirection(const glm::vec3& localDirection) const;
-    // 涓嬮潰涓€缁勫嚱鏁扮粍鎴?CPU 鍙鎬?LOD 娴佺▼銆?
+    // CPU-side LOD and visibility helpers.
     NodeBounds computeNodeBounds(const FaceBasis& face, const QuadtreeNode& node) const;
     bool isNodeOutsideFrustum(const Frustum& frustum, const NodeBounds& bounds) const;
     bool isNodeHiddenByHorizon(const FlyCamera& camera, const NodeBounds& bounds) const;
@@ -477,7 +490,7 @@ private:
                                                      CullingStats& stats) const;
     bool patchHasOceanCoverage(const OceanPatch& patch) const;
 
-    // 缁?terrain/ocean/wire shader 缁熶竴涓婁紶褰撳墠 patch 鍜屽叏灞€娓叉煋鍙傛暟銆?
+    // Upload shared terrain/ocean/wire uniforms for the current patch.
     void applyCommonUniforms(const ShaderProgram& program,
                              const FlyCamera& camera,
                              const glm::mat4& viewMatrix,
@@ -486,7 +499,7 @@ private:
 
     float seaLevelRadius() const;
 
-    // 娓叉煋 pass銆傚弽灏?鎶樺皠 pass 浼氬鐢?terrain pass 骞跺惎鐢ㄨ鍓钩闈€?
+    // Render passes. Reflection/refraction reuse terrain rendering with clip planes.
     void drawTerrainPass(const FlyCamera& camera, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix);
     void drawTerrainPass(const FlyCamera& camera,
                          const glm::mat4& viewMatrix,

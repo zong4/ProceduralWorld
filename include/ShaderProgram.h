@@ -6,17 +6,13 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include <glad/glad.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
-// OpenGL shader 编译/链接小工具。
-// 特点：
-// - 支持 VS/FS 和 VS/TCS/TES/FS 两套构造方式；
-// - 在编译前递归展开本地 #include "xxx.glsl"；
-// - 提供常用 uniform setter，减少渲染代码中的 OpenGL 样板。
 class ShaderProgram
 {
 public:
@@ -50,36 +46,69 @@ public:
 
     void setMat4(const std::string& uniformName, const glm::mat4& value) const
     {
-        glUniformMatrix4fv(glGetUniformLocation(programId, uniformName.c_str()), 1, GL_FALSE, glm::value_ptr(value));
+        const GLint location = uniformLocation(uniformName);
+        if (location >= 0) {
+            glUniformMatrix4fv(location, 1, GL_FALSE, glm::value_ptr(value));
+        }
     }
 
     void setVec2(const std::string& uniformName, const glm::vec2& value) const
     {
-        glUniform2fv(glGetUniformLocation(programId, uniformName.c_str()), 1, glm::value_ptr(value));
+        const GLint location = uniformLocation(uniformName);
+        if (location >= 0) {
+            glUniform2fv(location, 1, glm::value_ptr(value));
+        }
     }
 
     void setVec3(const std::string& uniformName, const glm::vec3& value) const
     {
-        glUniform3fv(glGetUniformLocation(programId, uniformName.c_str()), 1, glm::value_ptr(value));
+        const GLint location = uniformLocation(uniformName);
+        if (location >= 0) {
+            glUniform3fv(location, 1, glm::value_ptr(value));
+        }
     }
 
     void setVec4(const std::string& uniformName, const glm::vec4& value) const
     {
-        glUniform4fv(glGetUniformLocation(programId, uniformName.c_str()), 1, glm::value_ptr(value));
+        const GLint location = uniformLocation(uniformName);
+        if (location >= 0) {
+            glUniform4fv(location, 1, glm::value_ptr(value));
+        }
     }
 
     void setFloat(const std::string& uniformName, float value) const
     {
-        glUniform1f(glGetUniformLocation(programId, uniformName.c_str()), value);
+        const GLint location = uniformLocation(uniformName);
+        if (location >= 0) {
+            glUniform1f(location, value);
+        }
     }
 
     void setInt(const std::string& uniformName, int value) const
     {
-        glUniform1i(glGetUniformLocation(programId, uniformName.c_str()), value);
+        const GLint location = uniformLocation(uniformName);
+        if (location >= 0) {
+            glUniform1i(location, value);
+        }
     }
 
 private:
-    // 递归展开 GLSL include。includeStack 用来检测循环包含，避免无限递归。
+    // Uniform locations are immutable after linking; cache them to avoid
+    // repeated glGetUniformLocation calls during per-patch draw submission.
+    mutable std::unordered_map<std::string, GLint> uniformLocationCache_;
+
+    GLint uniformLocation(const std::string& uniformName) const
+    {
+        const auto found = uniformLocationCache_.find(uniformName);
+        if (found != uniformLocationCache_.end()) {
+            return found->second;
+        }
+
+        const GLint location = glGetUniformLocation(programId, uniformName.c_str());
+        uniformLocationCache_.emplace(uniformName, location);
+        return location;
+    }
+
     static std::string expandIncludes(const std::filesystem::path& filePath,
                                       std::vector<std::filesystem::path>& includeStack)
     {
@@ -125,7 +154,6 @@ private:
         return expandedSource.str();
     }
 
-    // 读取、展开、编译单个 shader stage。编译错误直接打印到 stderr。
     static GLuint compileShader(const char* filePath, GLenum shaderType)
     {
         std::vector<std::filesystem::path> includeStack;
@@ -150,7 +178,6 @@ private:
         return shader;
     }
 
-    // 将已编译的 shader stage 链接成 program；链接后删除中间 shader 对象。
     void linkProgram(std::initializer_list<GLuint> shaders)
     {
         programId = glCreateProgram();
@@ -161,6 +188,7 @@ private:
         }
 
         glLinkProgram(programId);
+        uniformLocationCache_.clear();
 
         GLint linkSucceeded = 0;
         glGetProgramiv(programId, GL_LINK_STATUS, &linkSucceeded);

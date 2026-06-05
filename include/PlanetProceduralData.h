@@ -11,13 +11,12 @@
 #include "PlanetHeightField.h"
 #include "PlanetRenderer.h"
 
-// CPU 缁旑垳鈻兼惔蹇撳閺勭喓鎮嗛弫鐗堝祦閻㈢喐鍨氶崳銊ｂ偓?
-// 鐎瑰啯濡搁弫鎾暭閺勭喓鎮嗛悜妯煎壔閹?6 瀵?cube-face 妤傛ê瀹?濮樺瓨鏋?濮樻柨鈧?biome 閺佺増宓侀崶鎾呯礉
-// renderer 閸愬秵濡告潻娆庣昂閺佺増宓佹稉濠佺炊娑?sampler2DArray 娓?shader 闁插洦鐗遍妴?
+// CPU-side generated planet data.
+// Stores six cube-face layers, terrain chunks, and debug feature segments for rendering.
 class PlanetProceduralData
 {
 public:
-    // 閻㈢喐鍨氬ù浣衡柤閹峰棙鍨氭径姘嚋濡€虫健閿涘I 閻劌鐣犻弰鍓с仛鏉╂稑瀹抽弶鈥虫嫲瑜版挸澧犻梼鑸殿唽鐠囧瓨妲戦妴?
+    // Coarse generation progress stages used by the UI.
     enum class GenerationModule : int {
         BaseTerrain = 0,
         InitialClimate = 1,
@@ -31,7 +30,6 @@ public:
         Count = 9
     };
 
-    // 閸氬骸褰撮悽鐔稿灇缁捐法鈻奸崥鎴滃瘜缁捐法鈻奸幎銉ユ啞閻ㄥ嫯绻樻惔锕€鎻╅悡褋鈧?
     struct GenerationProgress {
         int completedSteps = 0;
         int totalSteps = 1;
@@ -43,9 +41,7 @@ public:
 
     using ProgressCallback = std::function<void(const GenerationProgress& progress)>;
 
-    // 閸楁洑閲?cube face 閻ㄥ嫭澧嶉張澶屽劋閻掓瑥鐪伴妴?
-    // height 閺勵垰缍婃稉鈧崠鏍彯鎼达讣绱眞aterDepth 瀹歌弓绠绘潻?terrainHeightScale閿涘苯宕熸担宥嗗复鏉╂垳绗橀悾宀€鈹栭梻杈剧幢
-    // biomeWeightA/B 閻劋琚辨稉?vec4 閹垫挸瀵?8 缁粯娼楃拹銊︽綀闁插秲鈧?
+    // Scalar/vector fields for one cube face.
     struct FaceData {
         int resolution = 0;
         std::vector<float> height;
@@ -75,6 +71,7 @@ public:
         float featureWeight = 0.0f;
     };
 
+    // CPU-baked terrain mesh chunk used by the renderer's baked LOD path.
     struct TerrainChunk {
         int faceIndex = 0;
         int depth = 0;
@@ -102,6 +99,7 @@ public:
         Count = 4
     };
 
+    // Debug/overlay polyline segment extracted from generated terrain fields.
     struct TerrainFeatureSegment {
         TerrainFeatureType type = TerrainFeatureType::River;
         int faceIndex = 0;
@@ -118,7 +116,6 @@ public:
     bool loadCache(const char* path, const PlanetRenderSettings& settings);
     void clear();
 
-    // 閸欘亣顕扮拋鍧楁６閸ｎ煉绱濆〒鍙夌厠閸ｃ劌鎷?UI 闁俺绻冩潻娆庣昂閸戣姤鏆熼崣鏍х繁閻㈢喐鍨氱紒鎾寸亯閸滃瞼绮虹拋鈥蹭繆閹垬鈧?
     bool isGenerated() const { return generated_; }
     int resolution() const { return resolution_; }
     const PlanetRenderSettings& settings() const { return settings_; }
@@ -135,20 +132,17 @@ public:
     float shoreCoverage() const { return shoreCoverage_; }
 
 private:
-    // cube face 鐏炩偓闁劌娼楅弽鍥╅兇閿涙ormal 娑撴椽娼伴張婵嗘倻閿涘畮xisU/axisV 娑撻缚顕氶棃?UV 娑撱倓閲滄潪娣偓?
     struct FaceBasis {
         glm::vec3 normal;
         glm::vec3 axisU;
         glm::vec3 axisV;
     };
 
-    // 鐠?cube face 閺屻儴顕楅柇璇茬湷閺冩湹濞囬悽銊ф畱閳ユ粓娼?+ 缁便垹绱╅垾婵嗙穿閻劊鈧?
     struct CellRef {
         int face = 0;
         std::size_t index = 0;
     };
 
-    // 閸楁洜鍋ｇ粙瀣碍閸栨牠鍣伴弽椋庢畱娑擃參妫跨紒鎾寸亯閵?
     struct PlanetSample {
         float height = 0.0f;
         float waterDepth = 0.0f;
@@ -180,20 +174,16 @@ private:
 
     static glm::vec3 cubeSphereDirection(const FaceBasis& face, const glm::vec2& uv);
     static int faceIndexFromDirection(const glm::vec3& dir);
-    // 閹跺﹦鎮嗛棃銏℃煙閸氭垶妲х亸鍕礀閺屾劒閲?cube face 閻ㄥ嫮顬囬弫锝嗙壐鐎涙劑鈧?
     static CellRef cellFromDirection(const glm::vec3& dir, int resolution);
-    // 閺€顖涘瘮鐡掑﹨绻?face 鏉堝湱鏅惃鍕仸鐏炲懏鐓＄拠顫礉閺勵垱甯寸紓婵呮叏婢跺秴鎷版笟浣冩畬閻ㄥ嫬鐔€绾偓閵?
     static CellRef neighborCell(int faceIndex, int x, int y, int resolution);
     static glm::vec3 hash3(const glm::vec3& p);
     static float gradientNoise(const glm::vec3& p);
     static float perlinNoise(const glm::vec3& p);
     static float perlinFbm(const glm::vec3& p, int octaves, float lacunarity, float gain);
-    // fractal Brownian motion閿涙艾顦跨仦?gradient noise 閸欑姴濮為妴?
     static float fbm(const glm::vec3& p, int octaves, float lacunarity, float gain);
     static float ridgedFbm(const glm::vec3& p, int octaves, float lacunarity, float gain, float ridgeSharpness);
 
     static float altitudeBandWeight(float startAltitude, float endAltitude);
-    // 閸╄櫣顢呴崷鏉胯埌妤傛ê瀹抽崙鑺ユ殶閿涙艾銇囬梽鍡愨偓浣规崳閻╁棎鈧線鐝崷鑸偓浣稿寳閼村鈧礁鍢叉い璺烘嫲濞撮攱鐭￠柈钘夋躬鏉╂瑩鍣烽崥鍫熷灇閵?
     static float terrainHeight(const PlanetRenderSettings& settings, const glm::vec3& sphereDir);
     static PlanetSample samplePlanetBase(const PlanetRenderSettings& settings, const glm::vec3& sphereDir);
     static PlanetSample samplePlanetBase(const PlanetRenderSettings& settings, const glm::vec3& sphereDir, float height);
