@@ -1547,12 +1547,6 @@ void PlanetRenderer::applyCommonUniforms(const ShaderProgram& program,
     program.setFloat("terrainSnowEnd", settings_.terrainSnowEnd);
     program.setFloat("terrainMaterialNoiseScale", settings_.terrainMaterialNoiseScale);
     program.setFloat("terrainMaterialNoiseStrength", settings_.terrainMaterialNoiseStrength);
-    program.setInt("renderRivers", settings_.renderRivers ? 1 : 0);
-    program.setFloat("riverVisibility", settings_.riverVisibility);
-    program.setFloat("riverWidth", settings_.riverWidth);
-    program.setFloat("riverShine", settings_.riverShine);
-    program.setFloat("riverRefractionStrength", settings_.riverRefractionStrength);
-    program.setVec3("riverColor", settings_.riverColor);
     program.setFloat("timeSeconds", currentTimeSeconds_);
     program.setFloat("gridCount", static_cast<float>(kNodeGridResolution));
     program.setFloat("coarseLineWidth", settings_.coarseGridLineWidth);

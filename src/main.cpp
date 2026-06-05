@@ -192,12 +192,6 @@ void copyProceduralSettings(PlanetRenderSettings& destination, const PlanetRende
     destination.terrainSnowEnd = source.terrainSnowEnd;
     destination.terrainMaterialNoiseScale = source.terrainMaterialNoiseScale;
     destination.terrainMaterialNoiseStrength = 0.0f;
-    destination.renderRivers = source.renderRivers;
-    destination.riverVisibility = source.riverVisibility;
-    destination.riverWidth = source.riverWidth;
-    destination.riverShine = source.riverShine;
-    destination.riverRefractionStrength = source.riverRefractionStrength;
-    destination.riverColor = source.riverColor;
 }
 
 void applyStageOneProceduralPreset(PlanetRenderSettings& settings)
@@ -249,12 +243,6 @@ void applyStageOneProceduralPreset(PlanetRenderSettings& settings)
     settings.terrainSnowEnd = 0.95f;
     settings.terrainMaterialNoiseScale = 0.030f;
     settings.terrainMaterialNoiseStrength = 0.0f;
-    settings.renderRivers = true;
-    settings.riverVisibility = 1.45f;
-    settings.riverWidth = 0.58f;
-    settings.riverShine = 1.05f;
-    settings.riverRefractionStrength = 0.48f;
-    settings.riverColor = glm::vec3(0.02f, 0.36f, 0.42f);
 }
 
 void applyRuggedRiversPreset(PlanetRenderSettings& settings)
@@ -270,10 +258,6 @@ void applyRuggedRiversPreset(PlanetRenderSettings& settings)
     settings.erosionSediment = 0.72f;
     settings.erosionThermalStrength = 0.018f;
     settings.terrainMaterialNoiseStrength = 0.0f;
-    settings.riverVisibility = 1.70f;
-    settings.riverWidth = 0.72f;
-    settings.riverShine = 1.05f;
-    settings.riverRefractionStrength = 0.55f;
 }
 
 float minCameraOrbitDistance(const PlanetRenderSettings& settings)
@@ -522,10 +506,6 @@ bool readVec3(const SessionValues& values, const std::string& key, glm::vec3& ou
     X(terrainSnowEnd) \
     X(terrainMaterialNoiseScale) \
     X(terrainMaterialNoiseStrength) \
-    X(riverVisibility) \
-    X(riverWidth) \
-    X(riverShine) \
-    X(riverRefractionStrength) \
     X(coarseGridLineWidth) \
     X(fogDensity) \
     X(atmosphereHeight) \
@@ -589,7 +569,6 @@ bool readVec3(const SessionValues& values, const std::string& key, glm::vec3& ou
     X(oceanAutoDistanceLod) \
     X(renderOceanWaves) \
     X(renderOceanMaterial) \
-    X(renderRivers) \
     X(renderTerrain) \
     X(renderOcean)
 
@@ -621,7 +600,6 @@ bool readVec3(const SessionValues& values, const std::string& key, glm::vec3& ou
     X(terrainPaletteRiverBed) \
     X(terrainPaletteShallowSeabed) \
     X(terrainPaletteDeepSeabed) \
-    X(riverColor) \
     X(skyColor) \
     X(atmosphereRayleighColor) \
     X(atmosphereMieColor) \
@@ -898,8 +876,13 @@ bool sliderInputFloat(const char* label,
                       const char* format = "%.2f",
                       float inputStep = 0.0f)
 {
+    const char* idSuffix = std::strstr(label, "##");
     ImGui::PushID(label);
-    ImGui::TextUnformatted(label);
+    if (idSuffix != nullptr) {
+        ImGui::TextUnformatted(label, idSuffix);
+    } else {
+        ImGui::TextUnformatted(label);
+    }
     const float inputWidth = 86.0f;
     const float spacing = ImGui::GetStyle().ItemSpacing.x;
     const float sliderWidth = glm::max(ImGui::GetContentRegionAvail().x - inputWidth - spacing, 80.0f);
@@ -919,8 +902,13 @@ bool sliderInputFloat(const char* label,
 
 bool sliderInputInt(const char* label, int& value, int minValue, int maxValue)
 {
+    const char* idSuffix = std::strstr(label, "##");
     ImGui::PushID(label);
-    ImGui::TextUnformatted(label);
+    if (idSuffix != nullptr) {
+        ImGui::TextUnformatted(label, idSuffix);
+    } else {
+        ImGui::TextUnformatted(label);
+    }
     const float inputWidth = 86.0f;
     const float spacing = ImGui::GetStyle().ItemSpacing.x;
     const float sliderWidth = glm::max(ImGui::GetContentRegionAvail().x - inputWidth - spacing, 80.0f);
@@ -1496,18 +1484,6 @@ void drawProceduralPanel(ApplicationState& state)
         drawFeatureBodyEnd();
     }
 
-    if (ImGui::CollapsingHeader("Hydrology / Channel Debug")) {
-        drawFeatureBodyBegin();
-        ImGui::Checkbox("Wet Channel Overlay", &settings.renderRivers);
-        ImGui::ColorEdit3("Wet Channel Color", &settings.riverColor.x);
-        sliderInputFloat("Channel Visibility", settings.riverVisibility, 0.0f, 2.5f, "%.2f", 0.01f);
-        sliderInputFloat("Channel Width", settings.riverWidth, 0.05f, 1.50f, "%.2f", 0.01f);
-        sliderInputFloat("Channel Shine", settings.riverShine, 0.0f, 2.0f, "%.2f", 0.01f);
-        sliderInputFloat("Channel Refraction", settings.riverRefractionStrength, 0.0f, 1.0f, "%.2f", 0.01f);
-        ImGui::TextDisabled("This is a wet erosion/channel mask, not final river geometry.");
-        drawFeatureBodyEnd();
-    }
-
     if (ImGui::CollapsingHeader("Last Bake Summary", ImGuiTreeNodeFlags_DefaultOpen)) {
         drawFeatureBodyBegin();
         if (state.generatedPlanet.isGenerated()) {
@@ -1577,7 +1553,7 @@ void drawRenderPanel(ApplicationState& state)
     if (state.generatedPlanet.isGenerated()) {
         ImGui::Text("Generated data: %d face resolution", state.generatedPlanet.resolution());
         ImGui::Text("Offline terrain chunks: %zu", state.generatedPlanet.terrainChunks().size());
-        ImGui::Text("Feature segments: river %zu | coast %zu | ridge %zu | erosion %zu",
+        ImGui::Text("Feature segments: channel %zu | coast %zu | ridge %zu | erosion %zu",
                     state.generatedPlanet.terrainFeatureSegmentCount(PlanetProceduralData::TerrainFeatureType::River),
                     state.generatedPlanet.terrainFeatureSegmentCount(PlanetProceduralData::TerrainFeatureType::Coast),
                     state.generatedPlanet.terrainFeatureSegmentCount(PlanetProceduralData::TerrainFeatureType::Ridge),
@@ -1592,20 +1568,17 @@ void drawRenderPanel(ApplicationState& state)
 
     if (ImGui::CollapsingHeader("Frame & Visibility", ImGuiTreeNodeFlags_DefaultOpen)) {
         drawFeatureBodyBegin();
-        drawRenderModeControls(settings);
-        ImGui::Separator();
-        ImGui::Checkbox("Terrain", &settings.renderTerrain);
-        ImGui::Checkbox("Ocean", &settings.renderOcean);
-        ImGui::Checkbox("Atmosphere", &settings.renderAtmosphere);
-        ImGui::Checkbox("Clouds", &settings.renderClouds);
-        ImGui::Checkbox("Wet Channel Overlay", &settings.renderRivers);
+        ImGui::Checkbox("Terrain##visibility", &settings.renderTerrain);
+        ImGui::Checkbox("Ocean##visibility", &settings.renderOcean);
+        ImGui::Checkbox("Atmosphere##visibility", &settings.renderAtmosphere);
+        ImGui::Checkbox("Clouds##visibility", &settings.renderClouds);
         ImGui::ColorEdit3("Sky Clear Color", &settings.skyColor.x);
         drawFeatureBodyEnd();
     }
 
     if (ImGui::CollapsingHeader("Terrain Surface", ImGuiTreeNodeFlags_DefaultOpen)) {
         drawFeatureBodyBegin();
-        ImGui::Checkbox("Terrain Enabled", &settings.renderTerrain);
+        ImGui::Checkbox("Terrain Enabled##terrain", &settings.renderTerrain);
         ImGui::TextDisabled("Runtime shader controls. Geometry rebakes still happen on the procedural page.");
         sliderInputFloat("Height Scale", settings.terrainHeightScale, 0.0f, 120.0f * renderDistanceScale, "%.2f", 0.1f);
         sliderInputFloat("Mountain Preview Scale", settings.runtimeMountainScale, 0.0f, 4.0f, "%.2f", 0.01f);
@@ -1625,38 +1598,26 @@ void drawRenderPanel(ApplicationState& state)
         drawFeatureBodyEnd();
     }
 
-    if (ImGui::CollapsingHeader("Hydrology Debug")) {
-        drawFeatureBodyBegin();
-        ImGui::TextDisabled("Current channel controls shade erosion/wet masks, not final river geometry.");
-        ImGui::Checkbox("Wet Channel Overlay", &settings.renderRivers);
-        ImGui::ColorEdit3("Channel Color", &settings.riverColor.x);
-        sliderInputFloat("Channel Visibility", settings.riverVisibility, 0.0f, 2.5f, "%.2f", 0.01f);
-        sliderInputFloat("Channel Width", settings.riverWidth, 0.05f, 1.50f, "%.2f", 0.01f);
-        sliderInputFloat("Channel Shine", settings.riverShine, 0.0f, 2.0f, "%.2f", 0.01f);
-        sliderInputFloat("Channel Refraction", settings.riverRefractionStrength, 0.0f, 1.0f, "%.2f", 0.01f);
-        drawFeatureBodyEnd();
-    }
-
     if (ImGui::CollapsingHeader("Ocean", ImGuiTreeNodeFlags_DefaultOpen)) {
         drawFeatureBodyBegin();
-        ImGui::Checkbox("Ocean Enabled", &settings.renderOcean);
+        ImGui::Checkbox("Ocean Enabled##ocean", &settings.renderOcean);
         if (!settings.renderOcean) {
             ImGui::TextDisabled("Ocean material, waves, and planar targets are skipped while Ocean is off.");
         }
 
         if (ImGui::TreeNodeEx("Color & Transparency", ImGuiTreeNodeFlags_DefaultOpen)) {
             sliderInputFloat("Opacity Limit", settings.oceanAlpha, 0.05f, 1.0f, "%.2f", 0.01f);
-            sliderInputFloat("Shallow Opacity", settings.oceanShallowAlpha, 0.0f, 1.0f, "%.2f", 0.01f);
-            sliderInputFloat("Deep Opacity", settings.oceanDeepAlpha, 0.0f, 1.0f, "%.2f", 0.01f);
+            sliderInputFloat("Shallow Opacity##ocean", settings.oceanShallowAlpha, 0.0f, 1.0f, "%.2f", 0.01f);
+            sliderInputFloat("Deep Opacity##ocean", settings.oceanDeepAlpha, 0.0f, 1.0f, "%.2f", 0.01f);
             sliderInputFloat("Tint Strength", settings.oceanTintStrength, 0.0f, 1.0f, "%.2f", 0.01f);
-            ImGui::ColorEdit3("Shallow Color", &settings.oceanShallowColor.x);
-            ImGui::ColorEdit3("Deep Color", &settings.oceanDeepColor.x);
+            ImGui::ColorEdit3("Shallow Color##ocean", &settings.oceanShallowColor.x);
+            ImGui::ColorEdit3("Deep Color##ocean", &settings.oceanDeepColor.x);
             ImGui::ColorEdit3("SSS Color", &settings.oceanSSSColor.x);
             ImGui::TreePop();
         }
 
         if (ImGui::TreeNodeEx("Material", ImGuiTreeNodeFlags_DefaultOpen)) {
-            ImGui::Checkbox("Material Enabled", &settings.renderOceanMaterial);
+            ImGui::Checkbox("Material Enabled##ocean", &settings.renderOceanMaterial);
             sliderInputFloat("Fresnel", settings.oceanFresnelStrength, 0.1f, 3.0f, "%.2f", 0.01f);
             sliderInputFloat("Refraction Distortion", settings.oceanDistortionStrength, 0.0f, 0.08f, "%.3f", 0.001f);
             sliderInputFloat("Depth Blend", settings.oceanDepthRange, 0.5f, 40.0f, "%.2f", 0.1f);
@@ -1688,8 +1649,8 @@ void drawRenderPanel(ApplicationState& state)
         if (ImGui::TreeNodeEx("Reflection / Refraction Targets")) {
             ImGui::TextDisabled("Planar render targets used by ocean reflection/refraction.");
             ImGui::Checkbox("Planar Targets Enabled", &settings.renderOceanReflectionRefraction);
-            ImGui::Checkbox("Reflection", &settings.renderOceanReflection);
-            ImGui::Checkbox("Refraction", &settings.renderOceanRefraction);
+            ImGui::Checkbox("Reflection##planar", &settings.renderOceanReflection);
+            ImGui::Checkbox("Refraction##planar", &settings.renderOceanRefraction);
             sliderInputFloat("Target Scale", settings.oceanReflectionResolutionScale, 0.25f, 1.0f, "%.2f", 0.01f);
             sliderInputInt("Reflection Stride", settings.oceanReflectionFrameStride, 1, 8);
             sliderInputInt("Refraction Stride", settings.oceanRefractionFrameStride, 1, 8);
@@ -1703,14 +1664,14 @@ void drawRenderPanel(ApplicationState& state)
 
     if (ImGui::CollapsingHeader("Atmosphere", ImGuiTreeNodeFlags_DefaultOpen)) {
         drawFeatureBodyBegin();
-        ImGui::Checkbox("Atmosphere Enabled", &settings.renderAtmosphere);
+        ImGui::Checkbox("Atmosphere Enabled##atmosphere", &settings.renderAtmosphere);
         ImGui::TextDisabled("LUT-backed aerial perspective. Scattering changes rebuild LUTs.");
-        sliderInputFloat("Atmosphere Height", settings.atmosphereHeight, 1.0f, 120.0f * renderDistanceScale, "%.1f", 0.5f);
-        sliderInputFloat("Density", settings.atmosphereDensity, 0.0f, 3.0f, "%.2f", 0.01f);
+        sliderInputFloat("Atmosphere Height##atmosphere", settings.atmosphereHeight, 1.0f, 120.0f * renderDistanceScale, "%.1f", 0.5f);
+        sliderInputFloat("Density##atmosphere", settings.atmosphereDensity, 0.0f, 3.0f, "%.2f", 0.01f);
         sliderInputFloat("Rayleigh", settings.atmosphereRayleighStrength, 0.0f, 4.0f, "%.2f", 0.01f);
         sliderInputFloat("Mie", settings.atmosphereMieStrength, 0.0f, 2.0f, "%.2f", 0.01f);
         sliderInputFloat("Mie G", settings.atmosphereMieAnisotropy, 0.0f, 0.95f, "%.2f", 0.01f);
-        sliderInputFloat("Exposure", settings.atmosphereExposure, 0.1f, 4.0f, "%.2f", 0.01f);
+        sliderInputFloat("Exposure##atmosphere", settings.atmosphereExposure, 0.1f, 4.0f, "%.2f", 0.01f);
         ImGui::ColorEdit3("Rayleigh Color", &settings.atmosphereRayleighColor.x);
         ImGui::ColorEdit3("Mie Color", &settings.atmosphereMieColor.x);
         sliderInputFloat("Fog Density", settings.fogDensity, 0.0f, 0.00003f, "%.6f", 0.000001f);
@@ -1719,7 +1680,7 @@ void drawRenderPanel(ApplicationState& state)
 
     if (ImGui::CollapsingHeader("Clouds", ImGuiTreeNodeFlags_DefaultOpen)) {
         drawFeatureBodyBegin();
-        ImGui::Checkbox("Clouds Enabled", &settings.renderClouds);
+        ImGui::Checkbox("Clouds Enabled##clouds", &settings.renderClouds);
         ImGui::TextDisabled("Clouds are rendered in the atmosphere pass but controlled separately.");
         ImGui::SeparatorText("Shape");
         sliderInputFloat("Coverage", settings.cloudCoverage, 0.0f, 1.0f, "%.2f", 0.01f);
@@ -1727,11 +1688,11 @@ void drawRenderPanel(ApplicationState& state)
         sliderInputFloat("Scale", settings.cloudScale, 0.8f, 12.0f, "%.2f", 0.01f);
         sliderInputFloat("Speed", settings.cloudSpeed, -0.08f, 0.08f, "%.3f", 0.001f);
         ImGui::SeparatorText("Volume");
-        sliderInputFloat("Height", settings.cloudHeight, 1.0f, glm::max(settings.atmosphereHeight - 0.5f, 1.0f), "%.1f", 0.5f);
-        sliderInputFloat("Thickness", settings.cloudThickness, 0.5f, glm::max(settings.atmosphereHeight - 0.5f, 0.5f), "%.1f", 0.5f);
-        sliderInputFloat("Density", settings.cloudDensity, 0.15f, 3.0f, "%.2f", 0.01f);
-        sliderInputFloat("Shadow", settings.cloudShadowStrength, 0.0f, 1.5f, "%.2f", 0.01f);
-        sliderInputFloat("Opacity", settings.cloudOpacity, 0.0f, 1.0f, "%.2f", 0.01f);
+        sliderInputFloat("Height##cloud", settings.cloudHeight, 1.0f, glm::max(settings.atmosphereHeight - 0.5f, 1.0f), "%.1f", 0.5f);
+        sliderInputFloat("Thickness##cloud", settings.cloudThickness, 0.5f, glm::max(settings.atmosphereHeight - 0.5f, 0.5f), "%.1f", 0.5f);
+        sliderInputFloat("Density##cloud", settings.cloudDensity, 0.15f, 3.0f, "%.2f", 0.01f);
+        sliderInputFloat("Shadow##cloud", settings.cloudShadowStrength, 0.0f, 1.5f, "%.2f", 0.01f);
+        sliderInputFloat("Opacity##cloud", settings.cloudOpacity, 0.0f, 1.0f, "%.2f", 0.01f);
         ImGui::ColorEdit3("Cloud Color", &settings.cloudColor.x);
         ImGui::SeparatorText("Quality");
         ImGui::TextDisabled("Approx sample cost: %d view x %d light",
@@ -1750,7 +1711,7 @@ void drawRenderPanel(ApplicationState& state)
         if (ImGui::RadioButton("None##overlay", overlayIndex == 0)) settings.featureOverlayMode = TerrainFeatureOverlayMode::None;
         ImGui::SameLine();
         if (ImGui::RadioButton("All##overlay", overlayIndex == 1)) settings.featureOverlayMode = TerrainFeatureOverlayMode::All;
-        if (ImGui::RadioButton("Rivers##overlay", overlayIndex == 2)) settings.featureOverlayMode = TerrainFeatureOverlayMode::Rivers;
+        if (ImGui::RadioButton("Channels##overlay", overlayIndex == 2)) settings.featureOverlayMode = TerrainFeatureOverlayMode::Rivers;
         ImGui::SameLine();
         if (ImGui::RadioButton("Coast##overlay", overlayIndex == 3)) settings.featureOverlayMode = TerrainFeatureOverlayMode::Coast;
         if (ImGui::RadioButton("Ridges##overlay", overlayIndex == 4)) settings.featureOverlayMode = TerrainFeatureOverlayMode::Ridges;
