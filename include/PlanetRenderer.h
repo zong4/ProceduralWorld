@@ -95,12 +95,6 @@ struct PlanetRenderSettings {
     float terrainSnowEnd = 0.95f;
     float terrainMaterialNoiseScale = 0.030f;
     float terrainMaterialNoiseStrength = 0.0f;
-    bool renderRivers = true;
-    float riverVisibility = 1.45f;
-    float riverWidth = 0.58f;
-    float riverShine = 1.05f;
-    float riverRefractionStrength = 0.48f;
-    glm::vec3 riverColor = glm::vec3(0.02f, 0.36f, 0.42f);
     float coarseGridLineWidth = 1.6f;
     glm::vec3 skyColor = glm::vec3(0.0f);
     float fogDensity = 0.0f;
