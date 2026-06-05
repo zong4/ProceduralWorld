@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
+  <title id="title">Baked chunk 与 LOD</title>
+  <desc id="desc">展示地形 chunk 烘焙、可见性裁剪和 LOD 选择。</desc>
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M2,2 L10,6 L2,10 Z" fill="#596a2b"/></marker>
+    <style>
+      .bg{fill:#fcfdf7}.title{font:700 34px 'Microsoft YaHei',Arial,sans-serif;fill:#3a451e}.sub{font:18px 'Microsoft YaHei',Arial,sans-serif;fill:#69714d}
+      .box{fill:#fff;stroke:#a2b657;stroke-width:2.4;rx:16}.near{fill:#d8f0d0;stroke:#58a15a;stroke-width:2}.mid{fill:#fff1bf;stroke:#d6a833;stroke-width:2}.far{fill:#e7edf5;stroke:#7b8fa8;stroke-width:2}
+      .label{font:700 21px 'Microsoft YaHei',Arial,sans-serif;fill:#3a451e}.small{font:15.5px 'Microsoft YaHei',Arial,sans-serif;fill:#535b3d}.arrow{stroke:#596a2b;stroke-width:3;fill:none;marker-end:url(#arrow)}
+    </style>
+  </defs>
+  <rect class="bg" width="1280" height="720"/>
+  <text class="title" x="58" y="64">地形 Baked Chunk 与 LOD</text>
+  <text class="sub" x="60" y="96">当前地形主路径是离线烘焙 chunk，每帧只选择可见块和对应 LOD。</text>
+
+  <rect class="box" x="75" y="150" width="260" height="150"/>
+  <text class="label" x="108" y="192">buildTerrainChunks()</text>
+  <text class="small" x="108" y="226">按 face 划分固定深度</text>
+  <text class="small" x="108" y="250">采样高度与 featureWeight</text>
+  <text class="small" x="108" y="274">生成顶点和索引</text>
+
+  <rect class="box" x="410" y="150" width="260" height="150"/>
+  <text class="label" x="443" y="192">upload()</text>
+  <text class="small" x="443" y="226">VBO / IBO / VAO</text>
+  <text class="small" x="443" y="250">chunk center / radius</text>
+  <text class="small" x="443" y="274">LOD index range</text>
+
+  <rect class="box" x="745" y="150" width="260" height="150"/>
+  <text class="label" x="778" y="192">每帧可见性判断</text>
+  <text class="small" x="778" y="226">frustum culling</text>
+  <text class="small" x="778" y="250">horizon culling</text>
+  <text class="small" x="778" y="274">projected radius</text>
+
+  <path class="arrow" d="M335 225 H410"/>
+  <path class="arrow" d="M670 225 H745"/>
+
+  <rect class="near" x="120" y="430" width="260" height="95"/>
+  <text class="label" x="150" y="470">Full LOD</text>
+  <text class="small" x="150" y="498">近处，投影半径大，细节最高</text>
+
+  <rect class="mid" x="510" y="430" width="260" height="95"/>
+  <text class="label" x="540" y="470">Mid LOD</text>
+  <text class="small" x="540" y="498">中距离，减少三角形数量</text>
+
+  <rect class="far" x="900" y="430" width="260" height="95"/>
+  <text class="label" x="930" y="470">Low LOD</text>
+  <text class="small" x="930" y="498">远处，保留整体轮廓</text>
+
+  <path class="arrow" d="M875 300 C875 360 250 360 250 430"/>
+  <path class="arrow" d="M875 300 C875 365 640 365 640 430"/>
+  <path class="arrow" d="M875 300 C875 360 1030 365 1030 430"/>
+  <text class="small" x="92" y="640">性能面板会显示 visible baked chunks、full/mid/low LOD 数量和估算三角形数。</text>
+</svg>

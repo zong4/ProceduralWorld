@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
+  <title id="title">海洋反射折射与水深混合</title>
+  <desc id="desc">展示反射 FBO、折射 FBO、深度和 Fresnel 如何进入 ocean shader。</desc>
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M2,2 L10,6 L2,10 Z" fill="#1d6681"/></marker>
+    <style>
+      .bg{fill:#f7fcff}.title{font:700 34px 'Microsoft YaHei',Arial,sans-serif;fill:#153c50}.sub{font:18px 'Microsoft YaHei',Arial,sans-serif;fill:#557183}
+      .box{fill:#fff;stroke:#65abc5;stroke-width:2.4;rx:16}.fbo{fill:#e9f7ff;stroke:#3795be;stroke-width:2.4;rx:16}.shader{fill:#eef9f2;stroke:#6fac7d;stroke-width:2.4;rx:16}
+      .label{font:700 21px 'Microsoft YaHei',Arial,sans-serif;fill:#143b50}.small{font:15.5px 'Microsoft YaHei',Arial,sans-serif;fill:#405c68}.arrow{stroke:#1d6681;stroke-width:3;fill:none;marker-end:url(#arrow)}
+    </style>
+  </defs>
+  <rect class="bg" width="1280" height="720"/>
+  <text class="title" x="58" y="64">海洋：反射、折射、水深与 Fresnel</text>
+  <text class="sub" x="60" y="96">用两个离屏 FBO 为水面 shader 提供环境颜色和深度依据。</text>
+
+  <rect class="box" x="70" y="160" width="260" height="125"/>
+  <text class="label" x="102" y="202">可见海洋 patch</text>
+  <text class="small" x="102" y="234">quadtree + 水域过滤</text>
+  <text class="small" x="102" y="258">Auto Distance LOD 权重</text>
+
+  <rect class="fbo" x="430" y="120" width="290" height="125"/>
+  <text class="label" x="462" y="162">Reflection FBO</text>
+  <text class="small" x="462" y="194">镜像相机</text>
+  <text class="small" x="462" y="218">clip plane 绘制地形</text>
+
+  <rect class="fbo" x="430" y="305" width="290" height="125"/>
+  <text class="label" x="462" y="347">Refraction FBO</text>
+  <text class="small" x="462" y="379">正常相机</text>
+  <text class="small" x="462" y="403">保存颜色和深度</text>
+
+  <rect class="shader" x="835" y="205" width="360" height="205"/>
+  <text class="label" x="870" y="248">ocean.frag</text>
+  <text class="small" x="870" y="282">1. 屏幕 UV 采样反射/折射</text>
+  <text class="small" x="870" y="310">2. 线性化深度估算水柱厚度</text>
+  <text class="small" x="870" y="338">3. 程序化 waterDepth 判断水域</text>
+  <text class="small" x="870" y="366">4. Fresnel 混合反射和折射</text>
+  <text class="small" x="870" y="394">5. GGX 高光 + SSS + 大气透视</text>
+
+  <rect x="205" y="525" width="870" height="82" rx="14" fill="#fff" stroke="#9fc7d5" stroke-width="2"/>
+  <text class="small" x="240" y="558">答辩说法：这是 planar reflection/refraction，是实时近似，不是完整球面光线追踪。</text>
+  <text class="small" x="240" y="586">水色由 FBO 颜色、屏幕深度、程序化水深和 Fresnel 共同决定。</text>
+
+  <path class="arrow" d="M330 220 C380 220 390 180 430 180"/>
+  <path class="arrow" d="M330 220 C380 220 390 365 430 365"/>
+  <path class="arrow" d="M720 180 C770 180 790 265 835 265"/>
+  <path class="arrow" d="M720 365 C770 365 790 335 835 335"/>
+</svg>

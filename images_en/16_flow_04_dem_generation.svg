@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="880" viewBox="0 0 1280 880" role="img" aria-labelledby="title desc">
+  <title id="title">DEM Terrain Generation</title>
+  <desc id="desc">The current runtime path enters generateDemPrototype() to produce height, hydrology and surface attributes.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#315b7c"/>
+    </marker>
+    <style>
+      .bg{fill:#f7fbff}.title{font:700 34px Inter,Segoe UI,Arial,sans-serif;fill:#17324d}.sub{font:18px Inter,Segoe UI,Arial,sans-serif;fill:#5d6b78}
+      .box{fill:#fff;stroke-width:2.2}.blue{stroke:#7daed5;fill:#ffffff}.green{stroke:#76b98d;fill:#f0faf3}.amber{stroke:#dca44a;fill:#fff8e8}.violet{stroke:#a986d7;fill:#f8f2ff}
+      .label{font:700 20px Inter,Segoe UI,Arial,sans-serif;fill:#17324d}.small{font:16px Inter,Segoe UI,Arial,sans-serif;fill:#435464}.arrow{stroke:#315b7c;stroke-width:3;fill:none;marker-end:url(#arrow)}
+      .numCircle{fill:#315b7c}.num{font:700 16px Inter,Segoe UI,Arial,sans-serif;fill:white}
+    </style>
+  </defs>
+  <rect class="bg" width="1280" height="880"/>
+  <text class="title" x="58" y="62">DEM Terrain Generation</text>
+  <text class="sub" x="60" y="94">The current runtime path enters generateDemPrototype() to produce height, hydrology and surface attributes.</text>
+  <circle class="numCircle" cx="88" cy="141" r="22"/>
+<text class="num" x="88" y="148" text-anchor="middle">01</text>
+<rect class="box blue" x="60" y="155" width="255" height="126" rx="12"/>
+<text class="label" x="82" y="191" text-anchor="start">PlanetProceduralData</text>
+<text class="label" x="82" y="215" text-anchor="start">::generate()</text>
+
+<circle class="numCircle" cx="378" cy="141" r="22"/>
+<text class="num" x="378" y="148" text-anchor="middle">02</text>
+<rect class="box green" x="350" y="155" width="255" height="126" rx="12"/>
+<text class="label" x="372" y="191" text-anchor="start">C</text>
+
+<path class="arrow" d="M315 218 C332 218, 332 218, 350 218"/>
+<circle class="numCircle" cx="668" cy="141" r="22"/>
+<text class="num" x="668" y="148" text-anchor="middle">03</text>
+<rect class="box amber" x="640" y="155" width="255" height="126" rx="12"/>
+<text class="label" x="662" y="191" text-anchor="start">Enter</text>
+<text class="label" x="662" y="215" text-anchor="start">generateDemPrototype()</text>
+
+<path class="arrow" d="M605 218 C622 218, 622 218, 640 218"/>
+<circle class="numCircle" cx="958" cy="141" r="22"/>
+<text class="num" x="958" y="148" text-anchor="middle">04</text>
+<rect class="box violet" x="930" y="155" width="255" height="126" rx="12"/>
+<text class="label" x="952" y="191" text-anchor="start">Allocate height,</text>
+<text class="label" x="952" y="215" text-anchor="start">water, erosion and</text>
+<text class="label" x="952" y="239" text-anchor="start">climate arrays for</text>
+<text class="label" x="952" y="263" text-anchor="start">six faces</text>
+
+<path class="arrow" d="M895 218 C912 218, 912 218, 930 218"/>
+<circle class="numCircle" cx="958" cy="366" r="22"/>
+<text class="num" x="958" y="373" text-anchor="middle">05</text>
+<rect class="box blue" x="930" y="380" width="255" height="126" rx="12"/>
+<text class="label" x="952" y="416" text-anchor="start">Iterate over every</text>
+<text class="label" x="952" y="440" text-anchor="start">texel and compute</text>
+<text class="label" x="952" y="464" text-anchor="start">sphereDir</text>
+
+<path class="arrow" d="M1185 281 L1185 338 L1185 338 L1185 443"/>
+<circle class="numCircle" cx="668" cy="366" r="22"/>
+<text class="num" x="668" y="373" text-anchor="middle">06</text>
+<rect class="box green" x="640" y="380" width="255" height="126" rx="12"/>
+<text class="label" x="662" y="416" text-anchor="start">Use fBM / ridgedFbm</text>
+<text class="label" x="662" y="440" text-anchor="start">to form continents</text>
+<text class="label" x="662" y="464" text-anchor="start">and mountains</text>
+
+<path class="arrow" d="M930 443 C912 443, 912 443, 895 443"/>
+<circle class="numCircle" cx="378" cy="366" r="22"/>
+<text class="num" x="378" y="373" text-anchor="middle">07</text>
+<rect class="box amber" x="350" y="380" width="255" height="126" rx="12"/>
+<text class="label" x="372" y="416" text-anchor="start">Store height,</text>
+<text class="label" x="372" y="440" text-anchor="start">uplift, landMask and</text>
+<text class="label" x="372" y="464" text-anchor="start">preErosionHeight</text>
+
+<path class="arrow" d="M640 443 C622 443, 622 443, 605 443"/>
+<circle class="numCircle" cx="88" cy="366" r="22"/>
+<text class="num" x="88" y="373" text-anchor="middle">08</text>
+<rect class="box violet" x="60" y="380" width="255" height="126" rx="12"/>
+<text class="label" x="82" y="416" text-anchor="start">Run seam blending,</text>
+<text class="label" x="82" y="440" text-anchor="start">hydrology erosion</text>
+<text class="label" x="82" y="464" text-anchor="start">and climate passes</text>
+
+<path class="arrow" d="M350 443 C332 443, 332 443, 315 443"/>
+<circle class="numCircle" cx="88" cy="591" r="22"/>
+<text class="num" x="88" y="598" text-anchor="middle">09</text>
+<rect class="box blue" x="60" y="605" width="255" height="126" rx="12"/>
+<text class="label" x="82" y="641" text-anchor="start">Bake terrain chunks</text>
+<text class="label" x="82" y="665" text-anchor="start">with</text>
+<text class="label" x="82" y="689" text-anchor="start">buildTerrainChunks()</text>
+
+<path class="arrow" d="M60 506 L60 563 L60 563 L60 668"/>
+</svg>

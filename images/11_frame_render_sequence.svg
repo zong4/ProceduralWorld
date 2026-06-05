@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
+  <title id="title">每帧渲染顺序</title>
+  <desc id="desc">展示 PlanetRenderer::render 的每帧 pass 顺序。</desc>
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M2,2 L10,6 L2,10 Z" fill="#555"/></marker>
+    <style>
+      .bg{fill:#fbfbfb}.title{font:700 34px 'Microsoft YaHei',Arial,sans-serif;fill:#2f2f2f}.sub{font:18px 'Microsoft YaHei',Arial,sans-serif;fill:#666}
+      .step{fill:#fff;stroke:#9aa6b2;stroke-width:2.4;rx:16}.hot{fill:#fff2e0;stroke:#df9d38;stroke-width:2.4;rx:16}.water{fill:#eaf8ff;stroke:#57a6cf;stroke-width:2.4;rx:16}.sky{fill:#f0edff;stroke:#927bd1;stroke-width:2.4;rx:16}
+      .label{font:700 20px 'Microsoft YaHei',Arial,sans-serif;fill:#2f2f2f}.small{font:15px 'Microsoft YaHei',Arial,sans-serif;fill:#555}.arrow{stroke:#555;stroke-width:3;fill:none;marker-end:url(#arrow)}
+    </style>
+  </defs>
+  <rect class="bg" width="1280" height="720"/>
+  <text class="title" x="58" y="64">PlanetRenderer::render() 每帧顺序</text>
+  <text class="sub" x="60" y="96">这张图适合解释性能面板中的各项耗时来自哪里。</text>
+
+  <rect class="step" x="70" y="155" width="230" height="95"/>
+  <text class="label" x="100" y="195">1. LOD + Culling</text>
+  <text class="small" x="100" y="225">地形 chunk + 海洋 patch</text>
+
+  <rect class="water" x="380" y="155" width="230" height="95"/>
+  <text class="label" x="410" y="195">2. FFT Update</text>
+  <text class="small" x="410" y="225">按 frame stride 更新</text>
+
+  <rect class="sky" x="690" y="155" width="230" height="95"/>
+  <text class="label" x="720" y="195">3. Atmosphere LUT</text>
+  <text class="small" x="720" y="225">参数变更才重建</text>
+
+  <rect class="water" x="980" y="155" width="230" height="95"/>
+  <text class="label" x="1010" y="195">4. FBO Targets</text>
+  <text class="small" x="1010" y="225">reflection / refraction</text>
+
+  <rect class="hot" x="120" y="405" width="210" height="95"/>
+  <text class="label" x="150" y="445">5. Terrain</text>
+  <text class="small" x="150" y="475">baked chunks</text>
+
+  <rect class="water" x="410" y="405" width="210" height="95"/>
+  <text class="label" x="440" y="445">6. Ocean</text>
+  <text class="small" x="440" y="475">FFT + FBO + depth</text>
+
+  <rect class="sky" x="700" y="405" width="210" height="95"/>
+  <text class="label" x="730" y="445">7. Atmosphere</text>
+  <text class="small" x="730" y="475">LUT + clouds</text>
+
+  <rect class="step" x="990" y="405" width="210" height="95"/>
+  <text class="label" x="1020" y="445">8. Wire / UI</text>
+  <text class="small" x="1020" y="475">debug overlay + ImGui</text>
+
+  <path class="arrow" d="M300 202 H380"/>
+  <path class="arrow" d="M610 202 H690"/>
+  <path class="arrow" d="M920 202 H980"/>
+  <path class="arrow" d="M1095 250 C1095 330 225 330 225 405"/>
+  <path class="arrow" d="M330 452 H410"/>
+  <path class="arrow" d="M620 452 H700"/>
+  <path class="arrow" d="M910 452 H990"/>
+  <text class="small" x="84" y="620">对应 Performance Monitor：cullingMs、fftMs、reflectionRefractionMs、terrainMs、oceanMs、atmosphereMs、wireMs、totalMs。</text>
+</svg>

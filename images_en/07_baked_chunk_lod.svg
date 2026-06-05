@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
+  <title id="title">Baked Terrain Chunk LOD</title>
+  <desc id="desc">Prebuilt chunks are culled and selected by distance each frame.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#315b7c"/>
+    </marker>
+    <style>
+      .bg{fill:#f7fbff}.title{font:700 34px Inter,Segoe UI,Arial,sans-serif;fill:#17324d}.sub{font:18px Inter,Segoe UI,Arial,sans-serif;fill:#5d6b78}
+      .lane{font:700 22px Inter,Segoe UI,Arial,sans-serif;fill:#36566f}.box{fill:#fff;stroke-width:2.2}.blue{stroke:#7daed5;fill:#ffffff}.green{stroke:#76b98d;fill:#f0faf3}.amber{stroke:#dca44a;fill:#fff8e8}.violet{stroke:#a986d7;fill:#f8f2ff}
+      .label{font:700 21px Inter,Segoe UI,Arial,sans-serif;fill:#17324d}.small{font:16px Inter,Segoe UI,Arial,sans-serif;fill:#435464}.arrow{stroke:#315b7c;stroke-width:3;fill:none;marker-end:url(#arrow)}
+    </style>
+  </defs>
+  <rect class="bg" width="1280" height="720"/>
+  <text class="title" x="58" y="62">Baked Terrain Chunk LOD</text>
+  <text class="sub" x="60" y="94">Prebuilt chunks are culled and selected by distance each frame.</text>
+  <text class="lane" x="70" y="154">Bake</text>
+<rect class="box green" x="70" y="188" width="350" height="86" rx="12"/>
+<text class="label" x="92" y="224" text-anchor="start">S</text>
+
+<rect class="box amber" x="70" y="306" width="350" height="86" rx="12"/>
+<text class="label" x="92" y="342" text-anchor="start">S</text>
+
+<path class="arrow" d="M245 274 L245 306"/>
+<text class="lane" x="465" y="154">Cull</text>
+<rect class="box amber" x="465" y="188" width="350" height="86" rx="12"/>
+<text class="label" x="487" y="224" text-anchor="start">C</text>
+
+<rect class="box violet" x="465" y="306" width="350" height="86" rx="12"/>
+<text class="label" x="487" y="342" text-anchor="start">D</text>
+
+<path class="arrow" d="M640 274 L640 306"/>
+<path class="arrow" d="M420 318 C442 318, 442 318, 465 318"/>
+<text class="lane" x="860" y="154">Draw</text>
+<rect class="box violet" x="860" y="188" width="350" height="86" rx="12"/>
+<text class="label" x="882" y="224" text-anchor="start">V</text>
+
+<rect class="box blue" x="860" y="306" width="350" height="86" rx="12"/>
+<text class="label" x="882" y="342" text-anchor="start">L</text>
+
+<path class="arrow" d="M1035 274 L1035 306"/>
+<path class="arrow" d="M815 318 C838 318, 838 318, 860 318"/>
+</svg>

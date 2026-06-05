@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
+  <title id="title">项目总体架构</title>
+  <desc id="desc">ProceduralWorld 从 CPU 程序化生成到 GPU 实时渲染的总流程。</desc>
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#2b5b84"/>
+    </marker>
+    <style>
+      .bg{fill:#f7fbff}.title{font:700 34px 'Microsoft YaHei',Arial,sans-serif;fill:#17324d}
+      .sub{font:18px 'Microsoft YaHei',Arial,sans-serif;fill:#5b6b7a}.box{fill:#fff;stroke:#8fb8da;stroke-width:2.2;rx:16}
+      .box2{fill:#eef8f2;stroke:#76b98d;stroke-width:2.2;rx:16}.box3{fill:#fff8e8;stroke:#e0a33f;stroke-width:2.2;rx:16}
+      .box4{fill:#f7f0ff;stroke:#a986d7;stroke-width:2.2;rx:16}.label{font:700 22px 'Microsoft YaHei',Arial,sans-serif;fill:#17324d}
+      .small{font:16px 'Microsoft YaHei',Arial,sans-serif;fill:#405366}.arrow{stroke:#2b5b84;stroke-width:3;fill:none;marker-end:url(#arrow)}
+      .lane{font:700 20px 'Microsoft YaHei',Arial,sans-serif;fill:#36566f}
+    </style>
+  </defs>
+  <rect class="bg" width="1280" height="720"/>
+  <text class="title" x="58" y="64">ProceduralWorld 总体架构</text>
+  <text class="sub" x="60" y="96">核心思路：CPU 生成星球数据，GPU 负责实时渲染和视觉效果。</text>
+
+  <text class="lane" x="84" y="158">CPU 生成阶段</text>
+  <text class="lane" x="510" y="158">GPU 资源阶段</text>
+  <text class="lane" x="910" y="158">每帧渲染阶段</text>
+
+  <rect class="box" x="60" y="185" width="280" height="105"/>
+  <text class="label" x="92" y="226">参数与应用状态</text>
+  <text class="small" x="92" y="256">ImGui / session / cache</text>
+  <text class="small" x="92" y="280">main.cpp</text>
+
+  <rect class="box2" x="60" y="360" width="280" height="120"/>
+  <text class="label" x="92" y="402">DEM 星球数据</text>
+  <text class="small" x="92" y="432">height / water / erosion</text>
+  <text class="small" x="92" y="456">temperature / moisture</text>
+
+  <rect class="box3" x="500" y="185" width="310" height="120"/>
+  <text class="label" x="532" y="226">Texture Array</text>
+  <text class="small" x="532" y="256">6 个 cube face 作为 layer</text>
+  <text class="small" x="532" y="280">height / masks / weights</text>
+
+  <rect class="box3" x="500" y="360" width="310" height="120"/>
+  <text class="label" x="532" y="402">Baked Terrain Mesh</text>
+  <text class="small" x="532" y="432">chunk 顶点、索引、LOD range</text>
+  <text class="small" x="532" y="456">VBO / IBO / VAO</text>
+
+  <rect class="box4" x="905" y="170" width="315" height="95"/>
+  <text class="label" x="938" y="210">地形渲染</text>
+  <text class="small" x="938" y="240">baked chunks + material shader</text>
+
+  <rect class="box4" x="905" y="295" width="315" height="95"/>
+  <text class="label" x="938" y="335">海洋渲染</text>
+  <text class="small" x="938" y="365">quadtree patch + FFT + FBO</text>
+
+  <rect class="box4" x="905" y="420" width="315" height="95"/>
+  <text class="label" x="938" y="460">大气与体积云</text>
+  <text class="small" x="938" y="490">LUT scattering + raymarch</text>
+
+  <rect class="box" x="905" y="545" width="315" height="85"/>
+  <text class="label" x="938" y="583">调试与性能</text>
+  <text class="small" x="938" y="612">render modes / timings / LOD stats</text>
+
+  <path class="arrow" d="M340 238 C410 238 430 238 500 238"/>
+  <path class="arrow" d="M340 420 C410 420 430 420 500 420"/>
+  <path class="arrow" d="M655 305 L655 360"/>
+  <path class="arrow" d="M810 245 C850 245 865 210 905 210"/>
+  <path class="arrow" d="M810 420 C850 420 865 342 905 342"/>
+  <path class="arrow" d="M810 245 C855 245 865 468 905 468"/>
+  <path class="arrow" d="M1062 515 L1062 545"/>
+  <path class="arrow" d="M200 290 L200 360"/>
+  <text class="small" x="390" y="220">setProceduralData()</text>
+  <text class="small" x="842" y="130">PlanetRenderer::render()</text>
+</svg>

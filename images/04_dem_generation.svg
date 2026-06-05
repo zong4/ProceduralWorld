@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
+  <title id="title">DEM 程序化地形生成</title>
+  <desc id="desc">展示 DEM 原型生成路径从噪声到地形 chunk 的过程。</desc>
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M2,2 L10,6 L2,10 Z" fill="#72502b"/></marker>
+    <style>
+      .bg{fill:#fffdf7}.title{font:700 34px 'Microsoft YaHei',Arial,sans-serif;fill:#4a3218}.sub{font:18px 'Microsoft YaHei',Arial,sans-serif;fill:#6b5b47}
+      .box{fill:#fff;stroke:#d9a95b;stroke-width:2.3;rx:16}.boxg{fill:#eef8f2;stroke:#73ad7b;stroke-width:2.3;rx:16}.boxb{fill:#eef6ff;stroke:#70a3cf;stroke-width:2.3;rx:16}
+      .label{font:700 21px 'Microsoft YaHei',Arial,sans-serif;fill:#3d2c1d}.small{font:15.5px 'Microsoft YaHei',Arial,sans-serif;fill:#564b3f}.arrow{stroke:#72502b;stroke-width:3;fill:none;marker-end:url(#arrow)}
+    </style>
+  </defs>
+  <rect class="bg" width="1280" height="720"/>
+  <text class="title" x="58" y="64">DEM 程序化地形生成路径</text>
+  <text class="sub" x="60" y="96">当前实际执行：PlanetProceduralData::generate() 进入 generateDemPrototype()。</text>
+
+  <rect class="boxb" x="70" y="160" width="230" height="105"/>
+  <text class="label" x="100" y="200">分配六面数据</text>
+  <text class="small" x="100" y="230">height / waterDepth</text>
+  <text class="small" x="100" y="252">erosion / temperature</text>
+
+  <rect class="box" x="370" y="145" width="250" height="135"/>
+  <text class="label" x="400" y="185">多层噪声塑形</text>
+  <text class="small" x="400" y="215">fBM：大陆与缓坡</text>
+  <text class="small" x="400" y="238">ridgedFbm：山脉与山脊</text>
+  <text class="small" x="400" y="261">uplift：造山区域</text>
+
+  <rect class="boxg" x="695" y="145" width="250" height="135"/>
+  <text class="label" x="725" y="185">水流侵蚀</text>
+  <text class="small" x="725" y="215">按高度排序</text>
+  <text class="small" x="725" y="238">累积 drainage</text>
+  <text class="small" x="725" y="261">carve + deposition</text>
+
+  <rect class="boxg" x="995" y="160" width="220" height="105"/>
+  <text class="label" x="1025" y="200">热扩散平滑</text>
+  <text class="small" x="1025" y="230">山坡平均化</text>
+  <text class="small" x="1025" y="252">降低尖刺</text>
+
+  <rect class="boxb" x="180" y="420" width="250" height="125"/>
+  <text class="label" x="210" y="460">水文与气候层</text>
+  <text class="small" x="210" y="490">waterDepth / shoreMask</text>
+  <text class="small" x="210" y="513">temperature / moisture</text>
+
+  <rect class="box" x="520" y="420" width="250" height="125"/>
+  <text class="label" x="550" y="460">调试与材质层</text>
+  <text class="small" x="550" y="490">channel / flow / wear</text>
+  <text class="small" x="550" y="513">domainWeight / featureMask</text>
+
+  <rect class="boxb" x="860" y="420" width="250" height="125"/>
+  <text class="label" x="890" y="460">离线地形块</text>
+  <text class="small" x="890" y="490">buildTerrainChunks()</text>
+  <text class="small" x="890" y="513">baked chunk mesh</text>
+
+  <path class="arrow" d="M300 212 H370"/>
+  <path class="arrow" d="M620 212 H695"/>
+  <path class="arrow" d="M945 212 H995"/>
+  <path class="arrow" d="M1105 265 C1105 340 980 360 985 420"/>
+  <path class="arrow" d="M945 482 H770"/>
+  <path class="arrow" d="M520 482 H430"/>
+  <path class="arrow" d="M430 482 H520"/>
+  <path class="arrow" d="M770 482 H860"/>
+  <text class="small" x="70" y="640">答辩提醒：当前 DEM 路径会生成河道 mask；特征线 overlay 初次生成时未完全接入，需要如实说明。</text>
+</svg>
