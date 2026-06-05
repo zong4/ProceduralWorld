@@ -14,30 +14,30 @@
   </defs>
   <rect class="bg" width="1280" height="720"/>
   <text class="title" x="58" y="62">Baked Terrain Chunk LOD</text>
-  <text class="sub" x="60" y="94">Prebuilt chunks are culled and selected by distance each frame.</text>
+  <text class="sub" x="60" y="94" text-anchor="start">Prebuilt chunks are culled and selected by distance each frame.</text>
   <text class="lane" x="70" y="154">Bake</text>
 <rect class="box green" x="70" y="188" width="350" height="86" rx="12"/>
-<text class="label" x="92" y="224" text-anchor="start">S</text>
+<text class="label" x="92" y="224" text-anchor="start">Split faces into chunks</text>
 
 <rect class="box amber" x="70" y="306" width="350" height="86" rx="12"/>
-<text class="label" x="92" y="342" text-anchor="start">S</text>
+<text class="label" x="92" y="342" text-anchor="start">Store bounds and indices</text>
 
 <path class="arrow" d="M245 274 L245 306"/>
 <text class="lane" x="465" y="154">Cull</text>
 <rect class="box amber" x="465" y="188" width="350" height="86" rx="12"/>
-<text class="label" x="487" y="224" text-anchor="start">C</text>
+<text class="label" x="487" y="224" text-anchor="start">Camera frustum</text>
 
 <rect class="box violet" x="465" y="306" width="350" height="86" rx="12"/>
-<text class="label" x="487" y="342" text-anchor="start">D</text>
+<text class="label" x="487" y="342" text-anchor="start">Distance range</text>
 
 <path class="arrow" d="M640 274 L640 306"/>
 <path class="arrow" d="M420 318 C442 318, 442 318, 465 318"/>
 <text class="lane" x="860" y="154">Draw</text>
 <rect class="box violet" x="860" y="188" width="350" height="86" rx="12"/>
-<text class="label" x="882" y="224" text-anchor="start">V</text>
+<text class="label" x="882" y="224" text-anchor="start">Visible chunks</text>
 
 <rect class="box blue" x="860" y="306" width="350" height="86" rx="12"/>
-<text class="label" x="882" y="342" text-anchor="start">L</text>
+<text class="label" x="882" y="342" text-anchor="start">LOD level</text>
 
 <path class="arrow" d="M1035 274 L1035 306"/>
 <path class="arrow" d="M815 318 C838 318, 838 318, 860 318"/>

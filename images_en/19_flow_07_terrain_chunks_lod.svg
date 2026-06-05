@@ -15,7 +15,8 @@
   </defs>
   <rect class="bg" width="1280" height="720"/>
   <text class="title" x="58" y="62">Terrain Chunk Baking and Baked LOD</text>
-  <text class="sub" x="60" y="94">The DEM is baked into chunks so the renderer only draws visible pieces.</text>
+  <text class="sub" x="60" y="94" text-anchor="start">The DEM is baked into chunks so the renderer only draws</text>
+<text class="sub" x="60" y="118" text-anchor="start">visible pieces.</text>
   <circle class="numCircle" cx="88" cy="141" r="22"/>
 <text class="num" x="88" y="148" text-anchor="middle">01</text>
 <rect class="box blue" x="60" y="155" width="255" height="126" rx="12"/>

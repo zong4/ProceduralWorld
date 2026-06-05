@@ -1,50 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
-  <title id="title">应用状态与后台生成线程</title>
-  <desc id="desc">展示 ProceduralSetup、Generating、Render 三个状态如何切换。</desc>
+  <title id="title">应用工作流</title>
+  <desc id="desc">应用从参数设置进入后台生成，再进入实时渲染。</desc>
   <defs>
-    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M2,2 L10,6 L2,10 Z" fill="#315b7a"/></marker>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#315b7c"/>
+    </marker>
     <style>
-      .bg{fill:#fbfcf8}.title{font:700 34px 'Microsoft YaHei',Arial,sans-serif;fill:#263a2e}.sub{font:18px 'Microsoft YaHei',Arial,sans-serif;fill:#5a6c61}
-      .state{fill:#fff;stroke:#7ea98a;stroke-width:2.5;rx:22}.active{fill:#eaf7ee;stroke:#4d9b63;stroke-width:3;rx:22}
-      .thread{fill:#fff7e5;stroke:#d49a32;stroke-width:2.5;rx:18}.gpu{fill:#eef4ff;stroke:#6f9ed8;stroke-width:2.5;rx:18}
-      .label{font:700 23px 'Microsoft YaHei',Arial,sans-serif;fill:#20342a}.small{font:16px 'Microsoft YaHei',Arial,sans-serif;fill:#405147}
-      .arrow{stroke:#315b7a;stroke-width:3;fill:none;marker-end:url(#arrow)}.dash{stroke:#8da0a9;stroke-width:2;stroke-dasharray:8 8;fill:none}
+      .bg{fill:#f7fbff}.title{font:700 34px 'Microsoft YaHei','Noto Sans CJK SC',Arial,sans-serif;fill:#17324d}.sub{font:18px 'Microsoft YaHei','Noto Sans CJK SC',Arial,sans-serif;fill:#5d6b78}
+      .lane{font:700 22px 'Microsoft YaHei','Noto Sans CJK SC',Arial,sans-serif;fill:#36566f}.box{fill:#fff;stroke-width:2.2}.blue{stroke:#7daed5;fill:#ffffff}.green{stroke:#76b98d;fill:#f0faf3}.amber{stroke:#dca44a;fill:#fff8e8}.violet{stroke:#a986d7;fill:#f8f2ff}
+      .label{font:700 21px 'Microsoft YaHei','Noto Sans CJK SC',Arial,sans-serif;fill:#17324d}.small{font:16px 'Microsoft YaHei','Noto Sans CJK SC',Arial,sans-serif;fill:#435464}.arrow{stroke:#315b7c;stroke-width:3;fill:none;marker-end:url(#arrow)}
     </style>
   </defs>
   <rect class="bg" width="1280" height="720"/>
-  <text class="title" x="58" y="64">应用状态与后台生成线程</text>
-  <text class="sub" x="60" y="96">OpenGL 上传留在主线程，CPU 星球数据可以放到后台线程生成。</text>
+  <text class="title" x="58" y="62">应用工作流</text>
+  <text class="sub" x="60" y="94" text-anchor="start">应用从参数设置进入后台生成，再进入实时渲染。</text>
+  <text class="lane" x="70" y="154">参数设置</text>
+<rect class="box green" x="70" y="188" width="350" height="86" rx="12"/>
+<text class="label" x="92" y="224" text-anchor="start">编辑生成参数</text>
 
-  <rect class="active" x="70" y="170" width="295" height="135"/>
-  <text class="label" x="105" y="215">ProceduralSetup</text>
-  <text class="small" x="105" y="248">调参数：地形、侵蚀、材质</text>
-  <text class="small" x="105" y="274">点击 Generate Planet</text>
+<rect class="box amber" x="70" y="306" width="350" height="86" rx="12"/>
+<text class="label" x="92" y="342" text-anchor="start">点击生成星球</text>
 
-  <rect class="thread" x="492" y="145" width="295" height="185"/>
-  <text class="label" x="527" y="190">Generating</text>
-  <text class="small" x="527" y="224">std::async 后台线程</text>
-  <text class="small" x="527" y="250">PlanetProceduralData::generate()</text>
-  <text class="small" x="527" y="276">atomic 进度 + 状态文本</text>
-  <text class="small" x="527" y="302">不创建 OpenGL 资源</text>
+<path class="arrow" d="M245 274 L245 306"/>
+<text class="lane" x="465" y="154">后台生成</text>
+<rect class="box amber" x="465" y="188" width="350" height="86" rx="12"/>
+<text class="label" x="487" y="224" text-anchor="start">std::async 生成数据</text>
 
-  <rect class="gpu" x="492" y="420" width="295" height="130"/>
-  <text class="label" x="527" y="465">主线程收尾</text>
-  <text class="small" x="527" y="498">finishPlanetGeneration()</text>
-  <text class="small" x="527" y="524">setProceduralData() 上传 GPU</text>
+<rect class="box violet" x="465" y="306" width="350" height="86" rx="12"/>
+<text class="label" x="487" y="342" text-anchor="start">进度回调刷新 UI</text>
 
-  <rect class="state" x="915" y="210" width="295" height="160"/>
-  <text class="label" x="950" y="255">Render</text>
-  <text class="small" x="950" y="288">实时相机、LOD、绘制 pass</text>
-  <text class="small" x="950" y="314">terrain / ocean / atmosphere</text>
-  <text class="small" x="950" y="340">保存 session/cache</text>
+<path class="arrow" d="M640 274 L640 306"/>
+<path class="arrow" d="M420 318 C442 318, 442 318, 465 318"/>
+<text class="lane" x="860" y="154">实时渲染</text>
+<rect class="box violet" x="860" y="188" width="350" height="86" rx="12"/>
+<text class="label" x="882" y="224" text-anchor="start">主线程上传 GPU</text>
 
-  <path class="arrow" d="M365 235 C420 235 438 235 492 235"/>
-  <path class="arrow" d="M640 330 L640 420"/>
-  <path class="arrow" d="M787 485 C845 485 875 310 915 300"/>
-  <path class="arrow" d="M915 350 C805 650 250 650 180 305"/>
-  <text class="small" x="381" y="215">Generate Planet</text>
-  <text class="small" x="665" y="382">future ready</text>
-  <text class="small" x="710" y="610">Back To Procedural</text>
-  <path class="dash" d="M70 600 H1210"/>
-  <text class="small" x="92" y="638">答辩说法：生成和渲染职责分离，能避免后台线程误用 OpenGL context。</text>
+<rect class="box blue" x="860" y="306" width="350" height="86" rx="12"/>
+<text class="label" x="882" y="342" text-anchor="start">进入渲染循环</text>
+
+<path class="arrow" d="M1035 274 L1035 306"/>
+<path class="arrow" d="M815 318 C838 318, 838 318, 860 318"/>
 </svg>

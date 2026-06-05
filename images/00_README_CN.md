@@ -3,15 +3,15 @@
 这里按答辩使用顺序放置示意图和流程图。01-12 是概念示意图，13-31 是功能模块流程图。
 
 ## 概念示意图
-- 01_overall_pipeline.svg：项目总架构
-- 02_application_workflow.svg：应用状态与生成线程
+- 01_overall_pipeline.svg：ProceduralWorld 总体架构
+- 02_application_workflow.svg：应用工作流
 - 03_cube_sphere_mapping.svg：六面体星球映射
 - 04_dem_generation.svg：DEM 地形生成
-- 05_hydrology_erosion_masks.svg：水文侵蚀示意
+- 05_hydrology_erosion_masks.svg：水文与侵蚀 Mask
 - 06_gpu_data_upload.svg：CPU 到 GPU 上传
-- 07_baked_chunk_lod.svg：地形块 LOD
+- 07_baked_chunk_lod.svg：地形 Chunk LOD
 - 08_ocean_fft.svg：FFT 海洋
-- 09_ocean_reflection_refraction.svg：海洋反射折射
+- 09_ocean_reflection_refraction.svg：海洋反射与折射
 - 10_atmosphere_clouds.svg：大气与体积云
 - 11_frame_render_sequence.svg：每帧渲染顺序
 - 12_debug_and_presentation.svg：调试与讲解支持

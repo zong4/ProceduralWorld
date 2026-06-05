@@ -15,11 +15,11 @@
   </defs>
   <rect class="bg" width="1280" height="720"/>
   <text class="title" x="58" y="62">输入与相机控制</text>
-  <text class="sub" x="60" y="94">用键鼠控制轨道、移动和视角，使星球可交互观察。</text>
+  <text class="sub" x="60" y="94" text-anchor="start">用键鼠控制轨道、移动和视角，使星球可交互观察。</text>
   <circle class="numCircle" cx="88" cy="141" r="22"/>
 <text class="num" x="88" y="148" text-anchor="middle">01</text>
 <rect class="box blue" x="60" y="155" width="255" height="116" rx="12"/>
-<text class="label" x="82" y="191" text-anchor="start">G</text>
+<text class="label" x="82" y="191" text-anchor="start">GLFW 捕获键盘和鼠标事件</text>
 
 <circle class="numCircle" cx="378" cy="141" r="22"/>
 <text class="num" x="378" y="148" text-anchor="middle">02</text>
@@ -31,13 +31,13 @@
 <circle class="numCircle" cx="668" cy="141" r="22"/>
 <text class="num" x="668" y="148" text-anchor="middle">03</text>
 <rect class="box amber" x="640" y="155" width="255" height="116" rx="12"/>
-<text class="label" x="662" y="191" text-anchor="start">鼠</text>
+<text class="label" x="662" y="191" text-anchor="start">鼠标控制视角或轨道</text>
 
 <path class="arrow" d="M605 213 C622 213, 622 213, 640 213"/>
 <circle class="numCircle" cx="958" cy="141" r="22"/>
 <text class="num" x="958" y="148" text-anchor="middle">04</text>
 <rect class="box violet" x="930" y="155" width="255" height="116" rx="12"/>
-<text class="label" x="952" y="191" text-anchor="start">键</text>
+<text class="label" x="952" y="191" text-anchor="start">键盘控制移动、缩放和模式</text>
 
 <path class="arrow" d="M895 213 C912 213, 912 213, 930 213"/>
 <circle class="numCircle" cx="958" cy="366" r="22"/>

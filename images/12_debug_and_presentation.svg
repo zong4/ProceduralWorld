@@ -1,38 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
-  <title id="title">调试面板与答辩展示顺序</title>
-  <desc id="desc">展示答辩时推荐的演示路径和可打开的调试面板。</desc>
+  <title id="title">调试与讲解支持</title>
+  <desc id="desc">UI 面板展示参数、中间层和性能统计。</desc>
   <defs>
-    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M2,2 L10,6 L2,10 Z" fill="#6b4d2e"/></marker>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#315b7c"/>
+    </marker>
     <style>
-      .bg{fill:#fffaf4}.title{font:700 34px 'Microsoft YaHei',Arial,sans-serif;fill:#3f2d1b}.sub{font:18px 'Microsoft YaHei',Arial,sans-serif;fill:#675747}
-      .card{fill:#fff;stroke:#d5a265;stroke-width:2.3;rx:16}.debug{fill:#f0f7ff;stroke:#6aa0d1;stroke-width:2.3;rx:16}
-      .label{font:700 20px 'Microsoft YaHei',Arial,sans-serif;fill:#3f2d1b}.small{font:15px 'Microsoft YaHei',Arial,sans-serif;fill:#574a3e}.arrow{stroke:#6b4d2e;stroke-width:3;fill:none;marker-end:url(#arrow)}
-      .num{font:700 28px Arial,sans-serif;fill:#b36f25}
+      .bg{fill:#f7fbff}.title{font:700 34px 'Microsoft YaHei','Noto Sans CJK SC',Arial,sans-serif;fill:#17324d}.sub{font:18px 'Microsoft YaHei','Noto Sans CJK SC',Arial,sans-serif;fill:#5d6b78}
+      .lane{font:700 22px 'Microsoft YaHei','Noto Sans CJK SC',Arial,sans-serif;fill:#36566f}.box{fill:#fff;stroke-width:2.2}.blue{stroke:#7daed5;fill:#ffffff}.green{stroke:#76b98d;fill:#f0faf3}.amber{stroke:#dca44a;fill:#fff8e8}.violet{stroke:#a986d7;fill:#f8f2ff}
+      .label{font:700 21px 'Microsoft YaHei','Noto Sans CJK SC',Arial,sans-serif;fill:#17324d}.small{font:16px 'Microsoft YaHei','Noto Sans CJK SC',Arial,sans-serif;fill:#435464}.arrow{stroke:#315b7c;stroke-width:3;fill:none;marker-end:url(#arrow)}
     </style>
   </defs>
   <rect class="bg" width="1280" height="720"/>
-  <text class="title" x="58" y="64">答辩展示顺序与调试面板</text>
-  <text class="sub" x="60" y="96">先讲结构，再讲数据，再讲实时效果，最后用调试视图证明中间数据存在。</text>
+  <text class="title" x="58" y="62">调试与讲解支持</text>
+  <text class="sub" x="60" y="94" text-anchor="start">UI 面板展示参数、中间层和性能统计。</text>
+  <text class="lane" x="70" y="154">控制项</text>
+<rect class="box green" x="70" y="188" width="350" height="86" rx="12"/>
+<text class="label" x="92" y="224" text-anchor="start">地形</text>
 
-  <rect class="card" x="70" y="150" width="220" height="95"/><text class="num" x="95" y="192">1</text><text class="label" x="135" y="187">总体星球</text><text class="small" x="135" y="218">项目目标与架构</text>
-  <rect class="card" x="335" y="150" width="220" height="95"/><text class="num" x="360" y="192">2</text><text class="label" x="400" y="187">Cube-sphere</text><text class="small" x="400" y="218">六面体到球面</text>
-  <rect class="card" x="600" y="150" width="220" height="95"/><text class="num" x="625" y="192">3</text><text class="label" x="665" y="187">DEM 地形</text><text class="small" x="665" y="218">大陆、山脉、侵蚀</text>
-  <rect class="card" x="865" y="150" width="220" height="95"/><text class="num" x="890" y="192">4</text><text class="label" x="930" y="187">GPU 上传</text><text class="small" x="930" y="218">纹理数组和 chunk</text>
+<rect class="box amber" x="70" y="306" width="350" height="86" rx="12"/>
+<text class="label" x="92" y="342" text-anchor="start">海洋</text>
 
-  <rect class="card" x="155" y="340" width="220" height="95"/><text class="num" x="180" y="382">5</text><text class="label" x="220" y="377">地形材质</text><text class="small" x="220" y="408">高度、坡度、温湿度</text>
-  <rect class="card" x="420" y="340" width="220" height="95"/><text class="num" x="445" y="382">6</text><text class="label" x="485" y="377">海洋</text><text class="small" x="485" y="408">FFT、反射、折射</text>
-  <rect class="card" x="685" y="340" width="220" height="95"/><text class="num" x="710" y="382">7</text><text class="label" x="750" y="377">大气和云</text><text class="small" x="750" y="408">LUT + raymarch</text>
-  <rect class="card" x="950" y="340" width="220" height="95"/><text class="num" x="975" y="382">8</text><text class="label" x="1015" y="377">性能统计</text><text class="small" x="1015" y="408">LOD、耗时、三角形数</text>
+<path class="arrow" d="M245 274 L245 306"/>
+<rect class="box violet" x="70" y="424" width="350" height="86" rx="12"/>
+<text class="label" x="92" y="460" text-anchor="start">大气</text>
 
-  <path class="arrow" d="M290 198 H335"/>
-  <path class="arrow" d="M555 198 H600"/>
-  <path class="arrow" d="M820 198 H865"/>
-  <path class="arrow" d="M975 245 C975 295 265 295 265 340"/>
-  <path class="arrow" d="M375 388 H420"/>
-  <path class="arrow" d="M640 388 H685"/>
-  <path class="arrow" d="M905 388 H950"/>
+<path class="arrow" d="M245 392 L245 424"/>
+<rect class="box blue" x="70" y="542" width="350" height="86" rx="12"/>
+<text class="label" x="92" y="578" text-anchor="start">云层</text>
 
-  <rect class="debug" x="110" y="535" width="1060" height="95"/>
-  <text class="label" x="145" y="575">建议现场打开的面板</text>
-  <text class="small" x="145" y="604">Render Mode：HeightMap / Normals / Material；Wire Mode：Baked LOD / Ocean；Hydrology Debug：Wet Channel Overlay；Ctrl+1：Performance Monitor。</text>
+<path class="arrow" d="M245 510 L245 542"/>
+<text class="lane" x="465" y="154">调试视图</text>
+<rect class="box amber" x="465" y="188" width="350" height="86" rx="12"/>
+<text class="label" x="487" y="224" text-anchor="start">水文</text>
+
+<rect class="box violet" x="465" y="306" width="350" height="86" rx="12"/>
+<text class="label" x="487" y="342" text-anchor="start">侵蚀</text>
+
+<path class="arrow" d="M640 274 L640 306"/>
+<rect class="box blue" x="465" y="424" width="350" height="86" rx="12"/>
+<text class="label" x="487" y="460" text-anchor="start">材质</text>
+
+<path class="arrow" d="M640 392 L640 424"/>
+<rect class="box green" x="465" y="542" width="350" height="86" rx="12"/>
+<text class="label" x="487" y="578" text-anchor="start">LOD</text>
+
+<path class="arrow" d="M640 510 L640 542"/>
+<path class="arrow" d="M420 318 C442 318, 442 318, 465 318"/>
+<text class="lane" x="860" y="154">答辩展示</text>
+<rect class="box violet" x="860" y="188" width="350" height="86" rx="12"/>
+<text class="label" x="882" y="224" text-anchor="start">展示因果关系</text>
+
+<rect class="box blue" x="860" y="306" width="350" height="86" rx="12"/>
+<text class="label" x="882" y="342" text-anchor="start">说明当前边界</text>
+
+<path class="arrow" d="M1035 274 L1035 306"/>
+<path class="arrow" d="M815 318 C838 318, 838 318, 860 318"/>
 </svg>

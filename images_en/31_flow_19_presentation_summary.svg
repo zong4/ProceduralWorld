@@ -15,7 +15,8 @@
   </defs>
   <rect class="bg" width="1280" height="720"/>
   <text class="title" x="58" y="62">Presentation Summary and Boundaries</text>
-  <text class="sub" x="60" y="94">Summarize the strengths while clearly stating the current limitations.</text>
+  <text class="sub" x="60" y="94" text-anchor="start">Summarize the strengths while clearly stating the current</text>
+<text class="sub" x="60" y="118" text-anchor="start">limitations.</text>
   <circle class="numCircle" cx="88" cy="141" r="22"/>
 <text class="num" x="88" y="148" text-anchor="middle">01</text>
 <rect class="box blue" x="60" y="155" width="255" height="126" rx="12"/>

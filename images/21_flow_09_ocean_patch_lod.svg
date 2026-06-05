@@ -15,7 +15,7 @@
   </defs>
   <rect class="bg" width="1280" height="720"/>
   <text class="title" x="58" y="62">海洋 Patch LOD 与球面海面</text>
-  <text class="sub" x="60" y="94">在球面上动态选择海洋 patch，并用 tessellation 提升近处细节。</text>
+  <text class="sub" x="60" y="94" text-anchor="start">在球面上动态选择海洋 patch，并用 tessellation 提升近处细节。</text>
   <circle class="numCircle" cx="88" cy="141" r="22"/>
 <text class="num" x="88" y="148" text-anchor="middle">01</text>
 <rect class="box blue" x="60" y="155" width="255" height="116" rx="12"/>

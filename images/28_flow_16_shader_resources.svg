@@ -15,7 +15,7 @@
   </defs>
   <rect class="bg" width="1280" height="720"/>
   <text class="title" x="58" y="62">Shader 编译与资源管理</text>
-  <text class="sub" x="60" y="94">集中加载 shader、材质资源和 GPU 对象，失败时给出日志。</text>
+  <text class="sub" x="60" y="94" text-anchor="start">集中加载 shader、材质资源和 GPU 对象，失败时给出日志。</text>
   <circle class="numCircle" cx="88" cy="141" r="22"/>
 <text class="num" x="88" y="148" text-anchor="middle">01</text>
 <rect class="box blue" x="60" y="155" width="255" height="116" rx="12"/>
@@ -70,7 +70,7 @@
 <circle class="numCircle" cx="88" cy="366" r="22"/>
 <text class="num" x="88" y="373" text-anchor="middle">08</text>
 <rect class="box violet" x="60" y="380" width="255" height="116" rx="12"/>
-<text class="label" x="82" y="416" text-anchor="start">程</text>
+<text class="label" x="82" y="416" text-anchor="start">程序退出时释放 GPU 资源</text>
 
 <path class="arrow" d="M350 438 C332 438, 332 438, 315 438"/>
 </svg>

@@ -1,52 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
-  <title id="title">水文侵蚀与河道 mask</title>
-  <desc id="desc">展示高度场如何生成 drainage、channel、flow、wear 和 deposition mask。</desc>
+  <title id="title">水文与侵蚀 Mask</title>
+  <desc id="desc">汇流和 stream power 生成河道与侵蚀层。</desc>
   <defs>
-    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M2,2 L10,6 L2,10 Z" fill="#1d6a78"/></marker>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#315b7c"/>
+    </marker>
     <style>
-      .bg{fill:#f7fcfd}.title{font:700 34px 'Microsoft YaHei',Arial,sans-serif;fill:#16434a}.sub{font:18px 'Microsoft YaHei',Arial,sans-serif;fill:#557076}
-      .box{fill:#fff;stroke:#75b7c2;stroke-width:2.4;rx:16}.mask{fill:#eef8ff;stroke:#458dbc;stroke-width:2.4;rx:16}
-      .label{font:700 21px 'Microsoft YaHei',Arial,sans-serif;fill:#173c45}.small{font:15.5px 'Microsoft YaHei',Arial,sans-serif;fill:#405b60}.arrow{stroke:#1d6a78;stroke-width:3;fill:none;marker-end:url(#arrow)}
-      .r{fill:#0a90a3}.g{fill:#5aa35a}.b{fill:#8973c8}.a{fill:#c48b42}
+      .bg{fill:#f7fbff}.title{font:700 34px 'Microsoft YaHei','Noto Sans CJK SC',Arial,sans-serif;fill:#17324d}.sub{font:18px 'Microsoft YaHei','Noto Sans CJK SC',Arial,sans-serif;fill:#5d6b78}
+      .lane{font:700 22px 'Microsoft YaHei','Noto Sans CJK SC',Arial,sans-serif;fill:#36566f}.box{fill:#fff;stroke-width:2.2}.blue{stroke:#7daed5;fill:#ffffff}.green{stroke:#76b98d;fill:#f0faf3}.amber{stroke:#dca44a;fill:#fff8e8}.violet{stroke:#a986d7;fill:#f8f2ff}
+      .label{font:700 21px 'Microsoft YaHei','Noto Sans CJK SC',Arial,sans-serif;fill:#17324d}.small{font:16px 'Microsoft YaHei','Noto Sans CJK SC',Arial,sans-serif;fill:#435464}.arrow{stroke:#315b7c;stroke-width:3;fill:none;marker-end:url(#arrow)}
     </style>
   </defs>
   <rect class="bg" width="1280" height="720"/>
-  <text class="title" x="58" y="64">水文侵蚀：从高度场到河道视觉</text>
-  <text class="sub" x="60" y="96">生成的 mask 会进入 shader，影响颜色、湿润河岸、高光和折射式扰动。</text>
+  <text class="title" x="58" y="62">水文与侵蚀 Mask</text>
+  <text class="sub" x="60" y="94" text-anchor="start">汇流和 stream power 生成河道与侵蚀层。</text>
+  <text class="lane" x="70" y="154">水流方向</text>
+<rect class="box green" x="70" y="188" width="350" height="86" rx="12"/>
+<text class="label" x="92" y="224" text-anchor="start">下游 receiver</text>
 
-  <rect class="box" x="70" y="165" width="220" height="110"/>
-  <text class="label" x="102" y="207">初始高度场</text>
-  <text class="small" x="102" y="238">height + seaLevel</text>
+<rect class="box amber" x="70" y="306" width="350" height="86" rx="12"/>
+<text class="label" x="92" y="342" text-anchor="start">drainage 累积</text>
 
-  <rect class="box" x="355" y="145" width="250" height="150"/>
-  <text class="label" x="387" y="187">寻找下游邻居</text>
-  <text class="small" x="387" y="218">receiver</text>
-  <text class="small" x="387" y="242">receiverWeights</text>
-  <text class="small" x="387" y="266">按坡度分配水流</text>
+<path class="arrow" d="M245 274 L245 306"/>
+<text class="lane" x="465" y="154">河道切割</text>
+<rect class="box amber" x="465" y="188" width="350" height="86" rx="12"/>
+<text class="label" x="487" y="224" text-anchor="start">坡度</text>
 
-  <rect class="box" x="670" y="145" width="250" height="150"/>
-  <text class="label" x="702" y="187">累积 drainage</text>
-  <text class="small" x="702" y="218">高到低排序</text>
-  <text class="small" x="702" y="242">flow = drainage / max</text>
-  <text class="small" x="702" y="266">streamPower</text>
+<rect class="box violet" x="465" y="306" width="350" height="86" rx="12"/>
+<text class="label" x="487" y="342" text-anchor="start">stream power</text>
 
-  <rect class="box" x="985" y="165" width="220" height="110"/>
-  <text class="label" x="1017" y="207">切割与沉积</text>
-  <text class="small" x="1017" y="238">carve / deposition</text>
+<path class="arrow" d="M640 274 L640 306"/>
+<rect class="box blue" x="465" y="424" width="350" height="86" rx="12"/>
+<text class="label" x="487" y="460" text-anchor="start">channel mask</text>
 
-  <path class="arrow" d="M290 220 H355"/>
-  <path class="arrow" d="M605 220 H670"/>
-  <path class="arrow" d="M920 220 H985"/>
+<path class="arrow" d="M640 392 L640 424"/>
+<path class="arrow" d="M420 318 C442 318, 442 318, 465 318"/>
+<text class="lane" x="860" y="154">调试数据</text>
+<rect class="box violet" x="860" y="188" width="350" height="86" rx="12"/>
+<text class="label" x="882" y="224" text-anchor="start">wear</text>
 
-  <rect class="mask" x="165" y="420" width="950" height="145"/>
-  <text class="label" x="198" y="462">上传给 GPU 的 RGBA 侵蚀纹理</text>
-  <rect class="r" x="205" y="495" width="165" height="38" rx="8"/><text class="small" x="232" y="520" fill="#fff">R: channel</text>
-  <rect class="g" x="405" y="495" width="165" height="38" rx="8"/><text class="small" x="445" y="520" fill="#fff">G: flow</text>
-  <rect class="b" x="605" y="495" width="165" height="38" rx="8"/><text class="small" x="642" y="520" fill="#fff">B: wear</text>
-  <rect class="a" x="805" y="495" width="185" height="38" rx="8"/><text class="small" x="832" y="520" fill="#fff">A: deposition</text>
-  <text class="small" x="198" y="548">terrain_surface.glsl 读取这些通道，渲染湿润河道、河岸、河水颜色和高光。</text>
+<rect class="box blue" x="860" y="306" width="350" height="86" rx="12"/>
+<text class="label" x="882" y="342" text-anchor="start">deposition</text>
 
-  <path class="arrow" d="M1095 275 C1095 350 930 372 930 420"/>
-  <path class="arrow" d="M640 565 C640 620 850 635 1010 610"/>
-  <text class="small" x="817" y="635">shader 可视化</text>
+<path class="arrow" d="M1035 274 L1035 306"/>
+<rect class="box green" x="860" y="424" width="350" height="86" rx="12"/>
+<text class="label" x="882" y="460" text-anchor="start">flow map</text>
+
+<path class="arrow" d="M1035 392 L1035 424"/>
+<path class="arrow" d="M815 318 C838 318, 838 318, 860 318"/>
 </svg>

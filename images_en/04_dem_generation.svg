@@ -14,46 +14,47 @@
   </defs>
   <rect class="bg" width="1280" height="720"/>
   <text class="title" x="58" y="62">DEM Generation</text>
-  <text class="sub" x="60" y="94">Layered noise and post-processing create the digital elevation model.</text>
+  <text class="sub" x="60" y="94" text-anchor="start">Layered noise and post-processing create the digital elevation</text>
+<text class="sub" x="60" y="118" text-anchor="start">model.</text>
   <text class="lane" x="70" y="154">Base Terrain</text>
 <rect class="box green" x="70" y="188" width="350" height="86" rx="12"/>
-<text class="label" x="92" y="224" text-anchor="start">C</text>
+<text class="label" x="92" y="224" text-anchor="start">Continents</text>
 
 <rect class="box amber" x="70" y="306" width="350" height="86" rx="12"/>
-<text class="label" x="92" y="342" text-anchor="start">M</text>
+<text class="label" x="92" y="342" text-anchor="start">Mountains</text>
 
 <path class="arrow" d="M245 274 L245 306"/>
 <rect class="box violet" x="70" y="424" width="350" height="86" rx="12"/>
-<text class="label" x="92" y="460" text-anchor="start">R</text>
+<text class="label" x="92" y="460" text-anchor="start">Ridges</text>
 
 <path class="arrow" d="M245 392 L245 424"/>
 <text class="lane" x="465" y="154">Post Passes</text>
 <rect class="box amber" x="465" y="188" width="350" height="86" rx="12"/>
-<text class="label" x="487" y="224" text-anchor="start">S</text>
+<text class="label" x="487" y="224" text-anchor="start">Seam fix</text>
 
 <rect class="box violet" x="465" y="306" width="350" height="86" rx="12"/>
-<text class="label" x="487" y="342" text-anchor="start">H</text>
+<text class="label" x="487" y="342" text-anchor="start">Hydrology</text>
 
 <path class="arrow" d="M640 274 L640 306"/>
 <rect class="box blue" x="465" y="424" width="350" height="86" rx="12"/>
-<text class="label" x="487" y="460" text-anchor="start">E</text>
+<text class="label" x="487" y="460" text-anchor="start">Erosion</text>
 
 <path class="arrow" d="M640 392 L640 424"/>
 <path class="arrow" d="M420 318 C442 318, 442 318, 465 318"/>
 <text class="lane" x="860" y="154">Outputs</text>
 <rect class="box violet" x="860" y="188" width="350" height="86" rx="12"/>
-<text class="label" x="882" y="224" text-anchor="start">H</text>
+<text class="label" x="882" y="224" text-anchor="start">Height</text>
 
 <rect class="box blue" x="860" y="306" width="350" height="86" rx="12"/>
-<text class="label" x="882" y="342" text-anchor="start">W</text>
+<text class="label" x="882" y="342" text-anchor="start">Water</text>
 
 <path class="arrow" d="M1035 274 L1035 306"/>
 <rect class="box green" x="860" y="424" width="350" height="86" rx="12"/>
-<text class="label" x="882" y="460" text-anchor="start">C</text>
+<text class="label" x="882" y="460" text-anchor="start">Climate</text>
 
 <path class="arrow" d="M1035 392 L1035 424"/>
 <rect class="box amber" x="860" y="542" width="350" height="86" rx="12"/>
-<text class="label" x="882" y="578" text-anchor="start">M</text>
+<text class="label" x="882" y="578" text-anchor="start">Masks</text>
 
 <path class="arrow" d="M1035 510 L1035 542"/>
 <path class="arrow" d="M815 318 C838 318, 838 318, 860 318"/>

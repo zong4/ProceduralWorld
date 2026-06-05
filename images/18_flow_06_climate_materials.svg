@@ -15,7 +15,7 @@
   </defs>
   <rect class="bg" width="1280" height="720"/>
   <text class="title" x="58" y="62">温湿度、材质与地表分类</text>
-  <text class="sub" x="60" y="94">把高度、纬度、水体和侵蚀信息转成可渲染的地表材质。</text>
+  <text class="sub" x="60" y="94" text-anchor="start">把高度、纬度、水体和侵蚀信息转成可渲染的地表材质。</text>
   <circle class="numCircle" cx="88" cy="141" r="22"/>
 <text class="num" x="88" y="148" text-anchor="middle">01</text>
 <rect class="box blue" x="60" y="155" width="255" height="116" rx="12"/>
@@ -25,25 +25,25 @@
 <circle class="numCircle" cx="378" cy="141" r="22"/>
 <text class="num" x="378" y="148" text-anchor="middle">02</text>
 <rect class="box green" x="350" y="155" width="255" height="116" rx="12"/>
-<text class="label" x="372" y="191" text-anchor="start">高</text>
+<text class="label" x="372" y="191" text-anchor="start">高度影响温度递减</text>
 
 <path class="arrow" d="M315 213 C332 213, 332 213, 350 213"/>
 <circle class="numCircle" cx="668" cy="141" r="22"/>
 <text class="num" x="668" y="148" text-anchor="middle">03</text>
 <rect class="box amber" x="640" y="155" width="255" height="116" rx="12"/>
-<text class="label" x="662" y="191" text-anchor="start">水</text>
+<text class="label" x="662" y="191" text-anchor="start">水体、河道和岸线影响湿度</text>
 
 <path class="arrow" d="M605 213 C622 213, 622 213, 640 213"/>
 <circle class="numCircle" cx="958" cy="141" r="22"/>
 <text class="num" x="958" y="148" text-anchor="middle">04</text>
 <rect class="box violet" x="930" y="155" width="255" height="116" rx="12"/>
-<text class="label" x="952" y="191" text-anchor="start">地</text>
+<text class="label" x="952" y="191" text-anchor="start">地形坡度影响岩石裸露程度</text>
 
 <path class="arrow" d="M895 213 C912 213, 912 213, 930 213"/>
 <circle class="numCircle" cx="958" cy="366" r="22"/>
 <text class="num" x="958" y="373" text-anchor="middle">05</text>
 <rect class="box blue" x="930" y="380" width="255" height="116" rx="12"/>
-<text class="label" x="952" y="416" text-anchor="start">侵</text>
+<text class="label" x="952" y="416" text-anchor="start">侵蚀和沉积影响颜色变化</text>
 
 <path class="arrow" d="M1185 271 L1185 338 L1185 338 L1185 438"/>
 <circle class="numCircle" cx="668" cy="366" r="22"/>

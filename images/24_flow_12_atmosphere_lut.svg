@@ -15,7 +15,7 @@
   </defs>
   <rect class="bg" width="1280" height="720"/>
   <text class="title" x="58" y="62">大气散射 LUT 与天空</text>
-  <text class="sub" x="60" y="94">预计算大气散射查找表，运行时快速渲染天空和远景。</text>
+  <text class="sub" x="60" y="94" text-anchor="start">预计算大气散射查找表，运行时快速渲染天空和远景。</text>
   <circle class="numCircle" cx="88" cy="141" r="22"/>
 <text class="num" x="88" y="148" text-anchor="middle">01</text>
 <rect class="box blue" x="60" y="155" width="255" height="116" rx="12"/>
@@ -69,7 +69,7 @@
 <circle class="numCircle" cx="88" cy="366" r="22"/>
 <text class="num" x="88" y="373" text-anchor="middle">08</text>
 <rect class="box violet" x="60" y="380" width="255" height="116" rx="12"/>
-<text class="label" x="82" y="416" text-anchor="start">与</text>
+<text class="label" x="82" y="416" text-anchor="start">与地形、海洋和云层合成</text>
 
 <path class="arrow" d="M350 438 C332 438, 332 438, 315 438"/>
 </svg>

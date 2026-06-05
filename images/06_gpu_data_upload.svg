@@ -1,58 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
-  <title id="title">CPU 数据上传到 GPU</title>
-  <desc id="desc">展示 FaceData 如何展开为纹理数组、前缀和和地形网格。</desc>
+  <title id="title">CPU 到 GPU 上传</title>
+  <desc id="desc">生成数组被打包成纹理数组和网格缓冲。</desc>
   <defs>
-    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M2,2 L10,6 L2,10 Z" fill="#465a8a"/></marker>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#315b7c"/>
+    </marker>
     <style>
-      .bg{fill:#f9faff}.title{font:700 34px 'Microsoft YaHei',Arial,sans-serif;fill:#233158}.sub{font:18px 'Microsoft YaHei',Arial,sans-serif;fill:#5d6783}
-      .cpu{fill:#fff8e8;stroke:#d8a044;stroke-width:2.4;rx:16}.gpu{fill:#eef3ff;stroke:#768fd2;stroke-width:2.4;rx:16}.shader{fill:#eef9f1;stroke:#72ad81;stroke-width:2.4;rx:16}
-      .label{font:700 21px 'Microsoft YaHei',Arial,sans-serif;fill:#253154}.small{font:15.5px 'Microsoft YaHei',Arial,sans-serif;fill:#44506d}.arrow{stroke:#465a8a;stroke-width:3;fill:none;marker-end:url(#arrow)}
+      .bg{fill:#f7fbff}.title{font:700 34px 'Microsoft YaHei','Noto Sans CJK SC',Arial,sans-serif;fill:#17324d}.sub{font:18px 'Microsoft YaHei','Noto Sans CJK SC',Arial,sans-serif;fill:#5d6b78}
+      .lane{font:700 22px 'Microsoft YaHei','Noto Sans CJK SC',Arial,sans-serif;fill:#36566f}.box{fill:#fff;stroke-width:2.2}.blue{stroke:#7daed5;fill:#ffffff}.green{stroke:#76b98d;fill:#f0faf3}.amber{stroke:#dca44a;fill:#fff8e8}.violet{stroke:#a986d7;fill:#f8f2ff}
+      .label{font:700 21px 'Microsoft YaHei','Noto Sans CJK SC',Arial,sans-serif;fill:#17324d}.small{font:16px 'Microsoft YaHei','Noto Sans CJK SC',Arial,sans-serif;fill:#435464}.arrow{stroke:#315b7c;stroke-width:3;fill:none;marker-end:url(#arrow)}
     </style>
   </defs>
   <rect class="bg" width="1280" height="720"/>
-  <text class="title" x="58" y="64">CPU 数据如何变成 GPU 可采样资源</text>
-  <text class="sub" x="60" y="96">setProceduralData() 是 CPU 生成结果与实时 shader 之间的桥。</text>
+  <text class="title" x="58" y="62">CPU 到 GPU 上传</text>
+  <text class="sub" x="60" y="94" text-anchor="start">生成数组被打包成纹理数组和网格缓冲。</text>
+  <text class="lane" x="70" y="154">CPU 数据</text>
+<rect class="box green" x="70" y="188" width="350" height="86" rx="12"/>
+<text class="label" x="92" y="224" text-anchor="start">六个 face</text>
 
-  <rect class="cpu" x="70" y="160" width="245" height="380"/>
-  <text class="label" x="105" y="205">FaceData × 6</text>
-  <text class="small" x="105" y="240">height</text>
-  <text class="small" x="105" y="268">waterDepth / shoreMask</text>
-  <text class="small" x="105" y="296">temperature / moisture</text>
-  <text class="small" x="105" y="324">channel / flow</text>
-  <text class="small" x="105" y="352">wear / deposition</text>
-  <text class="small" x="105" y="380">biomeWeightA/B</text>
-  <text class="small" x="105" y="408">domainWeight</text>
-  <text class="small" x="105" y="466">CPU 内存数组</text>
+<rect class="box amber" x="70" y="306" width="350" height="86" rx="12"/>
+<text class="label" x="92" y="342" text-anchor="start">height / mask /</text>
+<text class="label" x="92" y="366" text-anchor="start">weight</text>
 
-  <rect class="gpu" x="430" y="135" width="315" height="150"/>
-  <text class="label" x="465" y="178">GPU texture arrays</text>
-  <text class="small" x="465" y="212">GL_R32F: height / water / temp</text>
-  <text class="small" x="465" y="238">RGBA32F: erosion / weights</text>
-  <text class="small" x="465" y="264">layer = cube face</text>
+<path class="arrow" d="M245 274 L245 306"/>
+<text class="lane" x="465" y="154">GPU 打包</text>
+<rect class="box amber" x="465" y="188" width="350" height="86" rx="12"/>
+<text class="label" x="487" y="224" text-anchor="start">texture array</text>
 
-  <rect class="gpu" x="430" y="335" width="315" height="120"/>
-  <text class="label" x="465" y="378">前缀和</text>
-  <text class="small" x="465" y="410">water / loose shore / strict shore</text>
-  <text class="small" x="465" y="434">O(1) 查询 patch 覆盖</text>
+<rect class="box violet" x="465" y="306" width="350" height="86" rx="12"/>
+<text class="label" x="487" y="342" text-anchor="start">VBO / IBO / VAO</text>
 
-  <rect class="gpu" x="430" y="505" width="315" height="110"/>
-  <text class="label" x="465" y="548">Baked mesh</text>
-  <text class="small" x="465" y="580">VBO / IBO / VAO + chunk ranges</text>
+<path class="arrow" d="M640 274 L640 306"/>
+<path class="arrow" d="M420 318 C442 318, 442 318, 465 318"/>
+<text class="lane" x="860" y="154">Shader 访问</text>
+<rect class="box violet" x="860" y="188" width="350" height="86" rx="12"/>
+<text class="label" x="882" y="224" text-anchor="start">按 layer 采样</text>
 
-  <rect class="shader" x="890" y="165" width="300" height="135"/>
-  <text class="label" x="925" y="208">地形 shader</text>
-  <text class="small" x="925" y="240">采样高度、材质、侵蚀</text>
-  <text class="small" x="925" y="266">输出地表颜色和光照</text>
+<rect class="box blue" x="860" y="306" width="350" height="86" rx="12"/>
+<text class="label" x="882" y="342" text-anchor="start">材质混合</text>
 
-  <rect class="shader" x="890" y="390" width="300" height="135"/>
-  <text class="label" x="925" y="433">海洋 shader</text>
-  <text class="small" x="925" y="465">判断是否覆盖水域</text>
-  <text class="small" x="925" y="491">混合水深和岸线效果</text>
-
-  <path class="arrow" d="M315 245 H430"/>
-  <path class="arrow" d="M315 350 H430"/>
-  <path class="arrow" d="M315 465 C370 500 380 560 430 560"/>
-  <path class="arrow" d="M745 210 H890"/>
-  <path class="arrow" d="M745 395 H890"/>
-  <path class="arrow" d="M745 560 C820 560 835 470 890 470"/>
+<path class="arrow" d="M1035 274 L1035 306"/>
+<path class="arrow" d="M815 318 C838 318, 838 318, 860 318"/>
 </svg>

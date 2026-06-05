@@ -15,11 +15,11 @@
   </defs>
   <rect class="bg" width="1280" height="720"/>
   <text class="title" x="58" y="62">水文、侵蚀与河道 Mask</text>
-  <text class="sub" x="60" y="94">用下游汇流、stream power 和坡面扩散生成河道与侵蚀痕迹。</text>
+  <text class="sub" x="60" y="94" text-anchor="start">用下游汇流、stream power 和坡面扩散生成河道与侵蚀痕迹。</text>
   <circle class="numCircle" cx="88" cy="141" r="22"/>
 <text class="num" x="88" y="148" text-anchor="middle">01</text>
 <rect class="box blue" x="60" y="155" width="255" height="116" rx="12"/>
-<text class="label" x="82" y="191" text-anchor="start">根</text>
+<text class="label" x="82" y="191" text-anchor="start">根据高度对 texel 排序</text>
 
 <circle class="numCircle" cx="378" cy="141" r="22"/>
 <text class="num" x="378" y="148" text-anchor="middle">02</text>
@@ -69,7 +69,7 @@
 <circle class="numCircle" cx="88" cy="366" r="22"/>
 <text class="num" x="88" y="373" text-anchor="middle">08</text>
 <rect class="box violet" x="60" y="380" width="255" height="116" rx="12"/>
-<text class="label" x="82" y="416" text-anchor="start">计</text>
+<text class="label" x="82" y="416" text-anchor="start">计算水深、岸线和湿度影响</text>
 
 <path class="arrow" d="M350 438 C332 438, 332 438, 315 438"/>
 </svg>

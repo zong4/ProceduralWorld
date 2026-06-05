@@ -15,7 +15,7 @@
   </defs>
   <rect class="bg" width="1280" height="880"/>
   <text class="title" x="58" y="62">DEM 程序化地形生成</text>
-  <text class="sub" x="60" y="94">当前实际运行路径是 generateDemPrototype()，用于生成高度、水文和地表属性。</text>
+  <text class="sub" x="60" y="94" text-anchor="start">当前实际运行路径是 generateDemPrototype()，用于生成高度、水文和地表属性。</text>
   <circle class="numCircle" cx="88" cy="141" r="22"/>
 <text class="num" x="88" y="148" text-anchor="middle">01</text>
 <rect class="box blue" x="60" y="155" width="255" height="116" rx="12"/>
@@ -69,7 +69,7 @@
 <circle class="numCircle" cx="88" cy="366" r="22"/>
 <text class="num" x="88" y="373" text-anchor="middle">08</text>
 <rect class="box violet" x="60" y="380" width="255" height="116" rx="12"/>
-<text class="label" x="82" y="416" text-anchor="start">接</text>
+<text class="label" x="82" y="416" text-anchor="start">接缝融合、水文侵蚀、气候计算</text>
 
 <path class="arrow" d="M350 438 C332 438, 332 438, 315 438"/>
 <circle class="numCircle" cx="88" cy="591" r="22"/>

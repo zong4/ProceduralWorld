@@ -15,16 +15,16 @@
   </defs>
   <rect class="bg" width="1280" height="720"/>
   <text class="title" x="58" y="62">答辩总结与边界说明</text>
-  <text class="sub" x="60" y="94">总结项目亮点，同时避免把未完全接通的功能说过头。</text>
+  <text class="sub" x="60" y="94" text-anchor="start">总结项目亮点，同时避免把未完全接通的功能说过头。</text>
   <circle class="numCircle" cx="88" cy="141" r="22"/>
 <text class="num" x="88" y="148" text-anchor="middle">01</text>
 <rect class="box blue" x="60" y="155" width="255" height="116" rx="12"/>
-<text class="label" x="82" y="191" text-anchor="start">先</text>
+<text class="label" x="82" y="191" text-anchor="start">先讲项目目标：实时程序化星球</text>
 
 <circle class="numCircle" cx="378" cy="141" r="22"/>
 <text class="num" x="378" y="148" text-anchor="middle">02</text>
 <rect class="box green" x="350" y="155" width="255" height="116" rx="12"/>
-<text class="label" x="372" y="191" text-anchor="start">再</text>
+<text class="label" x="372" y="191" text-anchor="start">再讲 CPU DEM 生成</text>
 
 <path class="arrow" d="M315 213 C332 213, 332 213, 350 213"/>
 <circle class="numCircle" cx="668" cy="141" r="22"/>
@@ -37,7 +37,7 @@
 <circle class="numCircle" cx="958" cy="141" r="22"/>
 <text class="num" x="958" y="148" text-anchor="middle">04</text>
 <rect class="box violet" x="930" y="155" width="255" height="116" rx="12"/>
-<text class="label" x="952" y="191" text-anchor="start">讲</text>
+<text class="label" x="952" y="191" text-anchor="start">讲水文、侵蚀、气候和材质</text>
 
 <path class="arrow" d="M895 213 C912 213, 912 213, 930 213"/>
 <circle class="numCircle" cx="958" cy="366" r="22"/>
@@ -50,19 +50,19 @@
 <circle class="numCircle" cx="668" cy="366" r="22"/>
 <text class="num" x="668" y="373" text-anchor="middle">06</text>
 <rect class="box green" x="640" y="380" width="255" height="116" rx="12"/>
-<text class="label" x="662" y="416" text-anchor="start">讲</text>
+<text class="label" x="662" y="416" text-anchor="start">讲海洋、FFT、大气和云</text>
 
 <path class="arrow" d="M930 438 C912 438, 912 438, 895 438"/>
 <circle class="numCircle" cx="378" cy="366" r="22"/>
 <text class="num" x="378" y="373" text-anchor="middle">07</text>
 <rect class="box amber" x="350" y="380" width="255" height="116" rx="12"/>
-<text class="label" x="372" y="416" text-anchor="start">展</text>
+<text class="label" x="372" y="416" text-anchor="start">展示调试 UI 和性能数据</text>
 
 <path class="arrow" d="M640 438 C622 438, 622 438, 605 438"/>
 <circle class="numCircle" cx="88" cy="366" r="22"/>
 <text class="num" x="88" y="373" text-anchor="middle">08</text>
 <rect class="box violet" x="60" y="380" width="255" height="116" rx="12"/>
-<text class="label" x="82" y="416" text-anchor="start">最</text>
+<text class="label" x="82" y="416" text-anchor="start">最后说明已完成内容和当前限制</text>
 
 <path class="arrow" d="M350 438 C332 438, 332 438, 315 438"/>
 </svg>

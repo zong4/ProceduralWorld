@@ -15,7 +15,8 @@
   </defs>
   <rect class="bg" width="1280" height="880"/>
   <text class="title" x="58" y="62">DEM Terrain Generation</text>
-  <text class="sub" x="60" y="94">The current runtime path enters generateDemPrototype() to produce height, hydrology and surface attributes.</text>
+  <text class="sub" x="60" y="94" text-anchor="start">The current runtime path enters generateDemPrototype() to</text>
+<text class="sub" x="60" y="118" text-anchor="start">produce height, hydrology and surface attributes.</text>
   <circle class="numCircle" cx="88" cy="141" r="22"/>
 <text class="num" x="88" y="148" text-anchor="middle">01</text>
 <rect class="box blue" x="60" y="155" width="255" height="126" rx="12"/>
@@ -25,7 +26,7 @@
 <circle class="numCircle" cx="378" cy="141" r="22"/>
 <text class="num" x="378" y="148" text-anchor="middle">02</text>
 <rect class="box green" x="350" y="155" width="255" height="126" rx="12"/>
-<text class="label" x="372" y="191" text-anchor="start">C</text>
+<text class="label" x="372" y="191" text-anchor="start">Clamp faceResolution</text>
 
 <path class="arrow" d="M315 218 C332 218, 332 218, 350 218"/>
 <circle class="numCircle" cx="668" cy="141" r="22"/>

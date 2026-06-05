@@ -15,7 +15,7 @@
   </defs>
   <rect class="bg" width="1280" height="720"/>
   <text class="title" x="58" y="62">应用状态与生成线程</text>
-  <text class="sub" x="60" y="94">用三个阶段隔离参数设置、后台生成和实时渲染。</text>
+  <text class="sub" x="60" y="94" text-anchor="start">用三个阶段隔离参数设置、后台生成和实时渲染。</text>
   <circle class="numCircle" cx="88" cy="141" r="22"/>
 <text class="num" x="88" y="148" text-anchor="middle">01</text>
 <rect class="box blue" x="60" y="155" width="255" height="116" rx="12"/>
@@ -54,7 +54,7 @@
 <circle class="numCircle" cx="668" cy="366" r="22"/>
 <text class="num" x="668" y="373" text-anchor="middle">06</text>
 <rect class="box green" x="640" y="380" width="255" height="116" rx="12"/>
-<text class="label" x="662" y="416" text-anchor="start">主</text>
+<text class="label" x="662" y="416" text-anchor="start">主循环继续刷新进度条</text>
 
 <path class="arrow" d="M930 438 C912 438, 912 438, 895 438"/>
 <circle class="numCircle" cx="378" cy="366" r="22"/>

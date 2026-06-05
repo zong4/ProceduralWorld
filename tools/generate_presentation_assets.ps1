@@ -22,7 +22,7 @@ function Escape-Xml {
 function Wrap-Text {
     param([string]$Text, [int]$MaxChars)
     $result = New-Object System.Collections.Generic.List[string]
-    if ([string]::IsNullOrWhiteSpace($Text)) { return $result }
+    if ([string]::IsNullOrWhiteSpace($Text)) { return @() }
     if ($Text -match "\s") {
         $line = ""
         foreach ($word in ($Text -split "\s+")) {
@@ -42,7 +42,17 @@ function Wrap-Text {
             $result.Add($Text.Substring($i, $len))
         }
     }
-    return $result
+    if ($result.Count -gt 1) {
+        $lastIndex = $result.Count - 1
+        $last = $result[$lastIndex]
+        $prev = $result[$lastIndex - 1]
+        if ($last.Length -eq 1 -and $prev.Length -gt 2) {
+            $moved = $prev.Substring($prev.Length - 1, 1)
+            $result[$lastIndex - 1] = $prev.Substring(0, $prev.Length - 1)
+            $result[$lastIndex] = "$moved$last"
+        }
+    }
+    return @($result.ToArray())
 }
 
 function New-TextBlock {
@@ -55,7 +65,7 @@ function New-TextBlock {
         [int]$LineHeight,
         [string]$Anchor = "start"
     )
-    $lines = Wrap-Text $Text $MaxChars
+    $lines = @(Wrap-Text $Text $MaxChars)
     $out = New-Object System.Collections.Generic.List[string]
     for ($i = 0; $i -lt [Math]::Min(4, $lines.Count); $i++) {
         $yy = $Y + $i * $LineHeight
@@ -143,13 +153,14 @@ function New-FlowSvg {
         $prevY = $y
     }
     $title = Escape-Xml $Module.Title
-    $subtitle = Escape-Xml $Module.Subtitle
+    $subtitleDesc = Escape-Xml $Module.Subtitle
+    $subtitleBlock = New-TextBlock $Module.Subtitle 60 94 "sub" 58 24
     $bodyText = $body -join "`n"
     return @"
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="$height" viewBox="0 0 1280 $height" role="img" aria-labelledby="title desc">
   <title id="title">$title</title>
-  <desc id="desc">$subtitle</desc>
+  <desc id="desc">$subtitleDesc</desc>
   <defs>
     <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
       <path d="M2,2 L10,6 L2,10 Z" fill="#315b7c"/>
@@ -163,15 +174,15 @@ function New-FlowSvg {
   </defs>
   <rect class="bg" width="1280" height="$height"/>
   <text class="title" x="58" y="62">$title</text>
-  <text class="sub" x="60" y="94">$subtitle</text>
+  $subtitleBlock
   $bodyText
 </svg>
 "@
 }
 
 function New-ConceptSvg {
-    param([hashtable]$Diagram)
-    $font = "Inter,Segoe UI,Arial,sans-serif"
+    param([hashtable]$Diagram, [string]$Lang = "en")
+    $font = if ($Lang -eq "cn") { "'Microsoft YaHei','Noto Sans CJK SC',Arial,sans-serif" } else { "Inter,Segoe UI,Arial,sans-serif" }
     $colors = @("blue", "green", "amber", "violet")
     $body = New-Object System.Collections.Generic.List[string]
     $colW = 350
@@ -183,7 +194,8 @@ function New-ConceptSvg {
         $body.Add("<text class=`"lane`" x=`"$x`" y=`"154`">$lane</text>")
         for ($j = 1; $j -lt $col.Count; $j++) {
             $y = 188 + ($j - 1) * 118
-            $body.Add((New-Box $x $y $colW 86 $col[$j] "" $colors[($idx + $j) % $colors.Count] 24 26))
+            $maxTitle = if ($Lang -eq "cn") { 16 } else { 24 }
+            $body.Add((New-Box $x $y $colW 86 $col[$j] "" $colors[($idx + $j) % $colors.Count] $maxTitle 26))
             if ($j -gt 1) {
                 $body.Add("<path class=`"arrow`" d=`"M$($x + [int]($colW / 2)) $($y - 32) L$($x + [int]($colW / 2)) $y`"/>")
             }
@@ -194,13 +206,14 @@ function New-ConceptSvg {
         }
     }
     $title = Escape-Xml $Diagram.Title
-    $subtitle = Escape-Xml $Diagram.Subtitle
+    $subtitleDesc = Escape-Xml $Diagram.Subtitle
+    $subtitleBlock = New-TextBlock $Diagram.Subtitle 60 94 "sub" $(if ($Lang -eq "cn") { 42 } else { 68 }) 24
     $bodyText = $body -join "`n"
     return @"
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
   <title id="title">$title</title>
-  <desc id="desc">$subtitle</desc>
+  <desc id="desc">$subtitleDesc</desc>
   <defs>
     <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
       <path d="M2,2 L10,6 L2,10 Z" fill="#315b7c"/>
@@ -213,7 +226,7 @@ function New-ConceptSvg {
   </defs>
   <rect class="bg" width="1280" height="720"/>
   <text class="title" x="58" y="62">$title</text>
-  <text class="sub" x="60" y="94">$subtitle</text>
+  $subtitleBlock
   $bodyText
 </svg>
 "@
@@ -546,6 +559,21 @@ $ModulesEn = @(
     }
 )
 
+$ConceptCn = @(
+    @{ Name="01_overall_pipeline.svg"; Title="ProceduralWorld 总体架构"; Subtitle="CPU 生成星球数据，GPU 负责实时渲染和视觉效果。"; Columns=@(@("CPU 生成阶段","参数与应用状态","DEM 星球数据"),@("GPU 资源阶段","纹理数组","烘焙地形网格"),@("每帧渲染阶段","地形","海洋","大气与云","调试 UI")) },
+    @{ Name="02_application_workflow.svg"; Title="应用工作流"; Subtitle="应用从参数设置进入后台生成，再进入实时渲染。"; Columns=@(@("参数设置","编辑生成参数","点击生成星球"),@("后台生成","std::async 生成数据","进度回调刷新 UI"),@("实时渲染","主线程上传 GPU","进入渲染循环")) },
+    @{ Name="03_cube_sphere_mapping.svg"; Title="六面体星球映射"; Subtitle="六个方形面共同组成一个连续球面。"; Columns=@(@("Face 数据","二维 texel 网格","纹理数组 layer"),@("映射过程","face UV 到 cube 坐标","归一化为球面方向"),@("连续性处理","跨面邻居查找","接缝融合")) },
+    @{ Name="04_dem_generation.svg"; Title="DEM 地形生成"; Subtitle="多层噪声和后处理生成数字高程模型。"; Columns=@(@("基础地形","大陆轮廓","山脉","山脊"),@("后处理","接缝修正","水文","侵蚀"),@("输出数据","高度","水体","气候","mask")) },
+    @{ Name="05_hydrology_erosion_masks.svg"; Title="水文与侵蚀 Mask"; Subtitle="汇流和 stream power 生成河道与侵蚀层。"; Columns=@(@("水流方向","下游 receiver","drainage 累积"),@("河道切割","坡度","stream power","channel mask"),@("调试数据","wear","deposition","flow map")) },
+    @{ Name="06_gpu_data_upload.svg"; Title="CPU 到 GPU 上传"; Subtitle="生成数组被打包成纹理数组和网格缓冲。"; Columns=@(@("CPU 数据","六个 face","height / mask / weight"),@("GPU 打包","texture array","VBO / IBO / VAO"),@("Shader 访问","按 layer 采样","材质混合")) },
+    @{ Name="07_baked_chunk_lod.svg"; Title="地形 Chunk LOD"; Subtitle="预烘焙 chunk 每帧按相机距离和视锥选择。"; Columns=@(@("生成阶段","切分 face","记录边界和索引"),@("筛选阶段","相机视锥","距离范围"),@("绘制阶段","可见 chunk","LOD 等级")) },
+    @{ Name="08_ocean_fft.svg"; Title="FFT 海洋"; Subtitle="频域海浪转成动态水面纹理。"; Columns=@(@("频域谱","风向","振幅","Phillips 模型"),@("模拟更新","相位推进","逆 FFT"),@("输出纹理","高度","法线","位移")) },
+    @{ Name="09_ocean_reflection_refraction.svg"; Title="海洋反射与折射"; Subtitle="离屏 pass 和 Fresnel 混合增强水面效果。"; Columns=@(@("FBO Pass","反射","折射"),@("主水面","FFT 法线","水深颜色","Fresnel"),@("最终效果","高光","泡沫","大气远景")) },
+    @{ Name="10_atmosphere_clouds.svg"; Title="大气与体积云"; Subtitle="散射 LUT 与云层 raymarch 共同合成天空。"; Columns=@(@("大气散射","transmittance LUT","scattering LUT"),@("体积云","覆盖率","密度","步进次数"),@("合成结果","天空","地平线雾化","云层光照")) },
+    @{ Name="11_frame_render_sequence.svg"; Title="每帧渲染顺序"; Subtitle="一帧由裁剪、离屏 pass 和最终合成组成。"; Columns=@(@("准备阶段","输入","相机","可见性"),@("场景阶段","反射 / 折射","地形","海洋"),@("收尾阶段","大气","云层","ImGui")) },
+    @{ Name="12_debug_and_presentation.svg"; Title="调试与讲解支持"; Subtitle="UI 面板展示参数、中间层和性能统计。"; Columns=@(@("控制项","地形","海洋","大气","云层"),@("调试视图","水文","侵蚀","材质","LOD"),@("答辩展示","展示因果关系","说明当前边界")) }
+)
+
 $ConceptEn = @(
     @{ Name="01_overall_pipeline.svg"; Title="ProceduralWorld Overall Architecture"; Subtitle="CPU-side procedural data generation feeds GPU-side real-time rendering."; Columns=@(@("CPU Generation","Parameters / App State","DEM Planet Data"),@("GPU Resources","Texture Arrays","Baked Terrain Mesh"),@("Frame Rendering","Terrain","Ocean","Atmosphere + Clouds","Debug UI")) },
     @{ Name="02_application_workflow.svg"; Title="Application Workflow"; Subtitle="The app moves from setup to background generation, then into real-time render."; Columns=@(@("Setup","Edit procedural parameters","Click Generate Planet"),@("Generation","std::async background task","Progress callback updates UI"),@("Render","Main thread uploads GPU data","Render loop starts")) },
@@ -573,8 +601,12 @@ for ($i = 0; $i -lt $ModulesCn.Count; $i++) {
     Write-Utf8File "pre\$($m.Id)_$($m.Slug).md" (New-ScriptMarkdown $m "cn")
 }
 
+foreach ($diagram in $ConceptCn) {
+    Write-Utf8File "images\$($diagram.Name)" (New-ConceptSvg $diagram "cn")
+}
+
 foreach ($diagram in $ConceptEn) {
-    Write-Utf8File "images_en\$($diagram.Name)" (New-ConceptSvg $diagram)
+    Write-Utf8File "images_en\$($diagram.Name)" (New-ConceptSvg $diagram "en")
 }
 
 for ($i = 0; $i -lt $ModulesEn.Count; $i++) {
@@ -584,20 +616,7 @@ for ($i = 0; $i -lt $ModulesEn.Count; $i++) {
     Write-Utf8File "pre_en\$($m.Id)_$($m.Slug).md" (New-ScriptMarkdown $m "en")
 }
 
-$cnConcept = @(
-    "- 01_overall_pipeline.svg：项目总架构",
-    "- 02_application_workflow.svg：应用状态与生成线程",
-    "- 03_cube_sphere_mapping.svg：六面体星球映射",
-    "- 04_dem_generation.svg：DEM 地形生成",
-    "- 05_hydrology_erosion_masks.svg：水文侵蚀示意",
-    "- 06_gpu_data_upload.svg：CPU 到 GPU 上传",
-    "- 07_baked_chunk_lod.svg：地形块 LOD",
-    "- 08_ocean_fft.svg：FFT 海洋",
-    "- 09_ocean_reflection_refraction.svg：海洋反射折射",
-    "- 10_atmosphere_clouds.svg：大气与体积云",
-    "- 11_frame_render_sequence.svg：每帧渲染顺序",
-    "- 12_debug_and_presentation.svg：调试与讲解支持"
-)
+$cnConcept = $ConceptCn | ForEach-Object { "- $($_.Name)：$($_.Title)" }
 $cnFlows = for ($i = 0; $i -lt $ModulesCn.Count; $i++) {
     $num = "{0:D2}" -f (13 + $i)
     "- $num`_flow_$($ModulesCn[$i].Id)_$($ModulesCn[$i].Slug).svg：$($ModulesCn[$i].Title)"
@@ -653,5 +672,5 @@ These are English speaking scripts split by functional module. Open the matching
 $($preEnRows -join "`n")
 "@)
 
-Write-Host "Generated $($ModulesCn.Count + 12 + $ModulesEn.Count) SVG diagrams and $($ModulesCn.Count + $ModulesEn.Count) module scripts."
+Write-Host "Generated $($ConceptCn.Count + $ModulesCn.Count + $ConceptEn.Count + $ModulesEn.Count) SVG diagrams and $($ModulesCn.Count + $ModulesEn.Count) module scripts."
 

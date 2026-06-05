@@ -1,44 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
-  <title id="title">cube-sphere 映射思路</title>
-  <desc id="desc">展示 cube face UV 如何映射为球面方向并产生星球顶点。</desc>
+  <title id="title">六面体星球映射</title>
+  <desc id="desc">六个方形面共同组成一个连续球面。</desc>
   <defs>
-    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M2,2 L10,6 L2,10 Z" fill="#2d5a87"/></marker>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#315b7c"/>
+    </marker>
     <style>
-      .bg{fill:#f8fbff}.title{font:700 34px 'Microsoft YaHei',Arial,sans-serif;fill:#19344f}.sub{font:18px 'Microsoft YaHei',Arial,sans-serif;fill:#5b6e82}
-      .face{fill:#eaf4ff;stroke:#5b96c9;stroke-width:2}.sphere{fill:#e9f7ee;stroke:#4c9d67;stroke-width:3}.line{stroke:#2d5a87;stroke-width:3;fill:none;marker-end:url(#arrow)}
-      .thin{stroke:#7aa5c6;stroke-width:1.4}.label{font:700 23px 'Microsoft YaHei',Arial,sans-serif;fill:#17324d}.small{font:16px 'Microsoft YaHei',Arial,sans-serif;fill:#43586b}
-      .code{font:17px Consolas,'Microsoft YaHei',monospace;fill:#24415b}
+      .bg{fill:#f7fbff}.title{font:700 34px 'Microsoft YaHei','Noto Sans CJK SC',Arial,sans-serif;fill:#17324d}.sub{font:18px 'Microsoft YaHei','Noto Sans CJK SC',Arial,sans-serif;fill:#5d6b78}
+      .lane{font:700 22px 'Microsoft YaHei','Noto Sans CJK SC',Arial,sans-serif;fill:#36566f}.box{fill:#fff;stroke-width:2.2}.blue{stroke:#7daed5;fill:#ffffff}.green{stroke:#76b98d;fill:#f0faf3}.amber{stroke:#dca44a;fill:#fff8e8}.violet{stroke:#a986d7;fill:#f8f2ff}
+      .label{font:700 21px 'Microsoft YaHei','Noto Sans CJK SC',Arial,sans-serif;fill:#17324d}.small{font:16px 'Microsoft YaHei','Noto Sans CJK SC',Arial,sans-serif;fill:#435464}.arrow{stroke:#315b7c;stroke-width:3;fill:none;marker-end:url(#arrow)}
     </style>
   </defs>
   <rect class="bg" width="1280" height="720"/>
-  <text class="title" x="58" y="64">cube-sphere：六个面映射到球面</text>
-  <text class="sub" x="60" y="96">优点：比经纬球更适合分块、LOD 和贴图数组，极点不会严重挤压。</text>
+  <text class="title" x="58" y="62">六面体星球映射</text>
+  <text class="sub" x="60" y="94" text-anchor="start">六个方形面共同组成一个连续球面。</text>
+  <text class="lane" x="70" y="154">Face 数据</text>
+<rect class="box green" x="70" y="188" width="350" height="86" rx="12"/>
+<text class="label" x="92" y="224" text-anchor="start">二维 texel 网格</text>
 
-  <g transform="translate(105,165)">
-    <rect class="face" x="80" y="80" width="150" height="150"/>
-    <rect class="face" x="230" y="80" width="150" height="150"/>
-    <rect class="face" x="380" y="80" width="150" height="150"/>
-    <rect class="face" x="230" y="-70" width="150" height="150"/>
-    <rect class="face" x="230" y="230" width="150" height="150"/>
-    <rect class="face" x="530" y="80" width="150" height="150"/>
-    <line class="thin" x1="230" y1="80" x2="230" y2="230"/>
-    <line class="thin" x1="380" y1="80" x2="380" y2="230"/>
-    <text class="label" x="215" y="430">6 个 cube face</text>
-    <text class="small" x="188" y="456">每个面保存一张二维高度场</text>
-  </g>
+<rect class="box amber" x="70" y="306" width="350" height="86" rx="12"/>
+<text class="label" x="92" y="342" text-anchor="start">纹理数组 layer</text>
 
-  <path class="line" d="M690 305 C748 305 790 305 842 305"/>
+<path class="arrow" d="M245 274 L245 306"/>
+<text class="lane" x="465" y="154">映射过程</text>
+<rect class="box amber" x="465" y="188" width="350" height="86" rx="12"/>
+<text class="label" x="487" y="224" text-anchor="start">face UV 到 cube</text>
+<text class="label" x="487" y="248" text-anchor="start">坐标</text>
 
-  <g transform="translate(915,265)">
-    <circle class="sphere" cx="115" cy="115" r="110"/>
-    <ellipse cx="115" cy="115" rx="110" ry="36" fill="none" stroke="#78b08d" stroke-width="1.6"/>
-    <path d="M115 5 C65 45 65 185 115 225" fill="none" stroke="#78b08d" stroke-width="1.4"/>
-    <path d="M115 5 C165 45 165 185 115 225" fill="none" stroke="#78b08d" stroke-width="1.4"/>
-    <line x1="115" y1="115" x2="185" y2="58" stroke="#2d5a87" stroke-width="3" marker-end="url(#arrow)"/>
-    <text class="label" x="-15" y="275">normalize 后得到 sphereDir</text>
-  </g>
+<rect class="box violet" x="465" y="306" width="350" height="86" rx="12"/>
+<text class="label" x="487" y="342" text-anchor="start">归一化为球面方向</text>
 
-  <rect x="110" y="540" width="1060" height="92" rx="14" fill="#ffffff" stroke="#b7c9da" stroke-width="2"/>
-  <text class="code" x="145" y="578">cubePoint = faceNormal + uv.x * axisU + uv.y * axisV</text>
-  <text class="code" x="145" y="610">sphereDir = normalize(cubePoint),  finalPos = sphereDir * (planetRadius + height * heightScale)</text>
+<path class="arrow" d="M640 274 L640 306"/>
+<path class="arrow" d="M420 318 C442 318, 442 318, 465 318"/>
+<text class="lane" x="860" y="154">连续性处理</text>
+<rect class="box violet" x="860" y="188" width="350" height="86" rx="12"/>
+<text class="label" x="882" y="224" text-anchor="start">跨面邻居查找</text>
+
+<rect class="box blue" x="860" y="306" width="350" height="86" rx="12"/>
+<text class="label" x="882" y="342" text-anchor="start">接缝融合</text>
+
+<path class="arrow" d="M1035 274 L1035 306"/>
+<path class="arrow" d="M815 318 C838 318, 838 318, 860 318"/>
 </svg>

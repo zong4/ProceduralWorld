@@ -1,56 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
   <title id="title">每帧渲染顺序</title>
-  <desc id="desc">展示 PlanetRenderer::render 的每帧 pass 顺序。</desc>
+  <desc id="desc">一帧由裁剪、离屏 pass 和最终合成组成。</desc>
   <defs>
-    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M2,2 L10,6 L2,10 Z" fill="#555"/></marker>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#315b7c"/>
+    </marker>
     <style>
-      .bg{fill:#fbfbfb}.title{font:700 34px 'Microsoft YaHei',Arial,sans-serif;fill:#2f2f2f}.sub{font:18px 'Microsoft YaHei',Arial,sans-serif;fill:#666}
-      .step{fill:#fff;stroke:#9aa6b2;stroke-width:2.4;rx:16}.hot{fill:#fff2e0;stroke:#df9d38;stroke-width:2.4;rx:16}.water{fill:#eaf8ff;stroke:#57a6cf;stroke-width:2.4;rx:16}.sky{fill:#f0edff;stroke:#927bd1;stroke-width:2.4;rx:16}
-      .label{font:700 20px 'Microsoft YaHei',Arial,sans-serif;fill:#2f2f2f}.small{font:15px 'Microsoft YaHei',Arial,sans-serif;fill:#555}.arrow{stroke:#555;stroke-width:3;fill:none;marker-end:url(#arrow)}
+      .bg{fill:#f7fbff}.title{font:700 34px 'Microsoft YaHei','Noto Sans CJK SC',Arial,sans-serif;fill:#17324d}.sub{font:18px 'Microsoft YaHei','Noto Sans CJK SC',Arial,sans-serif;fill:#5d6b78}
+      .lane{font:700 22px 'Microsoft YaHei','Noto Sans CJK SC',Arial,sans-serif;fill:#36566f}.box{fill:#fff;stroke-width:2.2}.blue{stroke:#7daed5;fill:#ffffff}.green{stroke:#76b98d;fill:#f0faf3}.amber{stroke:#dca44a;fill:#fff8e8}.violet{stroke:#a986d7;fill:#f8f2ff}
+      .label{font:700 21px 'Microsoft YaHei','Noto Sans CJK SC',Arial,sans-serif;fill:#17324d}.small{font:16px 'Microsoft YaHei','Noto Sans CJK SC',Arial,sans-serif;fill:#435464}.arrow{stroke:#315b7c;stroke-width:3;fill:none;marker-end:url(#arrow)}
     </style>
   </defs>
   <rect class="bg" width="1280" height="720"/>
-  <text class="title" x="58" y="64">PlanetRenderer::render() 每帧顺序</text>
-  <text class="sub" x="60" y="96">这张图适合解释性能面板中的各项耗时来自哪里。</text>
+  <text class="title" x="58" y="62">每帧渲染顺序</text>
+  <text class="sub" x="60" y="94" text-anchor="start">一帧由裁剪、离屏 pass 和最终合成组成。</text>
+  <text class="lane" x="70" y="154">准备阶段</text>
+<rect class="box green" x="70" y="188" width="350" height="86" rx="12"/>
+<text class="label" x="92" y="224" text-anchor="start">输入</text>
 
-  <rect class="step" x="70" y="155" width="230" height="95"/>
-  <text class="label" x="100" y="195">1. LOD + Culling</text>
-  <text class="small" x="100" y="225">地形 chunk + 海洋 patch</text>
+<rect class="box amber" x="70" y="306" width="350" height="86" rx="12"/>
+<text class="label" x="92" y="342" text-anchor="start">相机</text>
 
-  <rect class="water" x="380" y="155" width="230" height="95"/>
-  <text class="label" x="410" y="195">2. FFT Update</text>
-  <text class="small" x="410" y="225">按 frame stride 更新</text>
+<path class="arrow" d="M245 274 L245 306"/>
+<rect class="box violet" x="70" y="424" width="350" height="86" rx="12"/>
+<text class="label" x="92" y="460" text-anchor="start">可见性</text>
 
-  <rect class="sky" x="690" y="155" width="230" height="95"/>
-  <text class="label" x="720" y="195">3. Atmosphere LUT</text>
-  <text class="small" x="720" y="225">参数变更才重建</text>
+<path class="arrow" d="M245 392 L245 424"/>
+<text class="lane" x="465" y="154">场景阶段</text>
+<rect class="box amber" x="465" y="188" width="350" height="86" rx="12"/>
+<text class="label" x="487" y="224" text-anchor="start">反射 / 折射</text>
 
-  <rect class="water" x="980" y="155" width="230" height="95"/>
-  <text class="label" x="1010" y="195">4. FBO Targets</text>
-  <text class="small" x="1010" y="225">reflection / refraction</text>
+<rect class="box violet" x="465" y="306" width="350" height="86" rx="12"/>
+<text class="label" x="487" y="342" text-anchor="start">地形</text>
 
-  <rect class="hot" x="120" y="405" width="210" height="95"/>
-  <text class="label" x="150" y="445">5. Terrain</text>
-  <text class="small" x="150" y="475">baked chunks</text>
+<path class="arrow" d="M640 274 L640 306"/>
+<rect class="box blue" x="465" y="424" width="350" height="86" rx="12"/>
+<text class="label" x="487" y="460" text-anchor="start">海洋</text>
 
-  <rect class="water" x="410" y="405" width="210" height="95"/>
-  <text class="label" x="440" y="445">6. Ocean</text>
-  <text class="small" x="440" y="475">FFT + FBO + depth</text>
+<path class="arrow" d="M640 392 L640 424"/>
+<path class="arrow" d="M420 318 C442 318, 442 318, 465 318"/>
+<text class="lane" x="860" y="154">收尾阶段</text>
+<rect class="box violet" x="860" y="188" width="350" height="86" rx="12"/>
+<text class="label" x="882" y="224" text-anchor="start">大气</text>
 
-  <rect class="sky" x="700" y="405" width="210" height="95"/>
-  <text class="label" x="730" y="445">7. Atmosphere</text>
-  <text class="small" x="730" y="475">LUT + clouds</text>
+<rect class="box blue" x="860" y="306" width="350" height="86" rx="12"/>
+<text class="label" x="882" y="342" text-anchor="start">云层</text>
 
-  <rect class="step" x="990" y="405" width="210" height="95"/>
-  <text class="label" x="1020" y="445">8. Wire / UI</text>
-  <text class="small" x="1020" y="475">debug overlay + ImGui</text>
+<path class="arrow" d="M1035 274 L1035 306"/>
+<rect class="box green" x="860" y="424" width="350" height="86" rx="12"/>
+<text class="label" x="882" y="460" text-anchor="start">ImGui</text>
 
-  <path class="arrow" d="M300 202 H380"/>
-  <path class="arrow" d="M610 202 H690"/>
-  <path class="arrow" d="M920 202 H980"/>
-  <path class="arrow" d="M1095 250 C1095 330 225 330 225 405"/>
-  <path class="arrow" d="M330 452 H410"/>
-  <path class="arrow" d="M620 452 H700"/>
-  <path class="arrow" d="M910 452 H990"/>
-  <text class="small" x="84" y="620">对应 Performance Monitor：cullingMs、fftMs、reflectionRefractionMs、terrainMs、oceanMs、atmosphereMs、wireMs、totalMs。</text>
+<path class="arrow" d="M1035 392 L1035 424"/>
+<path class="arrow" d="M815 318 C838 318, 838 318, 860 318"/>
 </svg>

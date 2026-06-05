@@ -15,7 +15,7 @@
   </defs>
   <rect class="bg" width="1280" height="720"/>
   <text class="title" x="58" y="62">FFT 海浪</text>
-  <text class="sub" x="60" y="94">用频域海浪谱生成高度、法线、位移和 folding 纹理。</text>
+  <text class="sub" x="60" y="94" text-anchor="start">用频域海浪谱生成高度、法线、位移和 folding 纹理。</text>
   <circle class="numCircle" cx="88" cy="141" r="22"/>
 <text class="num" x="88" y="148" text-anchor="middle">01</text>
 <rect class="box blue" x="60" y="155" width="255" height="116" rx="12"/>
@@ -49,7 +49,7 @@
 <circle class="numCircle" cx="958" cy="366" r="22"/>
 <text class="num" x="958" y="373" text-anchor="middle">05</text>
 <rect class="box blue" x="930" y="380" width="255" height="116" rx="12"/>
-<text class="label" x="952" y="416" text-anchor="start">I</text>
+<text class="label" x="952" y="416" text-anchor="start">IFFT 转回空间域</text>
 
 <path class="arrow" d="M1185 271 L1185 338 L1185 338 L1185 438"/>
 <circle class="numCircle" cx="668" cy="366" r="22"/>

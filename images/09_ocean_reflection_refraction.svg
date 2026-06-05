@@ -1,47 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
-  <title id="title">海洋反射折射与水深混合</title>
-  <desc id="desc">展示反射 FBO、折射 FBO、深度和 Fresnel 如何进入 ocean shader。</desc>
+  <title id="title">海洋反射与折射</title>
+  <desc id="desc">离屏 pass 和 Fresnel 混合增强水面效果。</desc>
   <defs>
-    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M2,2 L10,6 L2,10 Z" fill="#1d6681"/></marker>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#315b7c"/>
+    </marker>
     <style>
-      .bg{fill:#f7fcff}.title{font:700 34px 'Microsoft YaHei',Arial,sans-serif;fill:#153c50}.sub{font:18px 'Microsoft YaHei',Arial,sans-serif;fill:#557183}
-      .box{fill:#fff;stroke:#65abc5;stroke-width:2.4;rx:16}.fbo{fill:#e9f7ff;stroke:#3795be;stroke-width:2.4;rx:16}.shader{fill:#eef9f2;stroke:#6fac7d;stroke-width:2.4;rx:16}
-      .label{font:700 21px 'Microsoft YaHei',Arial,sans-serif;fill:#143b50}.small{font:15.5px 'Microsoft YaHei',Arial,sans-serif;fill:#405c68}.arrow{stroke:#1d6681;stroke-width:3;fill:none;marker-end:url(#arrow)}
+      .bg{fill:#f7fbff}.title{font:700 34px 'Microsoft YaHei','Noto Sans CJK SC',Arial,sans-serif;fill:#17324d}.sub{font:18px 'Microsoft YaHei','Noto Sans CJK SC',Arial,sans-serif;fill:#5d6b78}
+      .lane{font:700 22px 'Microsoft YaHei','Noto Sans CJK SC',Arial,sans-serif;fill:#36566f}.box{fill:#fff;stroke-width:2.2}.blue{stroke:#7daed5;fill:#ffffff}.green{stroke:#76b98d;fill:#f0faf3}.amber{stroke:#dca44a;fill:#fff8e8}.violet{stroke:#a986d7;fill:#f8f2ff}
+      .label{font:700 21px 'Microsoft YaHei','Noto Sans CJK SC',Arial,sans-serif;fill:#17324d}.small{font:16px 'Microsoft YaHei','Noto Sans CJK SC',Arial,sans-serif;fill:#435464}.arrow{stroke:#315b7c;stroke-width:3;fill:none;marker-end:url(#arrow)}
     </style>
   </defs>
   <rect class="bg" width="1280" height="720"/>
-  <text class="title" x="58" y="64">海洋：反射、折射、水深与 Fresnel</text>
-  <text class="sub" x="60" y="96">用两个离屏 FBO 为水面 shader 提供环境颜色和深度依据。</text>
+  <text class="title" x="58" y="62">海洋反射与折射</text>
+  <text class="sub" x="60" y="94" text-anchor="start">离屏 pass 和 Fresnel 混合增强水面效果。</text>
+  <text class="lane" x="70" y="154">FBO Pass</text>
+<rect class="box green" x="70" y="188" width="350" height="86" rx="12"/>
+<text class="label" x="92" y="224" text-anchor="start">反射</text>
 
-  <rect class="box" x="70" y="160" width="260" height="125"/>
-  <text class="label" x="102" y="202">可见海洋 patch</text>
-  <text class="small" x="102" y="234">quadtree + 水域过滤</text>
-  <text class="small" x="102" y="258">Auto Distance LOD 权重</text>
+<rect class="box amber" x="70" y="306" width="350" height="86" rx="12"/>
+<text class="label" x="92" y="342" text-anchor="start">折射</text>
 
-  <rect class="fbo" x="430" y="120" width="290" height="125"/>
-  <text class="label" x="462" y="162">Reflection FBO</text>
-  <text class="small" x="462" y="194">镜像相机</text>
-  <text class="small" x="462" y="218">clip plane 绘制地形</text>
+<path class="arrow" d="M245 274 L245 306"/>
+<text class="lane" x="465" y="154">主水面</text>
+<rect class="box amber" x="465" y="188" width="350" height="86" rx="12"/>
+<text class="label" x="487" y="224" text-anchor="start">FFT 法线</text>
 
-  <rect class="fbo" x="430" y="305" width="290" height="125"/>
-  <text class="label" x="462" y="347">Refraction FBO</text>
-  <text class="small" x="462" y="379">正常相机</text>
-  <text class="small" x="462" y="403">保存颜色和深度</text>
+<rect class="box violet" x="465" y="306" width="350" height="86" rx="12"/>
+<text class="label" x="487" y="342" text-anchor="start">水深颜色</text>
 
-  <rect class="shader" x="835" y="205" width="360" height="205"/>
-  <text class="label" x="870" y="248">ocean.frag</text>
-  <text class="small" x="870" y="282">1. 屏幕 UV 采样反射/折射</text>
-  <text class="small" x="870" y="310">2. 线性化深度估算水柱厚度</text>
-  <text class="small" x="870" y="338">3. 程序化 waterDepth 判断水域</text>
-  <text class="small" x="870" y="366">4. Fresnel 混合反射和折射</text>
-  <text class="small" x="870" y="394">5. GGX 高光 + SSS + 大气透视</text>
+<path class="arrow" d="M640 274 L640 306"/>
+<rect class="box blue" x="465" y="424" width="350" height="86" rx="12"/>
+<text class="label" x="487" y="460" text-anchor="start">Fresnel</text>
 
-  <rect x="205" y="525" width="870" height="82" rx="14" fill="#fff" stroke="#9fc7d5" stroke-width="2"/>
-  <text class="small" x="240" y="558">答辩说法：这是 planar reflection/refraction，是实时近似，不是完整球面光线追踪。</text>
-  <text class="small" x="240" y="586">水色由 FBO 颜色、屏幕深度、程序化水深和 Fresnel 共同决定。</text>
+<path class="arrow" d="M640 392 L640 424"/>
+<path class="arrow" d="M420 318 C442 318, 442 318, 465 318"/>
+<text class="lane" x="860" y="154">最终效果</text>
+<rect class="box violet" x="860" y="188" width="350" height="86" rx="12"/>
+<text class="label" x="882" y="224" text-anchor="start">高光</text>
 
-  <path class="arrow" d="M330 220 C380 220 390 180 430 180"/>
-  <path class="arrow" d="M330 220 C380 220 390 365 430 365"/>
-  <path class="arrow" d="M720 180 C770 180 790 265 835 265"/>
-  <path class="arrow" d="M720 365 C770 365 790 335 835 335"/>
+<rect class="box blue" x="860" y="306" width="350" height="86" rx="12"/>
+<text class="label" x="882" y="342" text-anchor="start">泡沫</text>
+
+<path class="arrow" d="M1035 274 L1035 306"/>
+<rect class="box green" x="860" y="424" width="350" height="86" rx="12"/>
+<text class="label" x="882" y="460" text-anchor="start">大气远景</text>
+
+<path class="arrow" d="M1035 392 L1035 424"/>
+<path class="arrow" d="M815 318 C838 318, 838 318, 860 318"/>
 </svg>

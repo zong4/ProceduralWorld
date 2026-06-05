@@ -14,18 +14,18 @@
   </defs>
   <rect class="bg" width="1280" height="720"/>
   <text class="title" x="58" y="62">Cube-Sphere Mapping</text>
-  <text class="sub" x="60" y="94">Six square faces become one continuous sphere.</text>
+  <text class="sub" x="60" y="94" text-anchor="start">Six square faces become one continuous sphere.</text>
   <text class="lane" x="70" y="154">Face Data</text>
 <rect class="box green" x="70" y="188" width="350" height="86" rx="12"/>
-<text class="label" x="92" y="224" text-anchor="start">2</text>
+<text class="label" x="92" y="224" text-anchor="start">2D texel grid</text>
 
 <rect class="box amber" x="70" y="306" width="350" height="86" rx="12"/>
-<text class="label" x="92" y="342" text-anchor="start">T</text>
+<text class="label" x="92" y="342" text-anchor="start">Texture-array layer</text>
 
 <path class="arrow" d="M245 274 L245 306"/>
 <text class="lane" x="465" y="154">Mapping</text>
 <rect class="box amber" x="465" y="188" width="350" height="86" rx="12"/>
-<text class="label" x="487" y="224" text-anchor="start">F</text>
+<text class="label" x="487" y="224" text-anchor="start">Face UV to cube position</text>
 
 <rect class="box violet" x="465" y="306" width="350" height="86" rx="12"/>
 <text class="label" x="487" y="342" text-anchor="start">Normalize to sphere</text>
@@ -35,10 +35,10 @@
 <path class="arrow" d="M420 318 C442 318, 442 318, 465 318"/>
 <text class="lane" x="860" y="154">Continuity</text>
 <rect class="box violet" x="860" y="188" width="350" height="86" rx="12"/>
-<text class="label" x="882" y="224" text-anchor="start">C</text>
+<text class="label" x="882" y="224" text-anchor="start">Cross-face neighbors</text>
 
 <rect class="box blue" x="860" y="306" width="350" height="86" rx="12"/>
-<text class="label" x="882" y="342" text-anchor="start">S</text>
+<text class="label" x="882" y="342" text-anchor="start">Seam blending</text>
 
 <path class="arrow" d="M1035 274 L1035 306"/>
 <path class="arrow" d="M815 318 C838 318, 838 318, 860 318"/>

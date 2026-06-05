@@ -14,30 +14,30 @@
   </defs>
   <rect class="bg" width="1280" height="720"/>
   <text class="title" x="58" y="62">CPU-to-GPU Upload</text>
-  <text class="sub" x="60" y="94">Generated arrays are packed into texture arrays and mesh buffers.</text>
+  <text class="sub" x="60" y="94" text-anchor="start">Generated arrays are packed into texture arrays and mesh buffers.</text>
   <text class="lane" x="70" y="154">CPU Data</text>
 <rect class="box green" x="70" y="188" width="350" height="86" rx="12"/>
-<text class="label" x="92" y="224" text-anchor="start">S</text>
+<text class="label" x="92" y="224" text-anchor="start">Six faces</text>
 
 <rect class="box amber" x="70" y="306" width="350" height="86" rx="12"/>
-<text class="label" x="92" y="342" text-anchor="start">H</text>
+<text class="label" x="92" y="342" text-anchor="start">Height / masks / weights</text>
 
 <path class="arrow" d="M245 274 L245 306"/>
 <text class="lane" x="465" y="154">GPU Packing</text>
 <rect class="box amber" x="465" y="188" width="350" height="86" rx="12"/>
-<text class="label" x="487" y="224" text-anchor="start">T</text>
+<text class="label" x="487" y="224" text-anchor="start">Texture arrays</text>
 
 <rect class="box violet" x="465" y="306" width="350" height="86" rx="12"/>
-<text class="label" x="487" y="342" text-anchor="start">V</text>
+<text class="label" x="487" y="342" text-anchor="start">VBO / IBO / VAO</text>
 
 <path class="arrow" d="M640 274 L640 306"/>
 <path class="arrow" d="M420 318 C442 318, 442 318, 465 318"/>
 <text class="lane" x="860" y="154">Shader Access</text>
 <rect class="box violet" x="860" y="188" width="350" height="86" rx="12"/>
-<text class="label" x="882" y="224" text-anchor="start">L</text>
+<text class="label" x="882" y="224" text-anchor="start">Layer sampling</text>
 
 <rect class="box blue" x="860" y="306" width="350" height="86" rx="12"/>
-<text class="label" x="882" y="342" text-anchor="start">M</text>
+<text class="label" x="882" y="342" text-anchor="start">Material blending</text>
 
 <path class="arrow" d="M1035 274 L1035 306"/>
 <path class="arrow" d="M815 318 C838 318, 838 318, 860 318"/>
