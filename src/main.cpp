@@ -89,58 +89,16 @@ struct ApplicationState {
     float previousFrameTime = 0.0f;
     bool showDebugPanel = true;
     bool showPerformancePanel = false;
-    bool showProceduralTerrainFeature = false;
-    bool showProceduralErosionFeature = false;
-    bool showProceduralMaterialFeature = false;
-    bool showRenderModeFeature = false;
-    bool showVisibilityFeature = false;
-    bool showTerrainRuntimeFeature = false;
-    bool showLightingFeature = false;
-    bool showRiverFeature = false;
-    bool showAtmosphereFeature = false;
-    bool showOceanColorFeature = false;
-    bool showOceanWaveFeature = false;
-    bool showOceanMaterialFeature = false;
-    bool showOceanReflectionFeature = false;
-    bool showAdvancedRenderFeature = false;
-    bool showCameraFeature = false;
     float planetYawDegrees = 0.0f;
     float planetPitchDegrees = 0.0f;
     float cameraOrbitYawDegrees = 0.0f;
     float cameraOrbitPitchDegrees = 12.0f;
     float cameraOrbitDistance = 420.0f;
-    std::string sessionMessage;
 };
 
 ApplicationState* getState(GLFWwindow* window)
 {
     return static_cast<ApplicationState*>(glfwGetWindowUserPointer(window));
-}
-
-void collapseFeaturePanels(ApplicationState& state)
-{
-    state.showProceduralTerrainFeature = false;
-    state.showProceduralErosionFeature = false;
-    state.showProceduralMaterialFeature = false;
-    state.showRenderModeFeature = false;
-    state.showVisibilityFeature = false;
-    state.showTerrainRuntimeFeature = false;
-    state.showLightingFeature = false;
-    state.showRiverFeature = false;
-    state.showAtmosphereFeature = false;
-    state.showOceanColorFeature = false;
-    state.showOceanWaveFeature = false;
-    state.showOceanMaterialFeature = false;
-    state.showOceanReflectionFeature = false;
-    state.showAdvancedRenderFeature = false;
-    state.showCameraFeature = false;
-}
-
-void selectFeaturePanel(ApplicationState& state, bool& panelOpen)
-{
-    const bool openTarget = !panelOpen;
-    collapseFeaturePanels(state);
-    panelOpen = openTarget;
 }
 
 void copyProceduralSettings(PlanetRenderSettings& destination, const PlanetRenderSettings& source)
@@ -194,58 +152,7 @@ void copyProceduralSettings(PlanetRenderSettings& destination, const PlanetRende
     destination.terrainMaterialNoiseStrength = 0.0f;
 }
 
-void applyStageOneProceduralPreset(PlanetRenderSettings& settings)
-{
-    settings.planetRadius = 200.0f;
-    settings.seaLevelOffset = 0.0f;
-    settings.terrainHeightScale = 22.0f;
-    settings.runtimeMountainScale = 1.0f;
-    settings.terrainNoiseScale = 0.58f;
-    settings.mountainMaskStrength = 1.90f;
-    settings.mountainMaskScale = 3.35f;
-    settings.mountainRidgeSharpness = 3.80f;
-    settings.erosionIterations = 128;
-    settings.erosionStrength = 0.075f;
-    settings.erosionTalus = 0.028f;
-    settings.erosionSediment = 0.58f;
-    settings.erosionThermalStrength = 0.018f;
-    settings.terrainLowlandColor = glm::vec3(0.20f, 0.46f, 0.30f);
-    settings.terrainForestColor = glm::vec3(0.08f, 0.28f, 0.18f);
-    settings.terrainDesertColor = glm::vec3(0.64f, 0.55f, 0.34f);
-    settings.terrainRockColor = glm::vec3(0.44f, 0.47f, 0.48f);
-    settings.terrainBeachColor = glm::vec3(0.79f, 0.68f, 0.43f);
-    settings.terrainSnowColor = glm::vec3(0.94f, 0.97f, 0.98f);
-    settings.terrainPaletteLowGrass = glm::vec3(0.20f, 0.86f, 0.18f);
-    settings.terrainPaletteMeadow = glm::vec3(0.56f, 0.90f, 0.16f);
-    settings.terrainPaletteForestDark = glm::vec3(0.020f, 0.38f, 0.070f);
-    settings.terrainPaletteForestWarm = glm::vec3(0.12f, 0.64f, 0.10f);
-    settings.terrainPaletteSavanna = glm::vec3(0.92f, 0.72f, 0.12f);
-    settings.terrainPaletteDrySoil = glm::vec3(0.94f, 0.42f, 0.12f);
-    settings.terrainPaletteOchre = glm::vec3(1.00f, 0.60f, 0.16f);
-    settings.terrainPaletteWetGreen = glm::vec3(0.030f, 0.52f, 0.30f);
-    settings.terrainPaletteTundra = glm::vec3(0.70f, 0.78f, 0.32f);
-    settings.terrainPaletteBrownSlope = glm::vec3(0.58f, 0.36f, 0.20f);
-    settings.terrainPaletteRedSoil = glm::vec3(0.70f, 0.30f, 0.14f);
-    settings.terrainPaletteRockWarm = glm::vec3(0.48f, 0.45f, 0.39f);
-    settings.terrainPaletteRockCool = glm::vec3(0.54f, 0.58f, 0.56f);
-    settings.terrainPaletteRockDark = glm::vec3(0.22f, 0.22f, 0.20f);
-    settings.terrainPalettePaleStone = glm::vec3(0.70f, 0.72f, 0.66f);
-    settings.terrainPaletteSnow = glm::vec3(1.08f, 1.10f, 1.14f);
-    settings.terrainPaletteSnowShadow = glm::vec3(0.76f, 0.86f, 1.02f);
-    settings.terrainPaletteBeach = glm::vec3(1.00f, 0.78f, 0.38f);
-    settings.terrainPaletteRiverBed = glm::vec3(0.30f, 0.17f, 0.08f);
-    settings.terrainPaletteShallowSeabed = glm::vec3(0.28f, 0.62f, 0.50f);
-    settings.terrainPaletteDeepSeabed = glm::vec3(0.08f, 0.22f, 0.32f);
-    settings.terrainBeachWidth = 0.045f;
-    settings.terrainRockSlopeStart = 0.24f;
-    settings.terrainRockSlopeEnd = 0.62f;
-    settings.terrainSnowStart = 0.72f;
-    settings.terrainSnowEnd = 0.95f;
-    settings.terrainMaterialNoiseScale = 0.030f;
-    settings.terrainMaterialNoiseStrength = 0.0f;
-}
-
-void applyRuggedRiversPreset(PlanetRenderSettings& settings)
+void applyNormalProceduralPreset(PlanetRenderSettings& settings)
 {
     const float distanceScale = glm::max(settings.planetRadius / kReferencePlanetRadius, 0.25f);
     settings.terrainHeightScale = 34.0f * distanceScale;
@@ -677,7 +584,6 @@ bool saveSession(ApplicationState& state, const char* path = kSessionFilePath)
 
     std::ofstream file(path);
     if (!file) {
-        state.sessionMessage = "Save failed: could not open session file.";
         return false;
     }
 
@@ -692,21 +598,6 @@ bool saveSession(ApplicationState& state, const char* path = kSessionFilePath)
     writeFloat(file, "cameraOrbitDistance", state.cameraOrbitDistance);
     writeFloat(file, "cameraMouseSensitivity", state.camera.mouseSensitivity);
     writeBool(file, "showPerformancePanel", state.showPerformancePanel);
-    writeBool(file, "showProceduralTerrainFeature", state.showProceduralTerrainFeature);
-    writeBool(file, "showProceduralErosionFeature", state.showProceduralErosionFeature);
-    writeBool(file, "showProceduralMaterialFeature", state.showProceduralMaterialFeature);
-    writeBool(file, "showRenderModeFeature", state.showRenderModeFeature);
-    writeBool(file, "showVisibilityFeature", state.showVisibilityFeature);
-    writeBool(file, "showTerrainRuntimeFeature", state.showTerrainRuntimeFeature);
-    writeBool(file, "showLightingFeature", state.showLightingFeature);
-    writeBool(file, "showRiverFeature", state.showRiverFeature);
-    writeBool(file, "showAtmosphereFeature", state.showAtmosphereFeature);
-    writeBool(file, "showOceanColorFeature", state.showOceanColorFeature);
-    writeBool(file, "showOceanWaveFeature", state.showOceanWaveFeature);
-    writeBool(file, "showOceanMaterialFeature", state.showOceanMaterialFeature);
-    writeBool(file, "showOceanReflectionFeature", state.showOceanReflectionFeature);
-    writeBool(file, "showAdvancedRenderFeature", state.showAdvancedRenderFeature);
-    writeBool(file, "showCameraFeature", state.showCameraFeature);
     writeSettings(file, "procedural", state.proceduralSettings);
     writeSettings(file, "render", state.renderSettings);
 
@@ -715,19 +606,13 @@ bool saveSession(ApplicationState& state, const char* path = kSessionFilePath)
         savedCache = state.generatedPlanet.saveCache(kProceduralCacheFilePath);
     }
 
-    state.sessionMessage = savedCache
-        ? std::string("Saved session and cache: ") + path
-        : std::string("Saved session: ") + path;
     return true;
 }
 
-bool loadSession(ApplicationState& state, const char* path = kSessionFilePath, bool reportMissing = true)
+bool loadSession(ApplicationState& state, const char* path = kSessionFilePath)
 {
     SessionValues values;
     if (!readSessionFile(values, path)) {
-        if (reportMissing) {
-            state.sessionMessage = std::string("No saved session: ") + path;
-        }
         return false;
     }
 
@@ -742,22 +627,6 @@ bool loadSession(ApplicationState& state, const char* path = kSessionFilePath, b
     readFloat(values, "cameraOrbitDistance", state.cameraOrbitDistance);
     readFloat(values, "cameraMouseSensitivity", state.camera.mouseSensitivity);
     readBool(values, "showPerformancePanel", state.showPerformancePanel);
-    readBool(values, "showProceduralTerrainFeature", state.showProceduralTerrainFeature);
-    readBool(values, "showProceduralErosionFeature", state.showProceduralErosionFeature);
-    readBool(values, "showProceduralMaterialFeature", state.showProceduralMaterialFeature);
-    readBool(values, "showRenderModeFeature", state.showRenderModeFeature);
-    readBool(values, "showVisibilityFeature", state.showVisibilityFeature);
-    readBool(values, "showTerrainRuntimeFeature", state.showTerrainRuntimeFeature);
-    readBool(values, "showLightingFeature", state.showLightingFeature);
-    readBool(values, "showRiverFeature", state.showRiverFeature);
-    readBool(values, "showAtmosphereFeature", state.showAtmosphereFeature);
-    readBool(values, "showOceanColorFeature", state.showOceanColorFeature);
-    readBool(values, "showOceanWaveFeature", state.showOceanWaveFeature);
-    readBool(values, "showOceanMaterialFeature", state.showOceanMaterialFeature);
-    readBool(values, "showOceanReflectionFeature", state.showOceanReflectionFeature);
-    readBool(values, "showAdvancedRenderFeature", state.showAdvancedRenderFeature);
-    readBool(values, "showCameraFeature", state.showCameraFeature);
-    collapseFeaturePanels(state);
 
     state.renderer.settings() = state.renderSettings;
     state.renderer.setPlanetRotation(state.planetYawDegrees, state.planetPitchDegrees);
@@ -783,78 +652,7 @@ bool loadSession(ApplicationState& state, const char* path = kSessionFilePath, b
     state.cameraOrbitDistance = glm::length(state.camera.position);
     updateOrbitCamera(state, activeSettings);
 
-    state.sessionMessage = loadedCache
-        ? std::string("Loaded session and cached planet: ") + path
-        : std::string("Loaded session but cached planet is missing or outdated; click Generate Planet.");
     return true;
-}
-
-void drawSessionControls(ApplicationState& state)
-{
-    if (ImGui::Button("Save Local", ImVec2(0.0f, 24.0f))) {
-        saveSession(state);
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Load Local", ImVec2(0.0f, 24.0f))) {
-        loadSession(state, kSessionFilePath, true);
-    }
-    ImGui::SameLine();
-    ImGui::TextDisabled("%s", kSessionFilePath);
-
-    if (!state.sessionMessage.empty()) {
-        ImGui::TextWrapped("%s", state.sessionMessage.c_str());
-    }
-}
-
-void drawFeatureToggle(ApplicationState& state, const char* label, bool& open)
-{
-    const ImVec4 activeColor(0.105f, 0.300f, 0.540f, 1.0f);
-    const ImVec4 inactiveColor(0.050f, 0.090f, 0.130f, 1.0f);
-    const ImVec4 hoveredColor(0.120f, 0.355f, 0.620f, 1.0f);
-
-    ImGui::PushID(label);
-    ImGui::PushStyleColor(ImGuiCol_Button, open ? activeColor : inactiveColor);
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, hoveredColor);
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive, activeColor);
-    if (ImGui::Button(label, ImVec2(-1.0f, 26.0f))) {
-        selectFeaturePanel(state, open);
-    }
-    ImGui::PopStyleColor(3);
-    ImGui::PopID();
-}
-
-void drawFeatureToggleRow(ApplicationState& state,
-                          const char* firstLabel,
-                          bool& firstOpen,
-                          const char* secondLabel,
-                          bool& secondOpen)
-{
-    const float spacing = ImGui::GetStyle().ItemSpacing.x;
-    const float width = (ImGui::GetContentRegionAvail().x - spacing) * 0.5f;
-    const ImVec4 activeColor(0.105f, 0.300f, 0.540f, 1.0f);
-    const ImVec4 inactiveColor(0.050f, 0.090f, 0.130f, 1.0f);
-    const ImVec4 hoveredColor(0.120f, 0.355f, 0.620f, 1.0f);
-
-    ImGui::PushID(firstLabel);
-    ImGui::PushStyleColor(ImGuiCol_Button, firstOpen ? activeColor : inactiveColor);
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, hoveredColor);
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive, activeColor);
-    if (ImGui::Button(firstLabel, ImVec2(width, 26.0f))) {
-        selectFeaturePanel(state, firstOpen);
-    }
-    ImGui::PopStyleColor(3);
-    ImGui::PopID();
-
-    ImGui::SameLine();
-    ImGui::PushID(secondLabel);
-    ImGui::PushStyleColor(ImGuiCol_Button, secondOpen ? activeColor : inactiveColor);
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, hoveredColor);
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive, activeColor);
-    if (ImGui::Button(secondLabel, ImVec2(-1.0f, 26.0f))) {
-        selectFeaturePanel(state, secondOpen);
-    }
-    ImGui::PopStyleColor(3);
-    ImGui::PopID();
 }
 
 void drawFeatureBodyBegin()
@@ -1150,7 +948,6 @@ void finishPlanetGeneration(ApplicationState& state, std::unique_ptr<PlanetProce
 {
     if (!generatedPlanet || !generatedPlanet->isGenerated()) {
         state.workflowStage = WorkflowStage::ProceduralSetup;
-        state.sessionMessage = "Planet generation failed.";
         return;
     }
 
@@ -1365,8 +1162,6 @@ void drawProceduralPanel(ApplicationState& state)
 
     ImGui::Text("Procedural Generation");
     ImGui::Separator();
-    drawSessionControls(state);
-    ImGui::Separator();
 
     if (state.workflowStage == WorkflowStage::Generating) {
         const int completedSteps = state.generationCompletedSteps.load(std::memory_order_relaxed);
@@ -1408,14 +1203,8 @@ void drawProceduralPanel(ApplicationState& state)
     const float proceduralDistanceScale = planetDistanceScale(settings.planetRadius);
 
     ImGui::Text("Presets");
-    const float presetSpacing = ImGui::GetStyle().ItemSpacing.x;
-    const float presetButtonWidth = (ImGui::GetContentRegionAvail().x - presetSpacing) * 0.5f;
-    if (ImGui::Button("Stage 1 Current", ImVec2(presetButtonWidth, 28.0f))) {
-        applyStageOneProceduralPreset(settings);
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Rugged Rivers", ImVec2(-1.0f, 28.0f))) {
-        applyRuggedRiversPreset(settings);
+    if (ImGui::Button("Normal Preset", ImVec2(-1.0f, 28.0f))) {
+        applyNormalProceduralPreset(settings);
     }
     ImGui::TextDisabled("Most controls require Generate Planet to rebake the offline heightfield.");
     ImGui::Separator();
@@ -1548,8 +1337,6 @@ void drawRenderPanel(ApplicationState& state)
         return;
     }
 
-    drawSessionControls(state);
-    ImGui::Separator();
     if (state.generatedPlanet.isGenerated()) {
         ImGui::Text("Generated data: %d face resolution", state.generatedPlanet.resolution());
         ImGui::Text("Offline terrain chunks: %zu", state.generatedPlanet.terrainChunks().size());
@@ -1997,7 +1784,7 @@ int main(int argc, char** argv)
     appState.renderer.initialize();
     appState.renderSettings = appState.renderer.settings();
     appState.proceduralSettings = appState.renderer.settings();
-    loadSession(appState, kSessionFilePath, false);
+    loadSession(appState, kSessionFilePath);
     appState.renderer.setPlanetRotation(appState.planetYawDegrees, appState.planetPitchDegrees);
 
     glEnable(GL_DEPTH_TEST);
@@ -2023,8 +1810,8 @@ int main(int argc, char** argv)
                     PROFILE_SCOPE("Finish Planet Generation");
                     finishPlanetGeneration(appState, appState.generationFuture.get());
                 } catch (const std::exception& exception) {
+                    std::cerr << "Planet generation failed: " << exception.what() << '\n';
                     appState.workflowStage = WorkflowStage::ProceduralSetup;
-                    appState.sessionMessage = std::string("Planet generation failed: ") + exception.what();
                 }
             }
         }
