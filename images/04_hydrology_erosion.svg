@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img">
+  <title>水文与侵蚀：水往低处走</title>
+  <desc>这张图用来解释河道、汇流量和侵蚀 mask 从哪里来。</desc>
+  <defs>
+    <marker id="arrowHead" markerWidth="14" markerHeight="14" refX="12" refY="7" orient="auto">
+      <path d="M2,2 L12,7 L2,12 Z" fill="#244a70"/>
+    </marker>
+    <style>
+      .bg{fill:#f4f9ff}.title{font:700 30px 'Microsoft YaHei','Segoe UI',Arial,sans-serif;fill:#17324d}
+      .sub{font:16px 'Microsoft YaHei','Segoe UI',Arial,sans-serif;fill:#41627f}.label{font:700 18px 'Microsoft YaHei','Segoe UI',Arial,sans-serif;fill:#17324d}
+      .small{font:14px 'Microsoft YaHei','Segoe UI',Arial,sans-serif;fill:#36536d}.tiny{font:12px Consolas,'Segoe UI',Arial,sans-serif;fill:#36536d}
+      .panel{fill:#ffffff;stroke:#9fc5e8;stroke-width:2}.soft{fill:#eaf4ff;stroke:#6fa8dc;stroke-width:2}.green{fill:#eef9f1;stroke:#58a66f;stroke-width:2}
+      .amber{fill:#fff7e8;stroke:#d89a2b;stroke-width:2}.violet{fill:#f5efff;stroke:#9b7bd8;stroke-width:2}.water{fill:#dff2ff;stroke:#4e9bd8;stroke-width:2}
+      .arrow{stroke:#244a70;stroke-width:3;marker-end:url(#arrowHead)}.thin{stroke:#6e9ec5;stroke-width:2;fill:none}.grid{stroke:#79aee0;stroke-width:2;fill:#e7f2ff}
+      .formula{fill:#ffffff;stroke:#a8c6df;stroke-width:1.5}.sun{fill:#ffd66b;stroke:#d89a2b;stroke-width:2}.cloud{fill:#ffffff;stroke:#91b9d8;stroke-width:2}
+    </style>
+  </defs>
+  <rect class="bg" width="1280" height="720"/>
+  <text class="title" x="36" y="58">水文与侵蚀：水往低处走</text>
+  <text class="sub" x="38" y="88">这张图用来解释河道、汇流量和侵蚀 mask 从哪里来。</text>
+    <rect class="soft" x="70" y="150" width="520" height="340" rx="10"/>
+  <path d="M110 420 C160 300, 210 390, 260 235 C325 410, 380 275, 540 430 L110 430 Z" fill="#d6c18a" stroke="#9d8652" stroke-width="2"/>
+  <path d="M140 245 L168 295 M205 210 L232 270 M315 205 L335 265" stroke="#4e9bd8" stroke-width="3"/>
+  <path d="M170 305 C210 330, 250 350, 300 360 C350 372, 420 390, 520 425" fill="none" stroke="#1f80c0" stroke-width="7"/>
+  <path d="M260 235 C285 270, 295 320, 300 360" fill="none" stroke="#1f80c0" stroke-width="4"/>
+  <text class="label" x="130" y="180" text-anchor="start">高处降水</text>
+  <text class="label" x="310" y="375" text-anchor="start">汇流</text>
+  <text class="label" x="405" y="460" text-anchor="start">切割河道</text>
+  <path class="arrow" d="M620 320 L760 320"/>
+  <rect class="water" x="790" y="150" width="360" height="340" rx="10"/>
+  <text class="label" x="825" y="200" text-anchor="start">输出 channel / wear / deposition mask</text>
+  <rect x="840" y="245" width="250" height="150" fill="#f7fcff" stroke="#6fa8dc" stroke-width="2"/>
+  <path d="M865 360 C910 310, 975 335, 1065 270" fill="none" stroke="#1f80c0" stroke-width="8"/>
+  <path d="M865 390 C920 355, 970 380, 1080 310" fill="none" stroke="#d89a2b" stroke-width="4" opacity="0.8"/>
+  <circle cx="930" cy="332" r="12" fill="#58a66f"/>
+  <circle cx="1020" cy="295" r="12" fill="#d89a2b"/>
+  <rect class="formula" x="75" y="565" width="1130" height="80" rx="8"/>
+  <text class="tiny" x="110" y="612" text-anchor="start">receiver = lowest neighbor; drainage += upstream water; channel = slope * drainage</text>
+</svg>

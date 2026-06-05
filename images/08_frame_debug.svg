@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img">
+  <title>每帧画面：相机决定看什么，UI 帮助解释</title>
+  <desc>这张图适合收尾：把输入、渲染结果和调试面板放在一起。</desc>
+  <defs>
+    <marker id="arrowHead" markerWidth="14" markerHeight="14" refX="12" refY="7" orient="auto">
+      <path d="M2,2 L12,7 L2,12 Z" fill="#244a70"/>
+    </marker>
+    <style>
+      .bg{fill:#f4f9ff}.title{font:700 30px 'Microsoft YaHei','Segoe UI',Arial,sans-serif;fill:#17324d}
+      .sub{font:16px 'Microsoft YaHei','Segoe UI',Arial,sans-serif;fill:#41627f}.label{font:700 18px 'Microsoft YaHei','Segoe UI',Arial,sans-serif;fill:#17324d}
+      .small{font:14px 'Microsoft YaHei','Segoe UI',Arial,sans-serif;fill:#36536d}.tiny{font:12px Consolas,'Segoe UI',Arial,sans-serif;fill:#36536d}
+      .panel{fill:#ffffff;stroke:#9fc5e8;stroke-width:2}.soft{fill:#eaf4ff;stroke:#6fa8dc;stroke-width:2}.green{fill:#eef9f1;stroke:#58a66f;stroke-width:2}
+      .amber{fill:#fff7e8;stroke:#d89a2b;stroke-width:2}.violet{fill:#f5efff;stroke:#9b7bd8;stroke-width:2}.water{fill:#dff2ff;stroke:#4e9bd8;stroke-width:2}
+      .arrow{stroke:#244a70;stroke-width:3;marker-end:url(#arrowHead)}.thin{stroke:#6e9ec5;stroke-width:2;fill:none}.grid{stroke:#79aee0;stroke-width:2;fill:#e7f2ff}
+      .formula{fill:#ffffff;stroke:#a8c6df;stroke-width:1.5}.sun{fill:#ffd66b;stroke:#d89a2b;stroke-width:2}.cloud{fill:#ffffff;stroke:#91b9d8;stroke-width:2}
+    </style>
+  </defs>
+  <rect class="bg" width="1280" height="720"/>
+  <text class="title" x="36" y="58">每帧画面：相机决定看什么，UI 帮助解释</text>
+  <text class="sub" x="38" y="88">这张图适合收尾：把输入、渲染结果和调试面板放在一起。</text>
+    <rect class="green" x="70" y="170" width="250" height="300" rx="10"/>
+  <path d="M120 390 L165 240 L245 390 Z" fill="#fff" stroke="#244a70" stroke-width="2"/>
+  <circle cx="165" cy="240" r="15" fill="#244a70"/>
+  <text class="label" x="165" y="215" text-anchor="middle">相机</text>
+  <text class="small" x="185" y="330" text-anchor="start">可见区域</text>
+  <path class="arrow" d="M350 320 L470 320"/>
+  <rect class="soft" x="490" y="130" width="420" height="380" rx="10"/>
+  <text class="label" x="700" y="175" text-anchor="middle">主画面</text>
+  <rect x="555" y="210" width="290" height="205" fill="#dff2ff" stroke="#6fa8dc" stroke-width="2"/>
+  <circle cx="700" cy="315" r="75" fill="#cfefff" stroke="#58a66f" stroke-width="2"/>
+  <path d="M650 315 C675 280, 725 282, 750 315 C725 345, 675 350, 650 315 Z" fill="#6fbd78"/>
+  <path d="M645 365 C690 345, 735 360, 760 385 L645 385 Z" fill="#6fa8dc" opacity="0.6"/>
+  <path class="arrow" d="M935 320 L1035 320"/>
+  <rect class="amber" x="1025" y="170" width="210" height="300" rx="10"/>
+  <text class="label" x="1130" y="215" text-anchor="middle">调试面板</text>
+  <rect x="1060" y="250" width="135" height="26" fill="#fff" stroke="#d89a2b"/><rect x="1060" y="290" width="135" height="26" fill="#fff" stroke="#d89a2b"/>
+  <rect x="1060" y="330" width="135" height="26" fill="#fff" stroke="#d89a2b"/><rect x="1060" y="370" width="135" height="26" fill="#fff" stroke="#d89a2b"/>
+  <rect class="formula" x="75" y="565" width="1130" height="80" rx="8"/>
+  <text class="tiny" x="110" y="612" text-anchor="start">camera -&gt; visible chunks/patches -&gt; draw terrain/ocean/sky -&gt; ImGui debug panels</text>
+</svg>

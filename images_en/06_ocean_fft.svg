@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img">
+  <title>Ocean: FFT waves + reflection/refraction</title>
+  <desc>Use this image to explain moving water and water color.</desc>
+  <defs>
+    <marker id="arrowHead" markerWidth="14" markerHeight="14" refX="12" refY="7" orient="auto">
+      <path d="M2,2 L12,7 L2,12 Z" fill="#244a70"/>
+    </marker>
+    <style>
+      .bg{fill:#f4f9ff}.title{font:700 30px 'Microsoft YaHei','Segoe UI',Arial,sans-serif;fill:#17324d}
+      .sub{font:16px 'Microsoft YaHei','Segoe UI',Arial,sans-serif;fill:#41627f}.label{font:700 18px 'Microsoft YaHei','Segoe UI',Arial,sans-serif;fill:#17324d}
+      .small{font:14px 'Microsoft YaHei','Segoe UI',Arial,sans-serif;fill:#36536d}.tiny{font:12px Consolas,'Segoe UI',Arial,sans-serif;fill:#36536d}
+      .panel{fill:#ffffff;stroke:#9fc5e8;stroke-width:2}.soft{fill:#eaf4ff;stroke:#6fa8dc;stroke-width:2}.green{fill:#eef9f1;stroke:#58a66f;stroke-width:2}
+      .amber{fill:#fff7e8;stroke:#d89a2b;stroke-width:2}.violet{fill:#f5efff;stroke:#9b7bd8;stroke-width:2}.water{fill:#dff2ff;stroke:#4e9bd8;stroke-width:2}
+      .arrow{stroke:#244a70;stroke-width:3;marker-end:url(#arrowHead)}.thin{stroke:#6e9ec5;stroke-width:2;fill:none}.grid{stroke:#79aee0;stroke-width:2;fill:#e7f2ff}
+      .formula{fill:#ffffff;stroke:#a8c6df;stroke-width:1.5}.sun{fill:#ffd66b;stroke:#d89a2b;stroke-width:2}.cloud{fill:#ffffff;stroke:#91b9d8;stroke-width:2}
+    </style>
+  </defs>
+  <rect class="bg" width="1280" height="720"/>
+  <text class="title" x="36" y="58">Ocean: FFT waves + reflection/refraction</text>
+  <text class="sub" x="38" y="88">Use this image to explain moving water and water color.</text>
+    <rect class="soft" x="65" y="155" width="265" height="330" rx="10"/>
+  <text class="label" x="95" y="205" text-anchor="start">wave spectrum</text>
+  <g stroke="#6fa8dc" stroke-width="1.5">
+    <line x1="110" y1="245" x2="285" y2="245"/><line x1="110" y1="285" x2="285" y2="285"/><line x1="110" y1="325" x2="285" y2="325"/><line x1="110" y1="365" x2="285" y2="365"/>
+    <line x1="130" y1="225" x2="130" y2="390"/><line x1="170" y1="225" x2="170" y2="390"/><line x1="210" y1="225" x2="210" y2="390"/><line x1="250" y1="225" x2="250" y2="390"/>
+  </g>
+  <circle cx="170" cy="285" r="16" fill="#244a70"/><circle cx="250" cy="245" r="10" fill="#4e9bd8"/><circle cx="210" cy="365" r="12" fill="#4e9bd8"/>
+  <path class="arrow" d="M360 320 L485 320"/>
+  <rect class="water" x="505" y="155" width="285" height="330" rx="10"/>
+  <text class="label" x="535" y="205" text-anchor="start">wave surface</text>
+  <path d="M535 335 C570 300, 610 370, 650 330 C690 285, 725 360, 760 320" fill="none" stroke="#1f80c0" stroke-width="6"/>
+  <path d="M535 355 C570 320, 610 390, 650 350 C690 305, 725 380, 760 340" fill="none" stroke="#79bee8" stroke-width="4"/>
+  <path class="arrow" d="M820 320 L940 320"/>
+  <rect class="green" x="955" y="155" width="270" height="330" rx="10"/>
+  <text class="label" x="985" y="205" text-anchor="start">reflection / refraction</text>
+  <line x1="1000" y1="330" x2="1190" y2="330" stroke="#1f80c0" stroke-width="5"/>
+  <path d="M1030 300 C1060 250, 1120 250, 1160 300" fill="none" stroke="#244a70" stroke-width="4"/>
+  <path d="M1030 360 C1070 390, 1130 390, 1170 360" fill="none" stroke="#58a66f" stroke-width="4"/>
+  <text class="label" x="1095" y="440" text-anchor="middle">final water</text>
+  <rect class="formula" x="75" y="565" width="1130" height="80" rx="8"/>
+  <text class="tiny" x="110" y="612" text-anchor="start">spectrum(t) -&gt; IFFT -&gt; height/normal/displacement textures; Fresnel mixes reflection and refraction</text>
+</svg>

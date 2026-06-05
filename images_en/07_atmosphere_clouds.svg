@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img">
+  <title>Atmosphere and clouds: LUT sky + raymarch clouds</title>
+  <desc>Use this image to explain sky color, haze, and clouds.</desc>
+  <defs>
+    <marker id="arrowHead" markerWidth="14" markerHeight="14" refX="12" refY="7" orient="auto">
+      <path d="M2,2 L12,7 L2,12 Z" fill="#244a70"/>
+    </marker>
+    <style>
+      .bg{fill:#f4f9ff}.title{font:700 30px 'Microsoft YaHei','Segoe UI',Arial,sans-serif;fill:#17324d}
+      .sub{font:16px 'Microsoft YaHei','Segoe UI',Arial,sans-serif;fill:#41627f}.label{font:700 18px 'Microsoft YaHei','Segoe UI',Arial,sans-serif;fill:#17324d}
+      .small{font:14px 'Microsoft YaHei','Segoe UI',Arial,sans-serif;fill:#36536d}.tiny{font:12px Consolas,'Segoe UI',Arial,sans-serif;fill:#36536d}
+      .panel{fill:#ffffff;stroke:#9fc5e8;stroke-width:2}.soft{fill:#eaf4ff;stroke:#6fa8dc;stroke-width:2}.green{fill:#eef9f1;stroke:#58a66f;stroke-width:2}
+      .amber{fill:#fff7e8;stroke:#d89a2b;stroke-width:2}.violet{fill:#f5efff;stroke:#9b7bd8;stroke-width:2}.water{fill:#dff2ff;stroke:#4e9bd8;stroke-width:2}
+      .arrow{stroke:#244a70;stroke-width:3;marker-end:url(#arrowHead)}.thin{stroke:#6e9ec5;stroke-width:2;fill:none}.grid{stroke:#79aee0;stroke-width:2;fill:#e7f2ff}
+      .formula{fill:#ffffff;stroke:#a8c6df;stroke-width:1.5}.sun{fill:#ffd66b;stroke:#d89a2b;stroke-width:2}.cloud{fill:#ffffff;stroke:#91b9d8;stroke-width:2}
+    </style>
+  </defs>
+  <rect class="bg" width="1280" height="720"/>
+  <text class="title" x="36" y="58">Atmosphere and clouds: LUT sky + raymarch clouds</text>
+  <text class="sub" x="38" y="88">Use this image to explain sky color, haze, and clouds.</text>
+    <circle class="sun" cx="150" cy="175" r="46"/>
+  <text class="label" x="150" y="245" text-anchor="middle">sun light</text>
+  <path d="M210 205 L420 300 M205 155 L430 250 M205 245 L430 350" class="arrow"/>
+  <circle cx="640" cy="405" r="150" fill="#d8f0ff" stroke="#58a66f" stroke-width="2"/>
+  <circle cx="640" cy="405" r="190" fill="none" stroke="#6fa8dc" stroke-width="4" opacity="0.7"/>
+  <text class="label" x="640" y="185" text-anchor="middle">air shell</text>
+  <path class="cloud" d="M555 275 C570 240, 615 245, 625 270 C650 240, 705 255, 700 292 C730 292, 745 330, 710 345 L565 345 C520 340, 515 300, 555 275 Z"/>
+  <line x1="470" y1="240" x2="735" y2="330" stroke="#244a70" stroke-width="3"/>
+  <circle cx="530" cy="260" r="7" fill="#244a70"/><circle cx="585" cy="278" r="7" fill="#244a70"/><circle cx="640" cy="296" r="7" fill="#244a70"/><circle cx="695" cy="314" r="7" fill="#244a70"/>
+  <text class="label" x="620" y="245" text-anchor="middle">cloud samples</text>
+  <rect class="amber" x="920" y="205" width="240" height="250" rx="10"/>
+  <text class="label" x="950" y="250" text-anchor="start">LUT table</text>
+  <rect x="975" y="290" width="130" height="100" fill="#fff" stroke="#d89a2b" stroke-width="2"/>
+  <line x1="975" y1="323" x2="1105" y2="323" stroke="#d89a2b"/><line x1="975" y1="356" x2="1105" y2="356" stroke="#d89a2b"/>
+  <line x1="1018" y1="290" x2="1018" y2="390" stroke="#d89a2b"/><line x1="1061" y1="290" x2="1061" y2="390" stroke="#d89a2b"/>
+  <rect class="formula" x="75" y="565" width="1130" height="80" rx="8"/>
+  <text class="tiny" x="110" y="612" text-anchor="start">atmosphere LUT gives sky color; cloud raymarch samples density along the view ray</text>
+</svg>

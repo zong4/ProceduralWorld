@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img">
+  <title>DEM 地形：噪声 + 高度场 + 材质</title>
+  <desc>用这张图讲地形怎么从数据变成山脉、海岸和雪线。</desc>
+  <defs>
+    <marker id="arrowHead" markerWidth="14" markerHeight="14" refX="12" refY="7" orient="auto">
+      <path d="M2,2 L12,7 L2,12 Z" fill="#244a70"/>
+    </marker>
+    <style>
+      .bg{fill:#f4f9ff}.title{font:700 30px 'Microsoft YaHei','Segoe UI',Arial,sans-serif;fill:#17324d}
+      .sub{font:16px 'Microsoft YaHei','Segoe UI',Arial,sans-serif;fill:#41627f}.label{font:700 18px 'Microsoft YaHei','Segoe UI',Arial,sans-serif;fill:#17324d}
+      .small{font:14px 'Microsoft YaHei','Segoe UI',Arial,sans-serif;fill:#36536d}.tiny{font:12px Consolas,'Segoe UI',Arial,sans-serif;fill:#36536d}
+      .panel{fill:#ffffff;stroke:#9fc5e8;stroke-width:2}.soft{fill:#eaf4ff;stroke:#6fa8dc;stroke-width:2}.green{fill:#eef9f1;stroke:#58a66f;stroke-width:2}
+      .amber{fill:#fff7e8;stroke:#d89a2b;stroke-width:2}.violet{fill:#f5efff;stroke:#9b7bd8;stroke-width:2}.water{fill:#dff2ff;stroke:#4e9bd8;stroke-width:2}
+      .arrow{stroke:#244a70;stroke-width:3;marker-end:url(#arrowHead)}.thin{stroke:#6e9ec5;stroke-width:2;fill:none}.grid{stroke:#79aee0;stroke-width:2;fill:#e7f2ff}
+      .formula{fill:#ffffff;stroke:#a8c6df;stroke-width:1.5}.sun{fill:#ffd66b;stroke:#d89a2b;stroke-width:2}.cloud{fill:#ffffff;stroke:#91b9d8;stroke-width:2}
+    </style>
+  </defs>
+  <rect class="bg" width="1280" height="720"/>
+  <text class="title" x="36" y="58">DEM 地形：噪声 + 高度场 + 材质</text>
+  <text class="sub" x="38" y="88">用这张图讲地形怎么从数据变成山脉、海岸和雪线。</text>
+    <rect class="soft" x="70" y="160" width="290" height="260" rx="10"/>
+  <text class="label" x="100" y="205" text-anchor="start">低频噪声：大陆</text>
+  <path d="M105 330 C145 270, 190 365, 230 305 C265 260, 305 315, 325 285" fill="none" stroke="#58a66f" stroke-width="5"/>
+  <text class="small" x="100" y="255" text-anchor="start">中频噪声：山脉</text>
+  <path d="M105 360 L145 275 L185 365 L230 250 L270 360 L325 285" fill="none" stroke="#d89a2b" stroke-width="4"/>
+  <text class="small" x="100" y="405" text-anchor="start">高频噪声：细节</text>
+  <path class="arrow" d="M390 290 L510 290"/>
+  <rect class="amber" x="530" y="160" width="300" height="260" rx="10"/>
+  <text class="label" x="560" y="205" text-anchor="start">DEM height map</text>
+  <rect x="585" y="245" width="190" height="130" fill="#dceefa" stroke="#6fa8dc" stroke-width="2"/>
+  <path d="M585 340 C630 300, 675 350, 720 285 C745 250, 760 270, 775 245 L775 375 L585 375 Z" fill="#9fcf8a"/>
+  <path d="M585 360 C640 350, 705 365, 775 345 L775 375 L585 375 Z" fill="#6fa8dc" opacity="0.5"/>
+  <path class="arrow" d="M860 290 L980 290"/>
+  <rect class="green" x="1000" y="160" width="220" height="260" rx="10"/>
+  <text class="label" x="1030" y="205" text-anchor="start">rendered terrain</text>
+  <path d="M1025 360 C1060 250, 1090 360, 1120 260 C1150 360, 1185 330, 1200 370 L1025 370 Z" fill="#7fc97f" stroke="#4e8d5a" stroke-width="2"/>
+  <path d="M1070 288 L1090 360 L1120 260 L1136 316 C1110 310, 1095 305, 1070 288 Z" fill="#eeeeee"/>
+  <rect x="1025" y="370" width="175" height="30" fill="#6fa8dc" opacity="0.55"/>
+  <rect class="formula" x="75" y="555" width="1130" height="85" rx="8"/>
+  <text class="tiny" x="110" y="602" text-anchor="start">height = continent + mountains + ridges; material = f(height, slope, temperature, moisture)</text>
+</svg>

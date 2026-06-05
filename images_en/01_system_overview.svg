@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img">
+  <title>System overview: CPU makes data, GPU draws</title>
+  <desc>Use this image first: the project is a real-time render pipeline, not a static model.</desc>
+  <defs>
+    <marker id="arrowHead" markerWidth="14" markerHeight="14" refX="12" refY="7" orient="auto">
+      <path d="M2,2 L12,7 L2,12 Z" fill="#244a70"/>
+    </marker>
+    <style>
+      .bg{fill:#f4f9ff}.title{font:700 30px 'Microsoft YaHei','Segoe UI',Arial,sans-serif;fill:#17324d}
+      .sub{font:16px 'Microsoft YaHei','Segoe UI',Arial,sans-serif;fill:#41627f}.label{font:700 18px 'Microsoft YaHei','Segoe UI',Arial,sans-serif;fill:#17324d}
+      .small{font:14px 'Microsoft YaHei','Segoe UI',Arial,sans-serif;fill:#36536d}.tiny{font:12px Consolas,'Segoe UI',Arial,sans-serif;fill:#36536d}
+      .panel{fill:#ffffff;stroke:#9fc5e8;stroke-width:2}.soft{fill:#eaf4ff;stroke:#6fa8dc;stroke-width:2}.green{fill:#eef9f1;stroke:#58a66f;stroke-width:2}
+      .amber{fill:#fff7e8;stroke:#d89a2b;stroke-width:2}.violet{fill:#f5efff;stroke:#9b7bd8;stroke-width:2}.water{fill:#dff2ff;stroke:#4e9bd8;stroke-width:2}
+      .arrow{stroke:#244a70;stroke-width:3;marker-end:url(#arrowHead)}.thin{stroke:#6e9ec5;stroke-width:2;fill:none}.grid{stroke:#79aee0;stroke-width:2;fill:#e7f2ff}
+      .formula{fill:#ffffff;stroke:#a8c6df;stroke-width:1.5}.sun{fill:#ffd66b;stroke:#d89a2b;stroke-width:2}.cloud{fill:#ffffff;stroke:#91b9d8;stroke-width:2}
+    </style>
+  </defs>
+  <rect class="bg" width="1280" height="720"/>
+  <text class="title" x="36" y="58">System overview: CPU makes data, GPU draws</text>
+  <text class="sub" x="38" y="88">Use this image first: the project is a real-time render pipeline, not a static model.</text>
+    <rect class="soft" x="60" y="160" width="280" height="250" rx="10"/>
+  <text class="label" x="92" y="205" text-anchor="start">CPU makes planet data</text>
+  <text class="small" x="92" y="245" text-anchor="start">height / water / climate / masks</text>
+  <circle cx="200" cy="330" r="70" fill="#d9edff" stroke="#6fa8dc" stroke-width="2"/>
+  <path d="M150 320 C180 280, 230 280, 250 325 C220 350, 185 355, 150 320 Z" fill="#7fc97f" opacity="0.85"/>
+  <path d="M165 360 C205 335, 240 360, 260 380 C225 395, 180 392, 165 360 Z" fill="#c2a670" opacity="0.75"/>
+  <path class="arrow" d="M360 285 L480 285"/>
+  <rect class="amber" x="500" y="160" width="280" height="250" rx="10"/>
+  <text class="label" x="532" y="205" text-anchor="start">GPU uploads resources</text>
+  <text class="small" x="532" y="245" text-anchor="start">texture array + baked mesh</text>
+  <rect x="595" y="285" width="90" height="70" fill="#e7f2ff" stroke="#6fa8dc" stroke-width="2"/>
+  <rect x="615" y="265" width="90" height="70" fill="#f0f8ff" stroke="#6fa8dc" stroke-width="2"/>
+  <rect x="635" y="245" width="90" height="70" fill="#ffffff" stroke="#6fa8dc" stroke-width="2"/>
+  <path class="arrow" d="M800 285 L920 285"/>
+  <rect class="green" x="940" y="160" width="280" height="250" rx="10"/>
+  <text class="label" x="972" y="205" text-anchor="start">Real-time image</text>
+  <text class="small" x="972" y="245" text-anchor="start">terrain + ocean + sky + clouds</text>
+  <circle cx="1080" cy="330" r="72" fill="#cfefff" stroke="#58a66f" stroke-width="2"/>
+  <path d="M1025 330 C1050 285, 1115 286, 1140 330 C1110 360, 1060 365, 1025 330 Z" fill="#6fbd78"/>
+  <path d="M1045 370 C1080 345, 1120 365, 1140 390 C1105 405, 1060 400, 1045 370 Z" fill="#d5c17c"/>
+  <text class="small" x="1080" y="438" text-anchor="middle">Final planet</text>
+  <rect class="formula" x="85" y="545" width="1110" height="90" rx="8"/>
+  <text class="tiny" x="112" y="582" text-anchor="start">main.cpp controls state, PlanetProceduralData makes data, PlanetRenderer uploads and draws.</text>
+</svg>

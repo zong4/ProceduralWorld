@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img">
+  <title>GPU 上传与 LOD：近处细，远处粗</title>
+  <desc>这张图把 texture array、地形 chunk 和相机距离放在一起讲。</desc>
+  <defs>
+    <marker id="arrowHead" markerWidth="14" markerHeight="14" refX="12" refY="7" orient="auto">
+      <path d="M2,2 L12,7 L2,12 Z" fill="#244a70"/>
+    </marker>
+    <style>
+      .bg{fill:#f4f9ff}.title{font:700 30px 'Microsoft YaHei','Segoe UI',Arial,sans-serif;fill:#17324d}
+      .sub{font:16px 'Microsoft YaHei','Segoe UI',Arial,sans-serif;fill:#41627f}.label{font:700 18px 'Microsoft YaHei','Segoe UI',Arial,sans-serif;fill:#17324d}
+      .small{font:14px 'Microsoft YaHei','Segoe UI',Arial,sans-serif;fill:#36536d}.tiny{font:12px Consolas,'Segoe UI',Arial,sans-serif;fill:#36536d}
+      .panel{fill:#ffffff;stroke:#9fc5e8;stroke-width:2}.soft{fill:#eaf4ff;stroke:#6fa8dc;stroke-width:2}.green{fill:#eef9f1;stroke:#58a66f;stroke-width:2}
+      .amber{fill:#fff7e8;stroke:#d89a2b;stroke-width:2}.violet{fill:#f5efff;stroke:#9b7bd8;stroke-width:2}.water{fill:#dff2ff;stroke:#4e9bd8;stroke-width:2}
+      .arrow{stroke:#244a70;stroke-width:3;marker-end:url(#arrowHead)}.thin{stroke:#6e9ec5;stroke-width:2;fill:none}.grid{stroke:#79aee0;stroke-width:2;fill:#e7f2ff}
+      .formula{fill:#ffffff;stroke:#a8c6df;stroke-width:1.5}.sun{fill:#ffd66b;stroke:#d89a2b;stroke-width:2}.cloud{fill:#ffffff;stroke:#91b9d8;stroke-width:2}
+    </style>
+  </defs>
+  <rect class="bg" width="1280" height="720"/>
+  <text class="title" x="36" y="58">GPU 上传与 LOD：近处细，远处粗</text>
+  <text class="sub" x="38" y="88">这张图把 texture array、地形 chunk 和相机距离放在一起讲。</text>
+    <rect class="amber" x="70" y="150" width="310" height="340" rx="10"/>
+  <text class="label" x="105" y="200" text-anchor="start">6 层 texture array</text>
+  <rect x="155" y="315" width="140" height="90" fill="#e7f2ff" stroke="#6fa8dc" stroke-width="2"/>
+  <rect x="175" y="295" width="140" height="90" fill="#f0f8ff" stroke="#6fa8dc" stroke-width="2"/>
+  <rect x="195" y="275" width="140" height="90" fill="#ffffff" stroke="#6fa8dc" stroke-width="2"/>
+  <path class="arrow" d="M410 320 L530 320"/>
+  <rect class="soft" x="555" y="150" width="360" height="340" rx="10"/>
+  <text class="label" x="590" y="200" text-anchor="start">baked terrain chunks</text>
+  <g stroke="#6fa8dc" stroke-width="2" fill="#eaf4ff">
+    <rect x="615" y="255" width="70" height="70"/><rect x="685" y="255" width="70" height="70"/><rect x="755" y="255" width="70" height="70"/>
+    <rect x="615" y="325" width="70" height="70"/><rect x="685" y="325" width="70" height="70"/><rect x="755" y="325" width="70" height="70"/>
+  </g>
+  <path d="M605 420 C700 350, 780 380, 850 310" class="thin"/>
+  <path class="arrow" d="M945 320 L1030 320"/>
+  <rect class="green" x="1025" y="150" width="190" height="340" rx="10"/>
+  <path d="M1065 430 L1110 245 L1190 430 Z" fill="#fff" stroke="#244a70" stroke-width="2"/>
+  <circle cx="1110" cy="245" r="14" fill="#244a70"/>
+  <text class="label" x="1110" y="220" text-anchor="middle">camera</text>
+  <text class="small" x="1120" y="320" text-anchor="start">near: high LOD</text>
+  <text class="small" x="1120" y="390" text-anchor="start">far: low LOD</text>
+  <rect class="formula" x="75" y="565" width="1130" height="80" rx="8"/>
+  <text class="tiny" x="110" y="612" text-anchor="start">6 cube faces -&gt; texture array layers; camera distance -&gt; choose visible chunks and LOD</text>
+</svg>

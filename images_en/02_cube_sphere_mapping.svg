@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img">
+  <title>cube-sphere: six faces become one sphere</title>
+  <desc>Good for chunks, LOD, and texture arrays.</desc>
+  <defs>
+    <marker id="arrowHead" markerWidth="14" markerHeight="14" refX="12" refY="7" orient="auto">
+      <path d="M2,2 L12,7 L2,12 Z" fill="#244a70"/>
+    </marker>
+    <style>
+      .bg{fill:#f4f9ff}.title{font:700 30px 'Microsoft YaHei','Segoe UI',Arial,sans-serif;fill:#17324d}
+      .sub{font:16px 'Microsoft YaHei','Segoe UI',Arial,sans-serif;fill:#41627f}.label{font:700 18px 'Microsoft YaHei','Segoe UI',Arial,sans-serif;fill:#17324d}
+      .small{font:14px 'Microsoft YaHei','Segoe UI',Arial,sans-serif;fill:#36536d}.tiny{font:12px Consolas,'Segoe UI',Arial,sans-serif;fill:#36536d}
+      .panel{fill:#ffffff;stroke:#9fc5e8;stroke-width:2}.soft{fill:#eaf4ff;stroke:#6fa8dc;stroke-width:2}.green{fill:#eef9f1;stroke:#58a66f;stroke-width:2}
+      .amber{fill:#fff7e8;stroke:#d89a2b;stroke-width:2}.violet{fill:#f5efff;stroke:#9b7bd8;stroke-width:2}.water{fill:#dff2ff;stroke:#4e9bd8;stroke-width:2}
+      .arrow{stroke:#244a70;stroke-width:3;marker-end:url(#arrowHead)}.thin{stroke:#6e9ec5;stroke-width:2;fill:none}.grid{stroke:#79aee0;stroke-width:2;fill:#e7f2ff}
+      .formula{fill:#ffffff;stroke:#a8c6df;stroke-width:1.5}.sun{fill:#ffd66b;stroke:#d89a2b;stroke-width:2}.cloud{fill:#ffffff;stroke:#91b9d8;stroke-width:2}
+    </style>
+  </defs>
+  <rect class="bg" width="1280" height="720"/>
+  <text class="title" x="36" y="58">cube-sphere: six faces become one sphere</text>
+  <text class="sub" x="38" y="88">Good for chunks, LOD, and texture arrays.</text>
+    <g transform="translate(75 185)">
+    <rect class="grid" x="170" y="0" width="170" height="170"/>
+    <rect class="grid" x="0" y="170" width="170" height="170"/>
+    <rect class="grid" x="170" y="170" width="170" height="170"/>
+    <rect class="grid" x="340" y="170" width="170" height="170"/>
+    <rect class="grid" x="510" y="170" width="170" height="170"/>
+    <rect class="grid" x="170" y="340" width="170" height="170"/>
+  </g>
+  <path class="arrow" d="M780 355 L915 355"/>
+  <circle cx="1045" cy="355" r="85" fill="#eaf9ee" stroke="#58a66f" stroke-width="2"/>
+  <ellipse cx="1045" cy="355" rx="85" ry="32" fill="none" stroke="#58a66f" stroke-width="1.6"/>
+  <ellipse cx="1045" cy="355" rx="34" ry="85" fill="none" stroke="#58a66f" stroke-width="1.6"/>
+  <path d="M990 385 C1015 330, 1070 305, 1105 288" class="thin"/>
+  <path d="M1045 355 L1113 305" class="arrow"/>
+  <text class="label" x="1045" y="485" text-anchor="middle">normalize gives sphereDir</text>
+  <rect class="formula" x="75" y="585" width="1130" height="85" rx="8"/>
+  <text class="tiny" x="110" y="620" text-anchor="start">cubePoint = faceNormal + uv.x * axisU + uv.y * axisV</text>
+  <text class="tiny" x="110" y="650" text-anchor="start">sphereDir = normalize(cubePoint),  finalPos = sphereDir * (planetRadius + height * heightScale)</text>
+</svg>
