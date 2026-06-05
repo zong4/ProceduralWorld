@@ -339,40 +339,52 @@ vec2 cloudLightOpticalDepth(vec3 worldPos, vec3 sunDir, float cloudBottomRadius,
     return vec2(opticalDepth / thickness * cloudDensity, thickness);
 }
 
-bool cloudShellInterval(vec3 origin,
+int cloudShellIntervals(vec3 origin,
                         vec3 direction,
                         float cloudBottomRadius,
                         float cloudTopRadius,
                         float segmentStart,
                         float segmentEnd,
-                        out vec2 interval)
+                        out vec4 intervals)
 {
+    intervals = vec4(0.0);
     vec2 topHit;
     if (!raySphere(origin, direction, cloudTopRadius, topHit)) {
-        return false;
+        return 0;
     }
 
     float startT = max(segmentStart, topHit.x);
     float endT = min(segmentEnd, topHit.y);
     if (endT <= startT) {
-        return false;
+        return 0;
     }
 
     vec2 bottomHit;
-    if (raySphere(origin, direction, cloudBottomRadius, bottomHit)) {
-        if (bottomHit.x <= startT && bottomHit.y > startT) {
-            startT = min(bottomHit.y, endT);
-        } else if (bottomHit.x > startT && bottomHit.x < endT) {
-            endT = bottomHit.x;
+    if (!raySphere(origin, direction, cloudBottomRadius, bottomHit)) {
+        intervals.xy = vec2(startT, endT);
+        return 1;
+    }
+
+    int count = 0;
+    float frontStart = startT;
+    float frontEnd = min(endT, bottomHit.x);
+    if (frontEnd > frontStart) {
+        intervals.xy = vec2(frontStart, frontEnd);
+        count = 1;
+    }
+
+    float backStart = max(startT, bottomHit.y);
+    float backEnd = endT;
+    if (backEnd > backStart) {
+        if (count == 0) {
+            intervals.xy = vec2(backStart, backEnd);
+        } else {
+            intervals.zw = vec2(backStart, backEnd);
         }
+        ++count;
     }
 
-    if (endT <= startT) {
-        return false;
-    }
-
-    interval = vec2(startT, endT);
-    return true;
+    return count;
 }
 
 vec4 raymarchCloudVolume(vec3 origin,
@@ -525,20 +537,41 @@ void main()
         float requestedBottom = planetRadius + clamp(cloudHeight, 0.5, max(shellThickness - 0.5, 0.5));
         float cloudTopRadius = min(atmosphereRadius - 0.05, requestedBottom + requestedThickness * 1.45);
         float cloudBottomRadius = max(planetRadius + 0.25, cloudTopRadius - requestedThickness * 1.45);
-        vec2 cloudInterval;
+        vec4 cloudIntervals;
+        int cloudIntervalCount = cloudShellIntervals(cameraPos,
+                                                     rayDir,
+                                                     cloudBottomRadius,
+                                                     cloudTopRadius,
+                                                     rayStart,
+                                                     rayEnd,
+                                                     cloudIntervals);
         if (cloudTopRadius > cloudBottomRadius + 0.01
-            && cloudShellInterval(cameraPos, rayDir, cloudBottomRadius, cloudTopRadius, rayStart, rayEnd, cloudInterval)) {
-            vec4 cloudVolume = raymarchCloudVolume(cameraPos,
-                                                   rayDir,
-                                                   sunDir,
-                                                   cloudInterval.x,
-                                                   cloudInterval.y,
-                                                   cloudBottomRadius,
-                                                   cloudTopRadius,
-                                                   viewSunMu);
-            float cloudAlpha = saturate(cloudVolume.a);
-            color = color * (1.0 - cloudAlpha * 0.86) + cloudVolume.rgb;
-            alpha = saturate(alpha + cloudAlpha * (1.0 - alpha * 0.22));
+            && cloudIntervalCount > 0) {
+            if (cloudIntervalCount > 1) {
+                vec4 backCloudVolume = raymarchCloudVolume(cameraPos,
+                                                           rayDir,
+                                                           sunDir,
+                                                           cloudIntervals.z,
+                                                           cloudIntervals.w,
+                                                           cloudBottomRadius,
+                                                           cloudTopRadius,
+                                                           viewSunMu);
+                float backCloudAlpha = saturate(backCloudVolume.a);
+                color = color * (1.0 - backCloudAlpha * 0.86) + backCloudVolume.rgb;
+                alpha = saturate(alpha + backCloudAlpha * (1.0 - alpha * 0.22));
+            }
+
+            vec4 frontCloudVolume = raymarchCloudVolume(cameraPos,
+                                                        rayDir,
+                                                        sunDir,
+                                                        cloudIntervals.x,
+                                                        cloudIntervals.y,
+                                                        cloudBottomRadius,
+                                                        cloudTopRadius,
+                                                        viewSunMu);
+            float frontCloudAlpha = saturate(frontCloudVolume.a);
+            color = color * (1.0 - frontCloudAlpha * 0.86) + frontCloudVolume.rgb;
+            alpha = saturate(alpha + frontCloudAlpha * (1.0 - alpha * 0.22));
         }
     }
 
