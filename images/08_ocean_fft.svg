@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
+  <title id="title">FFT 海浪生成</title>
+  <desc id="desc">展示 FFTOcean 从 Phillips spectrum 到 GPU 纹理的流程。</desc>
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M2,2 L10,6 L2,10 Z" fill="#1f5f9a"/></marker>
+    <style>
+      .bg{fill:#f6fbff}.title{font:700 34px 'Microsoft YaHei',Arial,sans-serif;fill:#163a5c}.sub{font:18px 'Microsoft YaHei',Arial,sans-serif;fill:#536e84}
+      .box{fill:#fff;stroke:#6ba7d7;stroke-width:2.4;rx:16}.tex{fill:#eaf8ff;stroke:#43a0c8;stroke-width:2.4;rx:16}
+      .label{font:700 21px 'Microsoft YaHei',Arial,sans-serif;fill:#173a5b}.small{font:15.5px 'Microsoft YaHei',Arial,sans-serif;fill:#43586b}.arrow{stroke:#1f5f9a;stroke-width:3;fill:none;marker-end:url(#arrow)}
+    </style>
+  </defs>
+  <rect class="bg" width="1280" height="720"/>
+  <text class="title" x="58" y="64">FFT 海浪：频域生成，空间域渲染</text>
+  <text class="sub" x="60" y="96">FFTOcean 在 CPU 端更新动态纹理，海洋 shader 在球面海面上采样。</text>
+
+  <rect class="box" x="60" y="160" width="230" height="120"/>
+  <text class="label" x="92" y="202">初始化</text>
+  <text class="small" x="92" y="234">resolution / wind</text>
+  <text class="small" x="92" y="258">cascade 参数</text>
+
+  <rect class="box" x="350" y="160" width="250" height="120"/>
+  <text class="label" x="382" y="202">Phillips spectrum</text>
+  <text class="small" x="382" y="234">按风向、风速、波数</text>
+  <text class="small" x="382" y="258">生成 h0(k)</text>
+
+  <rect class="box" x="660" y="160" width="250" height="120"/>
+  <text class="label" x="692" y="202">随时间推进</text>
+  <text class="small" x="692" y="234">h(k,t)</text>
+  <text class="small" x="692" y="258">displacement spectrum</text>
+
+  <rect class="box" x="970" y="160" width="240" height="120"/>
+  <text class="label" x="1002" y="202">2D inverse FFT</text>
+  <text class="small" x="1002" y="234">频域 -> 空间域</text>
+  <text class="small" x="1002" y="258">height / displacement</text>
+
+  <rect class="tex" x="200" y="435" width="880" height="130"/>
+  <text class="label" x="238" y="478">上传到 GPU 的动态海浪纹理</text>
+  <text class="small" x="238" y="512">heightTexture：浪高</text>
+  <text class="small" x="505" y="512">normalTexture：大浪法线</text>
+  <text class="small" x="790" y="512">displacementTexture：choppy 位移</text>
+  <text class="small" x="238" y="542">detailNormalTextureA/B：近景细波纹，来自贴图或 fallback 生成</text>
+
+  <path class="arrow" d="M290 220 H350"/>
+  <path class="arrow" d="M600 220 H660"/>
+  <path class="arrow" d="M910 220 H970"/>
+  <path class="arrow" d="M1090 280 C1090 365 900 400 900 435"/>
+  <path class="arrow" d="M640 565 C640 615 790 635 920 610"/>
+  <text class="small" x="780" y="638">ocean.tese / ocean.frag 采样</text>
+</svg>

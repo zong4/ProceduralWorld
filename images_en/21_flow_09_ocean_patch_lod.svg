@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
+  <title id="title">Ocean Patch LOD on a Sphere</title>
+  <desc id="desc">Visible ocean patches are selected dynamically and refined with tessellation.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#315b7c"/>
+    </marker>
+    <style>
+      .bg{fill:#f7fbff}.title{font:700 34px Inter,Segoe UI,Arial,sans-serif;fill:#17324d}.sub{font:18px Inter,Segoe UI,Arial,sans-serif;fill:#5d6b78}
+      .box{fill:#fff;stroke-width:2.2}.blue{stroke:#7daed5;fill:#ffffff}.green{stroke:#76b98d;fill:#f0faf3}.amber{stroke:#dca44a;fill:#fff8e8}.violet{stroke:#a986d7;fill:#f8f2ff}
+      .label{font:700 20px Inter,Segoe UI,Arial,sans-serif;fill:#17324d}.small{font:16px Inter,Segoe UI,Arial,sans-serif;fill:#435464}.arrow{stroke:#315b7c;stroke-width:3;fill:none;marker-end:url(#arrow)}
+      .numCircle{fill:#315b7c}.num{font:700 16px Inter,Segoe UI,Arial,sans-serif;fill:white}
+    </style>
+  </defs>
+  <rect class="bg" width="1280" height="720"/>
+  <text class="title" x="58" y="62">Ocean Patch LOD on a Sphere</text>
+  <text class="sub" x="60" y="94">Visible ocean patches are selected dynamically and refined with tessellation.</text>
+  <circle class="numCircle" cx="88" cy="141" r="22"/>
+<text class="num" x="88" y="148" text-anchor="middle">01</text>
+<rect class="box blue" x="60" y="155" width="255" height="126" rx="12"/>
+<text class="label" x="82" y="191" text-anchor="start">Create ocean root</text>
+<text class="label" x="82" y="215" text-anchor="start">patches for six cube</text>
+<text class="label" x="82" y="239" text-anchor="start">faces</text>
+
+<circle class="numCircle" cx="378" cy="141" r="22"/>
+<text class="num" x="378" y="148" text-anchor="middle">02</text>
+<rect class="box green" x="350" y="155" width="255" height="126" rx="12"/>
+<text class="label" x="372" y="191" text-anchor="start">Traverse quadtree</text>
+<text class="label" x="372" y="215" text-anchor="start">with</text>
+<text class="label" x="372" y="239" text-anchor="start">collectVisibleOceanPatches()</text>
+
+<path class="arrow" d="M315 218 C332 218, 332 218, 350 218"/>
+<circle class="numCircle" cx="668" cy="141" r="22"/>
+<text class="num" x="668" y="148" text-anchor="middle">03</text>
+<rect class="box amber" x="640" y="155" width="255" height="126" rx="12"/>
+<text class="label" x="662" y="191" text-anchor="start">Cull patches outside</text>
+<text class="label" x="662" y="215" text-anchor="start">the frustum</text>
+
+<path class="arrow" d="M605 218 C622 218, 622 218, 640 218"/>
+<circle class="numCircle" cx="958" cy="141" r="22"/>
+<text class="num" x="958" y="148" text-anchor="middle">04</text>
+<rect class="box violet" x="930" y="155" width="255" height="126" rx="12"/>
+<text class="label" x="952" y="191" text-anchor="start">Analyze water</text>
+<text class="label" x="952" y="215" text-anchor="start">coverage per patch</text>
+
+<path class="arrow" d="M895 218 C912 218, 912 218, 930 218"/>
+<circle class="numCircle" cx="958" cy="366" r="22"/>
+<text class="num" x="958" y="373" text-anchor="middle">05</text>
+<rect class="box blue" x="930" y="380" width="255" height="126" rx="12"/>
+<text class="label" x="952" y="416" text-anchor="start">Split nodes by</text>
+<text class="label" x="952" y="440" text-anchor="start">distance and error</text>
+
+<path class="arrow" d="M1185 281 L1185 338 L1185 338 L1185 443"/>
+<circle class="numCircle" cx="668" cy="366" r="22"/>
+<text class="num" x="668" y="373" text-anchor="middle">06</text>
+<rect class="box green" x="640" y="380" width="255" height="126" rx="12"/>
+<text class="label" x="662" y="416" text-anchor="start">Build the visible</text>
+<text class="label" x="662" y="440" text-anchor="start">ocean patch list</text>
+
+<path class="arrow" d="M930 443 C912 443, 912 443, 895 443"/>
+<circle class="numCircle" cx="378" cy="366" r="22"/>
+<text class="num" x="378" y="373" text-anchor="middle">07</text>
+<rect class="box amber" x="350" y="380" width="255" height="126" rx="12"/>
+<text class="label" x="372" y="416" text-anchor="start">Tessellation shader</text>
+<text class="label" x="372" y="440" text-anchor="start">refines patches on</text>
+<text class="label" x="372" y="464" text-anchor="start">the sphere</text>
+
+<path class="arrow" d="M640 443 C622 443, 622 443, 605 443"/>
+<circle class="numCircle" cx="88" cy="366" r="22"/>
+<text class="num" x="88" y="373" text-anchor="middle">08</text>
+<rect class="box violet" x="60" y="380" width="255" height="126" rx="12"/>
+<text class="label" x="82" y="416" text-anchor="start">Fragment shader</text>
+<text class="label" x="82" y="440" text-anchor="start">computes water color</text>
+
+<path class="arrow" d="M350 443 C332 443, 332 443, 315 443"/>
+</svg>
